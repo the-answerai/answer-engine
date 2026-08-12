@@ -55,7 +55,7 @@ describe('Alpha Loop repository posture', () => {
       '.alpha-loop/context.md',
       '.alpha-loop/templates/instructions.md',
       '.alpha-loop/templates/skills/alpha-loop-runner/SKILL.md',
-      '.alpha-loop/learnings/.gitkeep',
+      '.alpha-loop/learnings/issue-7-20260812-162800.md',
     ]) {
       expect(existsSync(join(root, path)), path).toBe(true);
     }
