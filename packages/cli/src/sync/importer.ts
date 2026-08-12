@@ -59,6 +59,21 @@ const SOURCE_BY_SURFACE: Record<Conversation['surface'], ConversationImportRow['
   claude_cloud_export: 'claude-cloud-export',
 };
 
+function sanitizePostgresText<T>(value: T): T {
+  if (typeof value === 'string') {
+    return value.replaceAll('\0', '\uFFFD') as T;
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => sanitizePostgresText(entry)) as T;
+  }
+  if (isRecord(value)) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, sanitizePostgresText(entry)]),
+    ) as T;
+  }
+  return value;
+}
+
 function stringifyJson(value: unknown): string | undefined {
   try {
     return JSON.stringify(value);
@@ -184,7 +199,7 @@ export function conversationToImportRow(conversation: Conversation): Conversatio
   const manifest = rawArchiveManifest(conversation);
   const events = projectedEvents(conversation);
 
-  return {
+  return sanitizePostgresText({
     title,
     content_type: 'chat',
     source_identifier: `${conversation.provider}:${conversation.surface}:${conversation.source_conversation_id}`,
@@ -218,7 +233,7 @@ export function conversationToImportRow(conversation: Conversation): Conversatio
       relations: conversation.relations,
     },
     ...(manifest ? { raw_archive_manifest: manifest } : {}),
-  };
+  });
 }
 
 export function conversationToImportRows(
@@ -228,7 +243,7 @@ export function conversationToImportRows(
 }
 
 export function turnToImportRow(turn: ChatTurn): NormalizedChatImportRow {
-  return {
+  return sanitizePostgresText({
     title: turn.title,
     content_type: 'chat',
     source_identifier: turn.sourceIdentifier,
@@ -249,11 +264,11 @@ export function turnToImportRow(turn: ChatTurn): NormalizedChatImportRow {
     'metadata.sync.adapter_version': turn.adapterVersion,
     'metadata.sync.turn_key': turn.turnKey,
     'source_data.raw_record': turn.raw,
-  };
+  });
 }
 
 export function documentToImportRow(document: DocumentImportRow): NormalizedDocumentImportRow {
-  return {
+  return sanitizePostgresText({
     title: document.title,
     content_type: document.contentType,
     source_identifier: document.sourceIdentifier,
@@ -266,7 +281,7 @@ export function documentToImportRow(document: DocumentImportRow): NormalizedDocu
     'metadata.sync.adapter_name': document.adapterName,
     'metadata.sync.adapter_version': document.adapterVersion,
     'source_data.raw': document.raw,
-  };
+  });
 }
 
 function buildRequest(

@@ -141,4 +141,39 @@ describe('conversationToImportRow', () => {
     expect(JSON.stringify(row['source_data.chat_interchange'])).not.toContain('raw value must stay in the archive');
     expect(row.raw_archive_manifest).toBeDefined();
   });
+
+  it('replaces PostgreSQL-incompatible NULs in derived projections', () => {
+    const conversation = ConversationSchema.parse({
+      provider: 'anthropic_claude',
+      surface: 'claude_code',
+      source_conversation_id: 'nul-session',
+      title: 'NUL\0title',
+      created_at: '2026-08-10T20:00:00.000Z',
+      archived: false,
+      source_path: '/source/nul-session.jsonl',
+      source_sha256: 'd'.repeat(64),
+      adapter_name: 'claude-code-history',
+      adapter_version: '1.0.0',
+      provider_metadata_json: { nested: { value: 'metadata\0value' } },
+      events: [{
+        sequence: 0,
+        source_event_id: 'nul-event',
+        category: 'message',
+        role: 'user',
+        provider_type: 'user',
+        raw_json: { original: 'retained in raw archive' },
+        content_blocks: [{ ordinal: 0, block_type: 'text', text: 'memory\0value' }],
+      }],
+      relations: [],
+    });
+
+    const row = conversationToImportRow(conversation);
+
+    expect(JSON.stringify(row)).not.toContain('\\u0000');
+    expect(row.title).toBe('NUL�title');
+    expect(row.content).toContain('memory�value');
+    expect(row['metadata.provider_metadata_json']).toEqual({
+      nested: { value: 'metadata�value' },
+    });
+  });
 });
