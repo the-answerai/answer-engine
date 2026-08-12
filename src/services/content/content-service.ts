@@ -124,11 +124,19 @@ const CHAT_ENRICHMENT_RESPONSE_FORMAT = {
     schema: {
       type: 'object',
       properties: {
-        summary: { type: 'string' },
-        keywords: { type: 'array', items: { type: 'string' } },
-        tags: { type: 'array', items: { type: 'string' } },
+        summary: { type: 'string', maxLength: 1_000 },
+        keywords: {
+          type: 'array',
+          maxItems: 16,
+          items: { type: 'string', maxLength: 120 },
+        },
+        tags: {
+          type: 'array',
+          maxItems: 12,
+          items: { type: 'string', maxLength: 120 },
+        },
         should_store: { type: 'boolean' },
-        store_reason: { type: 'string' },
+        store_reason: { type: 'string', maxLength: 500 },
         store_confidence: { type: 'number' },
       },
       required: [
@@ -286,13 +294,24 @@ export class ContentService {
           let status: 'active' | 'archived' = 'active';
           let analysisData = item.analysisData;
           if (item.contentType === 'chat' && item.content?.trim()) {
-            const completion = await this.language.complete({
+            const completionInput = {
               system: CHAT_ENRICHMENT_SYSTEM_PROMPT,
               prompt: `Conversation title: ${item.title}\n\n${boundedModelContext(item.content)}`,
               maxTokens: 768,
               responseFormat: CHAT_ENRICHMENT_RESPONSE_FORMAT,
-            });
-            const enrichment = parseChatEnrichment(completion.text);
+            } as const;
+            let completion = await this.language.complete(completionInput);
+            let enrichment: z.infer<typeof ChatEnrichmentSchema>;
+            try {
+              enrichment = parseChatEnrichment(completion.text);
+            } catch {
+              completion = await this.language.complete({
+                ...completionInput,
+                maxTokens: 4_096,
+                system: `${CHAT_ENRICHMENT_SYSTEM_PROMPT}\nYour previous response failed JSON validation. Keep the summary under 1,000 characters, use at most 16 keywords and 12 tags, and keep the reason under 500 characters.`,
+              });
+              enrichment = parseChatEnrichment(completion.text);
+            }
             summary = enrichment.summary;
             const forceStore = input.options?.forceStore === true;
             status = forceStore || enrichment.should_store ? 'active' : 'archived';

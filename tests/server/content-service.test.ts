@@ -57,7 +57,7 @@ describe('ContentService tenant boundaries', () => {
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
     const release = vi.fn();
-    const complete = vi.fn().mockResolvedValue({
+    const validCompletion = {
       text: JSON.stringify({
         summary: 'A durable Cowork memory.',
         keywords: ['cowork', 'memory'],
@@ -68,7 +68,14 @@ describe('ContentService tenant boundaries', () => {
       }),
       model: 'local-chat',
       provider: 'lmstudio',
-    });
+    };
+    const complete = vi.fn()
+      .mockResolvedValueOnce({
+        text: '{"summary":"truncated',
+        model: 'local-chat',
+        provider: 'lmstudio',
+      })
+      .mockResolvedValueOnce(validCompletion);
     const service = new ContentService(
       { query: databaseQuery, connect: vi.fn().mockResolvedValue({ query: clientQuery, release }) } as unknown as Database,
       {
@@ -89,9 +96,22 @@ describe('ContentService tenant boundaries', () => {
     );
 
     expect(result.completedItems).toBe(1);
-    expect(complete).toHaveBeenCalledWith(expect.objectContaining({
+    expect(complete).toHaveBeenNthCalledWith(1, expect.objectContaining({
       maxTokens: 768,
       responseFormat: expect.objectContaining({ type: 'json_schema' }),
+    }));
+    expect(complete).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      maxTokens: 4096,
+      responseFormat: expect.objectContaining({
+        type: 'json_schema',
+        json_schema: expect.objectContaining({
+          schema: expect.objectContaining({
+            properties: expect.objectContaining({
+              summary: expect.objectContaining({ maxLength: 1000 }),
+            }),
+          }),
+        }),
+      }),
     }));
     const [, insertParams] = clientQuery.mock.calls[2] as [string, unknown[]];
     expect(insertParams[10]).toEqual(manifest);
