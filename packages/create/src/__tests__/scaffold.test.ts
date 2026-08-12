@@ -47,6 +47,9 @@ describe('scaffoldInstallation', () => {
     expect(readFileSync(result.composePath, 'utf8')).toContain(
       'ghcr.io/the-answerai/answer-engine:1.1.0',
     );
+    expect(readFileSync(result.envPath, 'utf8')).toContain(
+      'COMPOSE_PROJECT_NAME=answer-engine-local',
+    );
     const env = readFileSync(result.envPath, 'utf8');
     expect(env).toContain('AUTH_MODE=api_key');
     expect(env).toContain('STORAGE_DRIVER=local');

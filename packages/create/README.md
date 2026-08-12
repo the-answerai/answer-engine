@@ -33,6 +33,8 @@ Generated client entries use exact package versions:
 
 The runtime image is pinned to
 `ghcr.io/the-answerai/answer-engine:1.1.0`.
+Installer containers and volumes use the isolated `answer-engine-local`
+Compose namespace so legacy enterprise state is never adopted implicitly.
 
 ## Important options
 
