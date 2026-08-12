@@ -28,10 +28,18 @@ for (const file of filesUnder('.')) {
   }
 }
 
-const privateProductTerms = /\b(auth0|oidc|rbac|stripe|billing|credits?|teams?|workspaces?|admin(?:istration)?)\b/i;
+const paidCapabilityPatterns = [
+  /\b(role[-_ ]?based|user[-_ ]?roles?|member[-_ ]?roles?|role[-_ ]?(assignment|binding|policy|management))\b/i,
+  /\brbac\b/i,
+  /\bteams?\b/i,
+  /\bbilling\b/i,
+  /\bpermissions?\b/i,
+];
+const enterpriseImplementationTerms = /\b(auth0|oidc|stripe)\b/i;
 for (const scope of ['src', 'database', 'packages/web-ui/src', 'packages/create/templates', 'openapi']) {
   for (const file of filesUnder(scope)) {
-    if (privateProductTerms.test(readFileSync(file, 'utf8'))) {
+    const content = readFileSync(file, 'utf8');
+    if (paidCapabilityPatterns.some((pattern) => pattern.test(content)) || enterpriseImplementationTerms.test(content)) {
       failures.push(`${relative(repositoryRoot, file)} crosses the OSS product boundary`);
     }
   }

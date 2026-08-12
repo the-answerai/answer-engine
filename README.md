@@ -4,10 +4,10 @@ Answer Engine is an open-source, local-first memory engine for AI agents. It
 stores conversations and documents in PostgreSQL + pgvector, exposes a small
 authenticated REST API, and connects to agent clients through MCP.
 
-The OSS repository contains the single-user memory core only. Account
-management, organization features, commercial metering, and managed deployment operations
-live in a separate private enterprise layer that composes this package through
-the exported `createApp()` extension API.
+The OSS repository contains the complete single-user product, including every
+non-paid application UI and API. Only roles, RBAC, teams, billing, and
+permissions live in the private enterprise layer, which composes this package
+through the exported `createApp()` extension API.
 
 ## What is included
 

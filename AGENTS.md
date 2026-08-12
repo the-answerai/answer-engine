@@ -4,16 +4,18 @@ Operational guide for coding agents working in the open-source Answer Engine.
 
 ## Scope
 
-This repository contains the local-first memory engine, retrieval and context
-APIs, evaluation tools, sync clients, MCP server, installer, and local web UI.
-Keep the public core single-user by default while preserving `tenant_id`
-scoping throughout persistence and queries.
+This repository contains the complete single-user Answer Engine product: the
+local-first memory engine, retrieval and context APIs, evaluation tools, sync
+clients, MCP server, installer, and every non-paid application workflow and UI.
+Preserve `tenant_id` scoping throughout persistence and queries so the public
+core remains safe to compose without hiding useful single-user features.
 
-Private product extensions are maintained in the separate
-`answer-engine-enterprise` repository. Do not add organization identity,
-role-based access, account collaboration, payment metering, private operations
-screens, or private deployment code here. Add neutral extension interfaces when
-the private application needs to compose behavior with the public core.
+Only five paid capability families belong exclusively in the separate
+`answer-engine-enterprise` repository: roles, RBAC, teams, billing, and
+permissions. Neutral extension interfaces belong here when the private
+application needs to inject those capabilities. Local administration,
+operations, audit, deployment, workspace, and all other non-paid product
+surfaces remain OSS.
 
 ## GitHub workflow
 
