@@ -21,6 +21,12 @@ export type {
 } from './runtime/application-composition.js';
 export type { LanguageProvider } from './services/ai/openai-compatible.js';
 
+// A normalized history item can include a multi-file raw-archive manifest and
+// thousands of bounded event references. Raw source bytes stay on disk, but
+// the lineage envelope for large Cowork sessions can legitimately exceed the
+// generic Express 10 MiB default used previously.
+const MAX_JSON_BODY_SIZE = '64mb';
+
 export function createApp<TConfig = Record<string, never>>(options: CreateAppOptions<TConfig> = {}): Express {
   const app = express();
   const database = options.dependencies?.database ?? pool;
@@ -35,7 +41,7 @@ export function createApp<TConfig = Record<string, never>>(options: CreateAppOpt
   app.disable('x-powered-by');
   app.use(helmet({ contentSecurityPolicy: false }));
   app.use(cors({ origin: '*' }));
-  app.use(express.json({ limit: '10mb' }));
+  app.use(express.json({ limit: MAX_JSON_BODY_SIZE }));
   if (env.NODE_ENV !== 'test') {
     app.use(morgan('combined', { stream: { write: (message) => logger.http(message.trim()) } }));
   }

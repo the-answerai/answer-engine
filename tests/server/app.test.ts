@@ -22,4 +22,23 @@ describe('createApp local defaults', () => {
     expect(response.status).toBe(401);
     expect(response.body.error.code).toBe('UNAUTHORIZED');
   });
+
+  it('accepts large lineage envelopes produced by real history imports', async () => {
+    const app = createApp({
+      dependencies: { database, languageProvider },
+      extensions: {
+        registerPublicRoutes: (router) => {
+          router.post('/test-large-lineage', (req, res) => {
+            res.json({ bytes: Buffer.byteLength(req.body.lineage as string) });
+          });
+        },
+      },
+    });
+    const lineage = 'x'.repeat(11 * 1024 * 1024);
+
+    const response = await request(app).post('/test-large-lineage').send({ lineage });
+
+    expect(response.status).toBe(200);
+    expect(response.body.bytes).toBe(Buffer.byteLength(lineage));
+  });
 });
