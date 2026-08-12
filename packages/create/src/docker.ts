@@ -49,6 +49,22 @@ export function persistApiKey(envPath: string, apiKey: string): void {
   chmodSync(envPath, 0o600);
 }
 
+export async function activateApiKey(
+  home: string,
+  envPath: string,
+  apiKey: string,
+  dependencies: DockerDependencies = {},
+): Promise<void> {
+  persistApiKey(envPath, apiKey);
+  const command = dependencies.runCommand ?? defaultRunCommand;
+  await command('docker', composeArgs(home, ['up', '-d', '--force-recreate', 'api']));
+  await waitForHealth(
+    dependencies.fetchImpl ?? fetch,
+    dependencies.sleep ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))),
+    dependencies.healthAttempts ?? 180,
+  );
+}
+
 export async function detectOwnedPorts(
   home: string,
   dependencies: Pick<DockerDependencies, 'runCommand'> = {},

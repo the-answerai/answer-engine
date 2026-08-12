@@ -52,6 +52,7 @@ describe('scaffoldInstallation', () => {
     );
     const env = readFileSync(result.envPath, 'utf8');
     expect(env).toContain('AUTH_MODE=api_key');
+    expect(env).toContain('LOCAL_UI_AUTO_AUTH=true');
     expect(env).toContain('STORAGE_DRIVER=local');
     expect(env).toContain(`ENCRYPTION_KEY=${'a'.repeat(64)}`);
     expect(statSync(result.configPath).mode & 0o777).toBe(0o600);

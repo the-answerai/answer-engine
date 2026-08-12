@@ -8,6 +8,7 @@ import { env } from './config/env.js';
 import { pool } from './config/database.js';
 import { createApiKeyAuth } from './middleware/api-key-auth.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
+import { createLocalUiSessionCookie } from './middleware/local-ui-session.js';
 import { createAgentRoutes } from './routes/agent-routes.js';
 import { createContentRoutes } from './routes/content-routes.js';
 import { OpenAiCompatibleProvider } from './services/ai/openai-compatible.js';
@@ -33,6 +34,9 @@ export function createApp<TConfig = Record<string, never>>(options: CreateAppOpt
   const language = options.dependencies?.languageProvider ?? new OpenAiCompatibleProvider();
   const service = new ContentService(database, language);
   const extensions = options.extensions;
+  const localUiApiKey = !extensions?.authentication && env.LOCAL_UI_AUTO_AUTH
+    ? env.ANSWER_ENGINE_API_KEY
+    : undefined;
   const context: ApplicationCompositionContext<TConfig> = {
     nodeEnv: env.NODE_ENV,
     config: (extensions?.config ?? {}) as TConfig,
@@ -47,12 +51,15 @@ export function createApp<TConfig = Record<string, never>>(options: CreateAppOpt
   }
 
   app.get('/health', (_req, res) => res.json({ status: 'healthy', uptime: process.uptime() }));
+  if (localUiApiKey) {
+    app.get('/local-ui/session', createLocalUiSessionCookie(localUiApiKey), (_req, res) => res.status(204).end());
+  }
   if (!env.WEB_UI_DIR) {
     app.get('/', (_req, res) => res.json({ name: 'Answer Engine API', version: '1.1.0', status: 'running' }));
   }
   extensions?.registerPublicRoutes?.(app, context);
 
-  app.use('/api/v1', extensions?.authentication ?? createApiKeyAuth(database));
+  app.use('/api/v1', extensions?.authentication ?? createApiKeyAuth(database, { localUiApiKey }));
   extensions?.registerAuthenticatedRoutes?.(app, context);
   app.get('/api/v1', (_req, res) => res.json({
     message: 'Answer Engine API v1',

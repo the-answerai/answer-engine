@@ -24,7 +24,9 @@ npx @answer-engine/create@1.1.0 --yes \
 
 The installer writes configuration beneath `~/.answer-engine`, starts the
 local Compose stack, waits for health, captures the local API key, wires selected
-agent clients, and verifies remember, recall, and memory inspection.
+agent clients, and verifies remember, recall, and memory inspection. The bundled
+loopback web interface opens already connected through an HttpOnly local session;
+users do not copy the API key into the browser.
 
 Generated client entries use exact package versions:
 

@@ -35,6 +35,8 @@ interface ApiEnvelope<T> {
   error?: { message?: string };
 }
 
+const LEGACY_API_KEY_STORAGE_KEY = 'answer-engine-api-key';
+
 function unwrap<T>(payload: ApiEnvelope<T> | T): T {
   if (payload && typeof payload === 'object' && 'data' in payload) {
     const envelope = payload as ApiEnvelope<T>;
@@ -43,17 +45,12 @@ function unwrap<T>(payload: ApiEnvelope<T> | T): T {
   return payload as T;
 }
 
-function apiKey(): string {
-  return window.localStorage.getItem('answer-engine-api-key') ?? '';
-}
-
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const key = apiKey();
   const response = await fetch(path, {
     ...init,
+    credentials: 'same-origin',
     headers: {
       'content-type': 'application/json',
-      ...(key ? { 'x-api-key': key } : {}),
       ...init.headers,
     },
   });
@@ -66,25 +63,22 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return unwrap(payload);
 }
 
-export function saveApiKey(key: string): void {
-  const normalized = key.trim();
-  if (!normalized.startsWith('ae_live_')) {
-    throw new Error('Local API keys begin with ae_live_.');
-  }
-  window.localStorage.setItem('answer-engine-api-key', normalized);
-}
-
-export function hasApiKey(): boolean {
-  return apiKey().length > 0;
-}
-
-export function clearApiKey(): void {
-  window.localStorage.removeItem('answer-engine-api-key');
-}
-
 export async function health(): Promise<boolean> {
   const response = await fetch('/health');
   return response.ok;
+}
+
+export async function initializeLocalUiSession(): Promise<void> {
+  const response = await fetch('/local-ui/session', { credentials: 'same-origin' });
+  if (!response.ok) throw new Error(`Unable to initialize the local browser session (${response.status})`);
+}
+
+export function clearLegacyBrowserApiKey(): void {
+  try {
+    window.localStorage.removeItem(LEGACY_API_KEY_STORAGE_KEY);
+  } catch {
+    // The HttpOnly session does not depend on browser storage being available.
+  }
 }
 
 export async function listMemories(limit = 50): Promise<MemoryItem[]> {
