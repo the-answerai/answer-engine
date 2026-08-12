@@ -35,3 +35,4 @@ use the required issue branch and commit formats, and merge only through a PR to
 `master`. Never publish npm, push `master`, expose secrets, run duplicate loops,
 or omit a processed issue's `.alpha-loop/learnings/issue-*.md`. Run `pnpm verify`;
 visually verify every UI change at desktop and 375px.
+Do not load, invoke, use, update, or generate Graphify, its skills, or its artifacts; it is outside epic #6.
