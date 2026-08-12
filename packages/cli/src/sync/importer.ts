@@ -61,7 +61,30 @@ const SOURCE_BY_SURFACE: Record<Conversation['surface'], ConversationImportRow['
 
 function sanitizePostgresText<T>(value: T): T {
   if (typeof value === 'string') {
-    return value.replaceAll('\0', '\uFFFD') as T;
+    let sanitized = '';
+    for (let index = 0; index < value.length; index += 1) {
+      const code = value.charCodeAt(index);
+      if (code === 0) {
+        sanitized += '\uFFFD';
+        continue;
+      }
+      if (code >= 0xD800 && code <= 0xDBFF) {
+        const next = value.charCodeAt(index + 1);
+        if (next >= 0xDC00 && next <= 0xDFFF) {
+          sanitized += value[index] + value[index + 1];
+          index += 1;
+        } else {
+          sanitized += '\uFFFD';
+        }
+        continue;
+      }
+      if (code >= 0xDC00 && code <= 0xDFFF) {
+        sanitized += '\uFFFD';
+        continue;
+      }
+      sanitized += value[index];
+    }
+    return sanitized as T;
   }
   if (Array.isArray(value)) {
     return value.map((entry) => sanitizePostgresText(entry)) as T;
