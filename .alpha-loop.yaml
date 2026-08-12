@@ -1,0 +1,284 @@
+# Alpha Loop configuration
+# ----------------------------------------------------------------------------
+# Detected stack: TypeScript / Express (package manager: pnpm)
+# Docs: https://github.com/bradtaylorsf/alpha-loop#configuration
+#
+# Most settings have sensible defaults. Uncomment and edit anything you want
+# to override. Settings are grouped by section — read top-to-bottom on first
+# setup, then come back to tune the advanced sections later.
+# ----------------------------------------------------------------------------
+
+# === Project ================================================================
+# Identifies the GitHub repo + project board the loop reads from.
+repo: the-answerai/answer-engine
+# project: 0           # GitHub Project number (from project URL: /projects/N)
+# milestone: ""        # Process this milestone's scheduled epic, or ready flat issues if none
+
+# === Agent ==================================================================
+# The CLI agent that drives Plan/Build/Test/Review. Supported values:
+#   claude     — Anthropic Claude Code (recommended, best tool-use support)
+#   codex      — OpenAI Codex CLI
+#   opencode   — Open-source coding harness
+#   lmstudio   — LM Studio (local models, requires running server)
+#   ollama     — Ollama (local models, requires running daemon)
+agent: codex
+# model: ""            # Override default model (e.g., opus, sonnet, gpt-5.4)
+# review_model: ""     # Different model for review step (defaults to model)
+agent_timeout: 5400   # Allow one substantial issue phase, then stop for diagnosis.
+
+# === Workflow ===============================================================
+# Branch and label conventions for the loop.
+base_branch: master
+label: ready                  # Issues with this label are queued for the loop
+auto_merge: true            # Auto-merge PRs to session branch when checks pass
+# merge_to: ""                # Reuse an existing session branch instead of creating one
+# auto_cleanup: true          # Delete worktrees and branches after success
+# prefer_epics: false         # Auto-pick a single open epic instead of prompting
+
+# === Testing ================================================================
+# Commands the loop runs to verify changes.
+test_command: pnpm verify
+# Per-issue test scope: full (default) or changed; changed requires auto_merge.
+# test_scope: full
+# For changed scope, {files} expands to the issue-relative changed paths.
+# changed_test_command: pnpm jest --findRelatedTests --passWithNoTests {files}
+dev_command: pnpm dev
+# setup_command: ""           # Run once before the session (e.g., "pnpm install")
+# smoke_test: ""              # Final smoke command after review (e.g., "curl localhost:3000/health")
+# max_test_retries: 3         # How many times to let the agent fix failing tests
+skip_tests: false
+skip_review: false
+skip_e2e: false
+skip_preflight: false
+skip_verify: false
+skip_learn: false
+skip_install: false
+
+# === Web/app verification profile ==========================================
+# Browser QA profile for websites and web apps. Empty commands fall back to
+# package scripts where possible (Astro defaults to http://localhost:4321).
+# See docs/web-app-profile.md for preview providers and QA handoff details.
+# web_app:
+#   setup_command: pnpm install
+#   build_command: pnpm build
+#   test_command: pnpm test
+#   dev_command: pnpm dev
+#   dev_url: http://localhost:4321
+#   smoke_test: pnpm build
+#   screenshots:
+#     - name: home-desktop
+#       url: /
+#       viewport: desktop
+#     - name: home-mobile
+#       url: /
+#       viewport: mobile
+#   preview:
+#     command: ./scripts/get-preview-url.sh
+#     required: false
+
+# === Safety limits ==========================================================
+# Caps to keep an unattended loop from running away. 0 = unlimited.
+max_issues: 6
+max_session_duration: 21600   # Six-hour hard stop; the operator monitors every five minutes.
+# poll_interval: 60           # Seconds between issue queue polls when running continuously
+
+# === Automation policy (hosted guardrails) =================================
+# Repo-level safety policy for unattended hosted runs. Keep this narrow before
+# enabling daemon mode. See docs/hosted-policy.md for marketing-site and web-app
+# starter profiles.
+# Conservative defaults apply when unset: max_issue_cost_usd 25, max_session_cost_usd 75,
+# max_active_sessions 3, max_paused_sessions 50 (max_session_minutes stays 0/unlimited).
+# allowed_commands / allowed_paths / protected_paths default to EMPTY — the agent has
+# full shell access, so set these before running unattended to bound what it can do.
+automation_policy:
+  block_labels: [do-not-automate, needs-human-input]
+  require_labels: [ready]
+  max_active_sessions: 1
+#   require_labels: [ready]
+#   max_active_sessions: 1
+#   max_paused_sessions: 10
+#   max_issues_per_session: 1
+#   max_session_minutes: 90
+#   max_session_cost_usd: 25
+#   max_issue_cost_usd: 5
+#   allowed_paths:
+#     - src/**
+#     - content/**
+#     - public/**
+#   protected_paths:
+#     - package.json
+#     - pnpm-lock.yaml
+#     - .github/workflows/**
+#     - sanity/schema/**
+#   allowed_commands:
+#     - pnpm install
+#     - pnpm test
+#     - pnpm build
+#     - pnpm dev
+#   require_human_for:
+#     - auth
+#     - billing
+#     - production-deploy
+#     - dependency-upgrade
+#     - sanity-schema
+#     - secrets
+#     - migrations
+#     - destructive-content
+#     - ambiguous
+
+# === Hosted daemon ==========================================================
+# Long-running repo steward. Modes: full, triage-only, feedback-only, run-only.
+# daemon:
+#   mode: full
+#   triage_interval: 900       # Seconds between intake triage passes
+#   feedback_interval: 60      # Seconds between feedback poll/resume passes
+#   run_interval: 120          # Seconds between ready-work selection passes
+#   health_interval: 300       # Seconds between health lifecycle events
+#   idle_sleep: 30             # Seconds to sleep when no tick is due
+#   feedback_poll_command: ""  # Optional adapter command returning JSON/NDJSON
+#   session_retention_days: 14 # Prune terminal session dirs older than N days (0 disables)
+#   lock:
+#     enabled: true
+#     stale_after: 86400
+#     path: ""                 # Defaults to .alpha-loop/daemon.lock
+
+# === Session retention ======================================================
+# Durable session manifests are kept in .alpha-loop/sessions/<session>/session.json.
+# Paused/waiting/QA worktrees are preserved unless paused_worktree_days is > 0.
+# session_retention:
+#   paused_worktree_days: 0
+#   completed_worktree_days: 30
+
+# === Harnesses ==============================================================
+# Coding harnesses to sync skills/agents to. When empty, alpha-loop picks one
+# based on `agent` above. Set explicitly if you use multiple harnesses.
+harnesses:
+  - codex
+  - claude-code
+
+# === Pipeline overrides (advanced) ==========================================
+# Use a different agent or model for specific pipeline steps. Useful for
+# routing cheap models to grunt work and reserving the expensive ones for
+# planning and review. Each step accepts { agent?, model? }.
+# pipeline:
+#   plan:
+#     agent: claude
+#     model: opus
+#   implement:
+#     agent: claude
+#     model: sonnet
+#   test_fix:
+#     model: haiku
+#   review:
+#     model: opus
+#   verify:
+#     model: sonnet
+#   learn:
+#     model: haiku
+
+# === Routing (advanced, hybrid local/cloud) =================================
+# Route Loop stages to specific models on specific endpoints. Powerful for
+# hybrid setups (e.g., local 30B coder for build/test, cloud Opus for plan/
+# review). See docs/routing-profiles.md for ready-to-paste profiles.
+# routing:
+#   profile: hybrid-v1                # Or list for A/B: [hybrid-v1, cloud-only]
+#   endpoints:
+#     local:
+#       type: openai_compat
+#       base_url: http://localhost:1234/v1
+#     cloud:
+#       type: anthropic
+#       base_url: https://api.anthropic.com
+#   stages:
+#     plan:       { model: claude-opus-4-6,    endpoint: cloud }
+#     build:      { model: qwen3-coder-30b-a3b, endpoint: local }
+#     test_write: { model: qwen3-coder-30b-a3b, endpoint: local }
+#     test_exec:  { model: qwen3-coder-30b-a3b, endpoint: local }
+#     review:     { model: claude-opus-4-6,    endpoint: cloud }
+#     summary:    { model: claude-haiku-4-5,   endpoint: cloud }
+#   fallback:
+#     on_tool_error: escalate         # escalate | retry | fail
+#     escalate_to: { model: claude-sonnet-4-6, endpoint: cloud }
+#     escalation_window_issues: 10    # Rolling window for error-rate guardrail
+#     escalation_error_threshold: 0.08
+#     escalation_revert_ms: 86400000  # 24h
+
+# === Batch mode (advanced) ==================================================
+# Process multiple issues in a single agent call. Faster + fewer tokens, but
+# less isolation between issues — best for small, mechanical tasks.
+batch: true
+batch_size: 1
+
+# === Quick mode (advanced) ==================================================
+# Plan + build + commit per issue in a fresh agent session on one shared
+# worktree; tests, review, and the PR happen once at the end of the run.
+# Faster than sequential mode while keeping per-issue agent context isolation.
+# quick: false
+
+# === Evaluation =============================================================
+# Settings for the eval harness used by `alpha-loop review` and CI eval runs.
+# eval_dir: .alpha-loop/evals
+# eval_model: ""              # Defaults to the top-level model
+# eval_timeout: 300           # Per-case timeout in seconds
+# skip_eval: false
+# auto_capture: true          # Capture session failures as eval cases automatically
+# eval:
+#   include_agent_prompts: true   # Mirror this repo's agent prompts during eval
+#   include_skills: true          # Mirror this repo's skills during eval
+
+# === Post-session review ====================================================
+# Holistic code review and security scan after the session completes.
+# post_session:
+#   review: true
+#   security_scan: true
+
+# === Lifecycle events =======================================================
+# Deliver typed session lifecycle events to logs, webhooks, or local commands.
+# See docs/hosted-events.md for Slack, Teams, Discord, email script, and custom
+# service examples.
+# events:
+#   include_prompt_text: false
+#   redact:
+#     - OPENAI_API_KEY
+#     - ANTHROPIC_API_KEY
+#   destinations:
+#     audit_log:
+#       type: log
+#       events: ['*']
+#     slack_qa:
+#       type: webhook
+#       events: [qa.requested, human_input.requested, session.failed]
+#       url_env: SLACK_WEBHOOK_URL
+#       format: slack
+#       required: false
+#     internal_service:
+#       type: webhook
+#       events: ['*']
+#       url_env: ALPHA_LOOP_EVENTS_URL
+#       secret_env: ALPHA_LOOP_EVENTS_SECRET
+#       format: json
+#       retries: 2
+#       timeout: 10
+#       required: true
+#     local_script:
+#       type: command
+#       events: [session.completed]
+#       command: ./scripts/on-alpha-loop-event.sh
+#       stdin: json
+#       timeout: 60
+#       required: false
+
+# === Logging ================================================================
+# log_dir: logs
+# verbose: false
+# dry_run: false              # Preview without making changes (overridable via --dry-run)
+
+# === Pricing (cost tracking) ================================================
+# Per-million-token pricing for cost reports. Defaults cover Anthropic + OpenAI
+# common models; add your own here.
+# pricing:
+#   claude-opus-4-6:   { input: 15.0, output: 75.0 }
+#   claude-sonnet-4-6: { input: 3.0,  output: 15.0 }
+#   claude-haiku-4-5:  { input: 0.80, output: 4.0 }
+#   gpt-4o:            { input: 2.50, output: 10.0 }
+#   gpt-4o-mini:       { input: 0.15, output: 0.60 }
