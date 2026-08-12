@@ -59,6 +59,8 @@ and reduced-motion behavior.
 - Do not add source-specific values to the `content_type` vocabulary; record
   transcript origin in source metadata.
 - Do not publish benchmark claims without a reproducible public scorecard.
+- Do not load, invoke, use, update, or generate Graphify, its skills, or its
+  artifacts. Graphify is explicitly outside epic #6 and its verification work.
 - Do not freeze clocks in tests whose production validation reads wall time.
 - Never use fixed sleeps in browser tests; wait for an observable condition.
 

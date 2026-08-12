@@ -95,4 +95,18 @@ describe('Alpha Loop repository posture', () => {
     expect(boundaryGuard).toContain('paidCapabilityPatterns');
     expect(boundaryGuard).toContain('role[-_ ]?based');
   });
+
+  it('keeps Graphify outside the epic in every worker instruction source', () => {
+    const exclusion = 'Do not load, invoke, use, update, or generate Graphify';
+
+    expect(read('AGENTS.md')).toContain(exclusion);
+    expect(read('.alpha-loop/templates/instructions.md')).toContain(exclusion);
+    expect(read('CLAUDE.md')).toContain(exclusion);
+    expect(read('.alpha-loop/vision.md')).toContain('Graphify and generated graph artifacts are outside this epic');
+  });
+
+  it('keeps repository policy scans out of transient Alpha Loop worktrees', () => {
+    expect(read('scripts/check-public-boundary.ts'))
+      .toContain("new Set(['.git', '.worktrees', 'dist', 'node_modules'])");
+  });
 });
