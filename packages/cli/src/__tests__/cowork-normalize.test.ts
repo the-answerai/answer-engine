@@ -71,7 +71,7 @@ describe('Cowork conversation normalization', () => {
       provider: 'anthropic_claude',
       surface: 'claude_cowork',
       adapter_name: 'cowork-history',
-      adapter_version: '1.0.0',
+      adapter_version: '1.0.1',
       source_path: transcriptPath,
     });
     expect(parent?.events.filter((event) => event.category === 'message')
@@ -81,14 +81,14 @@ describe('Cowork conversation normalization', () => {
     ]);
     expect(parent?.events.filter((event) => event.provider_type === 'audit')).toEqual([
       expect.objectContaining({
-        source_event_id: 'cowork-audit:audit-user-record',
+        source_event_id: 'cowork-audit:audit-user-record:line:1',
         category: 'lifecycle',
         role: null,
         provider_subtype: 'user',
         content_blocks: [],
       }),
       expect.objectContaining({
-        source_event_id: 'cowork-audit:audit-assistant-record',
+        source_event_id: 'cowork-audit:audit-assistant-record:line:2',
         category: 'lifecycle',
         role: null,
         provider_subtype: 'assistant',
@@ -98,14 +98,14 @@ describe('Cowork conversation normalization', () => {
     expect(parent?.relations).toEqual(expect.arrayContaining([
       {
         relation_type: 'duplicate_of',
-        source_event_id: 'cowork-audit:audit-user-record',
+        source_event_id: 'cowork-audit:audit-user-record:line:1',
         target_source_event_id: 'cowork-user-1',
         rule_id: 'cowork-nested-transcript-over-audit-message',
         rule_version: '1',
       },
       {
         relation_type: 'duplicate_of',
-        source_event_id: 'cowork-audit:audit-assistant-record',
+        source_event_id: 'cowork-audit:audit-assistant-record:line:2',
         target_source_event_id: 'cowork-assistant-1',
         rule_id: 'cowork-nested-transcript-over-audit-message',
         rule_version: '1',
@@ -172,6 +172,45 @@ describe('Cowork conversation normalization', () => {
     expect(readFileSync(join(archiveDir, auditEntry!.archive_path))).toEqual(
       readFileSync(auditPath),
     );
+  });
+
+  it('preserves repeated audit UUIDs as distinct line-addressed events', async () => {
+    const root = makeFixtureCopy();
+    const auditPath = join(
+      root,
+      'local-agent-mode-sessions',
+      'session-one',
+      'runtime',
+      'audit.jsonl',
+    );
+    appendFileSync(
+      auditPath,
+      `${JSON.stringify({
+        type: 'user',
+        sessionId: 'cowork-session',
+        uuid: 'audit-user-record',
+        message: { id: 'cowork-user-1', role: 'user', content: 'Repeated audit duplicate' },
+        _audit_hmac: 'signed-repeat',
+        _audit_timestamp: '2026-08-10T20:00:04.000Z',
+      })}\n`,
+      'utf8',
+    );
+
+    const [file] = await coworkSource.discover();
+    const result = await coworkSource.readConversations!(file);
+    const parent = result.conversations.find(
+      (conversation) => conversation.source_conversation_id === 'cowork-session',
+    );
+    const auditIds = parent?.events
+      .filter((event) => event.provider_type === 'audit')
+      .map((event) => event.source_event_id);
+
+    expect(result.errors).toEqual([]);
+    expect(auditIds).toEqual(expect.arrayContaining([
+      'cowork-audit:audit-user-record:line:1',
+      'cowork-audit:audit-user-record:line:5',
+    ]));
+    expect(new Set(auditIds).size).toBe(auditIds?.length);
   });
 
   it('invalidates the bundle fingerprint when only a sidecar or artifact changes', async () => {

@@ -12,7 +12,7 @@ import {
 } from './claude-code-normalize.js';
 
 export const COWORK_ADAPTER_NAME = 'cowork-history';
-export const COWORK_ADAPTER_VERSION = '1.0.0';
+export const COWORK_ADAPTER_VERSION = '1.0.1';
 
 const AUDIT_DUPLICATE_RULE_ID = 'cowork-nested-transcript-over-audit-message';
 const AUDIT_DUPLICATE_RULE_VERSION = '1';
@@ -72,7 +72,10 @@ function auditSourceEventId(
   const id = getString(event, 'uuid')
     ?? getString(event, 'id')
     ?? createHash('sha256').update(`${auditPath}:${line}`).digest('hex');
-  return `cowork-audit:${id}`;
+  // Cowork audit sidecars can repeat a UUID on multiple physical records.
+  // The source line is part of the archived identity and keeps every event
+  // deterministic without discarding any repeated audit evidence.
+  return `cowork-audit:${id}:line:${line}`;
 }
 
 function auditTimestamp(record: Record<string, unknown>): string | undefined {
