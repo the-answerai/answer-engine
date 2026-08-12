@@ -40,11 +40,7 @@ nav button:hover, nav button.active { background: var(--accent); color: var(--su
 .status { display: flex; align-items: center; gap: var(--sp-2); }
 .status-mark { width: 10px; height: 10px; border: var(--hair); background: var(--marker); }
 .status-mark.online { background: var(--accent); }
-.key-reset { border: var(--hair-faint); background: transparent; color: var(--text); padding: var(--sp-1) var(--sp-2); font-family: var(--font-mono); font-size: var(--fs-label); text-transform: uppercase; }
-main, .connect-panel, .error-banner { max-width: var(--maxw); margin-left: auto; margin-right: auto; }
-.connect-panel { display: grid; grid-template-columns: 90px 1fr 1fr; gap: var(--sp-5); align-items: end; border: var(--frame); background: var(--surface-2); padding: var(--sp-5); margin-bottom: var(--sp-5); }
-.connect-panel form { display: grid; grid-template-columns: 1fr auto; }
-.connect-panel label { grid-column: 1 / -1; margin-bottom: var(--sp-2); }
+main, .error-banner { max-width: var(--maxw); margin-left: auto; margin-right: auto; }
 .form-error { grid-column: 1 / -1; color: var(--marker); margin-top: var(--sp-2); font-family: var(--font-mono); font-size: var(--fs-label); }
 input, textarea { width: 100%; border: var(--hair); background: var(--surface-2); color: var(--text); padding: 12px; }
 textarea { resize: vertical; line-height: var(--lh-body); }
@@ -81,7 +77,6 @@ code { font-family: var(--font-mono); }
   .title-block { grid-template-columns: 1fr; }
   .title-block > * + * { border-left: 0; border-top: var(--hair); }
   nav button { flex: 1; }
-  .connect-panel { grid-template-columns: 1fr; }
   .search-line { grid-template-columns: 1fr; }
   .memory-layout { grid-template-columns: 1fr; }
   .memory-list { border-right: 0; border-bottom: var(--hair); }

@@ -1,26 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { askMemory, listMemories, saveApiKey, searchMemories } from './api';
-
-const stored = new Map<string, string>();
-const localStorage = {
-  clear: () => stored.clear(),
-  getItem: (key: string) => stored.get(key) ?? null,
-  key: (index: number) => [...stored.keys()][index] ?? null,
-  get length() { return stored.size; },
-  removeItem: (key: string) => { stored.delete(key); },
-  setItem: (key: string, value: string) => { stored.set(key, value); },
-};
-
-Object.defineProperty(window, 'localStorage', { configurable: true, value: localStorage });
+import {
+  askMemory,
+  clearLegacyBrowserApiKey,
+  initializeLocalUiSession,
+  listMemories,
+  searchMemories,
+} from './api';
 
 describe('local API client', () => {
   beforeEach(() => {
-    window.localStorage.clear();
     vi.restoreAllMocks();
   });
 
-  it('sends the locally stored API key without exposing it in the URL', async () => {
-    saveApiKey('ae_live_local-test-key');
+  it('uses the same-origin browser session without reading or sending an API key', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
       success: true,
       data: { items: [] },
@@ -30,14 +22,41 @@ describe('local API client', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/v1/content?limit=50&sortBy=createdAt&sortDirection=desc',
-      expect.objectContaining({ headers: expect.objectContaining({ 'x-api-key': 'ae_live_local-test-key' }) }),
+      expect.objectContaining({
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json' },
+      }),
     );
-    expect(String(fetchMock.mock.calls[0]?.[0])).not.toContain('ae_live_local-test-key');
+    expect(JSON.stringify(fetchMock.mock.calls[0])).not.toContain('ae_live_');
   });
 
-  it('rejects keys outside the local ae_live_ namespace', () => {
-    expect(() => saveApiKey('not-a-local-key')).toThrow('ae_live_');
-    expect(window.localStorage.getItem('answer-engine-api-key')).toBeNull();
+  it('removes the legacy browser-stored API key during upgrade', () => {
+    const removeItem = vi.fn();
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      value: { removeItem },
+    });
+
+    clearLegacyBrowserApiKey();
+
+    expect(removeItem).toHaveBeenCalledWith('answer-engine-api-key');
+  });
+
+  it('does not block local sessions when browser storage is unavailable', () => {
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      value: { removeItem: () => { throw new DOMException('Storage disabled'); } },
+    });
+
+    expect(() => clearLegacyBrowserApiKey()).not.toThrow();
+  });
+
+  it('initializes the HttpOnly local UI session through a same-origin request', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
+
+    await initializeLocalUiSession();
+
+    expect(fetchMock).toHaveBeenCalledWith('/local-ui/session', { credentials: 'same-origin' });
   });
 
   it('normalizes query results from the agent envelope', async () => {

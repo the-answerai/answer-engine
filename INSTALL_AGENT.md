@@ -15,14 +15,15 @@ Stable source:
 Setup is complete only when:
 
 1. `http://127.0.0.1:5050/health` returns healthy.
-2. Every selected local agent client is wired to the MCP server.
-3. `$AE_HOME/config.yaml` validates.
-4. At least one selected history or document source has been imported.
-5. A full-text recall returns one of those real records and its lineage endpoint
+2. `http://127.0.0.1:5050` opens ready to use without API-key entry.
+3. Every selected local agent client is wired to the MCP server.
+4. `$AE_HOME/config.yaml` validates.
+5. At least one selected history or document source has been imported.
+6. A full-text recall returns one of those real records and its lineage endpoint
    shows the source identifier and current artifact.
 
 The installer's generated remember/recall/lineage check proves the stack works;
-it does not replace the user's-data check in steps 4 and 5.
+it does not replace the user's-data check in steps 5 and 6.
 
 ## Safety
 

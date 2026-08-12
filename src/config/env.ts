@@ -1,6 +1,8 @@
 import 'dotenv/config';
 import { z } from 'zod';
 
+const BooleanString = z.enum(['true', 'false']).default('false').transform((value) => value === 'true');
+
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   HOST: z.string().default('127.0.0.1'),
@@ -18,6 +20,8 @@ const EnvSchema = z.object({
   OPENAI_API_KEY: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
   ANTHROPIC_BASE_URL: z.string().url().default('https://api.anthropic.com'),
+  ANSWER_ENGINE_API_KEY: z.string().trim().min(1).optional(),
+  LOCAL_UI_AUTO_AUTH: BooleanString,
   MODELS_CHAT: z.string().optional(),
   MODELS_QA: z.string().optional(),
   EMBEDDING_PROVIDER: z.enum(['lmstudio', 'openai']).default('lmstudio'),

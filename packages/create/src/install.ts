@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 import { homedir } from 'node:os';
 import chalk from 'chalk';
-import { detectOwnedPorts, persistApiKey, startStack } from './docker.js';
+import { activateApiKey, detectOwnedPorts, startStack } from './docker.js';
 import { parseModelSpec, prepareLmStudioModels, resolveModelSetup } from './models.js';
 import type { InstallerOptions } from './options.js';
 import { formatPreflightFailures, runPreflight } from './preflight.js';
@@ -72,7 +72,7 @@ export async function install(
       + 'Pass --api-key <key>, or run --uninstall --purge and install again.',
     );
   }
-  if (!scaffold.apiKey) persistApiKey(scaffold.envPath, apiKey);
+  if (!scaffold.apiKey) await activateApiKey(home, scaffold.envPath, apiKey);
   output.write(chalk.green('  Answer Engine is healthy at http://localhost:5050.'));
 
   output.write(chalk.cyan('5/6 Wire agents'));

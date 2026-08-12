@@ -2,12 +2,17 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import type { RequestHandler } from 'express';
 import type { Database } from '../config/database.js';
 import { AuthenticationError } from '../utils/errors.js';
+import { hasValidLocalUiSession } from './local-ui-session.js';
 
 interface ApiKeyRow {
   id: string;
   tenant_id: string;
   library_id: string | null;
   key_hash: string;
+}
+
+export interface ApiKeyAuthOptions {
+  readonly localUiApiKey?: string;
 }
 
 function extractApiKey(headers: Record<string, string | string[] | undefined>): string | undefined {
@@ -23,10 +28,15 @@ export function hashApiKey(apiKey: string): string {
   return createHash('sha256').update(apiKey).digest('hex');
 }
 
-export function createApiKeyAuth(database: Database): RequestHandler {
+export function createApiKeyAuth(database: Database, options: ApiKeyAuthOptions = {}): RequestHandler {
   return async (req, _res, next) => {
     try {
-      const apiKey = extractApiKey(req.headers);
+      const headerApiKey = extractApiKey(req.headers);
+      const apiKey = headerApiKey ?? (
+        options.localUiApiKey && hasValidLocalUiSession(req, options.localUiApiKey)
+          ? options.localUiApiKey
+          : undefined
+      );
       if (!apiKey) throw new AuthenticationError();
       if (!apiKey.startsWith('ae_live_')) {
         throw new AuthenticationError('The API key is invalid or expired');

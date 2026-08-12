@@ -45,8 +45,10 @@ curl --retry 20 --retry-delay 2 --retry-all-errors --fail http://127.0.0.1:5050/
 docker compose logs --no-log-prefix init
 ```
 
-The initializer displays one `ae_live_...` API key on its first run. Store it
-locally; only its hash is retained in PostgreSQL.
+The initializer displays one `ae_live_...` API key on its first run for CLI,
+MCP, and direct API clients. Store it locally; only its hash is retained in
+PostgreSQL. The bundled loopback web interface authenticates automatically and
+never exposes this key to browser JavaScript or storage.
 
 The Docker image serves the web interface at <http://127.0.0.1:5050>. To run
 the interface through Vite while changing its source, start it in a second
@@ -56,8 +58,9 @@ terminal:
 pnpm --filter @answer-engine/web-ui dev
 ```
 
-Open <http://127.0.0.1:3200> for the Vite version and paste the local API key.
-The API and database ports are bound to loopback by default.
+Open <http://127.0.0.1:3200> for the Vite version. Its proxy uses the same
+automatic local browser session, so no key entry is required. The API and
+database ports are bound to loopback by default.
 
 To stop the stack without deleting memory:
 
@@ -80,7 +83,8 @@ installer is idempotent and keeps its editable configuration under `AE_HOME`
 
 ## API
 
-All `/api/v1/*` routes require the local key in either header:
+CLI, MCP, and direct requests to `/api/v1/*` require the local key in either
+header:
 
 ```text
 X-API-Key: ae_live_...

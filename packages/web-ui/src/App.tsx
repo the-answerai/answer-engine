@@ -3,13 +3,12 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
   askMemory,
-  clearApiKey,
-  hasApiKey,
+  clearLegacyBrowserApiKey,
   health,
   importMemory,
+  initializeLocalUiSession,
   inspectLineage,
   listMemories,
-  saveApiKey,
   searchMemories,
   type AskResult,
   type LineageResult,
@@ -25,7 +24,6 @@ function itemTitle(item: MemoryItem): string {
 export function App() {
   const [view, setView] = useState<View>('memory');
   const [connected, setConnected] = useState(false);
-  const [keyReady, setKeyReady] = useState(hasApiKey());
   const [items, setItems] = useState<MemoryItem[]>([]);
   const [selected, setSelected] = useState<MemoryItem | null>(null);
   const [lineage, setLineage] = useState<LineageResult | null>(null);
@@ -37,18 +35,22 @@ export function App() {
     setBusy(true);
     setError('');
     try {
+      await initializeLocalUiSession();
       const healthy = await health();
       setConnected(healthy);
-      if (healthy && keyReady) setItems(await listMemories());
+      if (healthy) setItems(await listMemories());
     } catch (cause) {
       setConnected(false);
       setError(cause instanceof Error ? cause.message : 'Unable to reach the local engine');
     } finally {
       setBusy(false);
     }
-  }, [keyReady]);
+  }, []);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    clearLegacyBrowserApiKey();
+    void refresh();
+  }, [refresh]);
 
   async function runSearch(event: FormEvent) {
     event.preventDefault();
@@ -89,19 +91,9 @@ export function App() {
         <div className="status" aria-live="polite">
           <span className={connected ? 'status-mark online' : 'status-mark'} />
           {connected ? 'API ONLINE' : 'API OFFLINE'}
-          {keyReady ? (
-            <button className="key-reset" onClick={() => {
-              clearApiKey();
-              setKeyReady(false);
-              setConnected(false);
-              setItems([]);
-              setSelected(null);
-            }}>Change key</button>
-          ) : null}
         </div>
       </header>
 
-      {!keyReady ? <ConnectPanel onConnected={() => setKeyReady(true)} /> : null}
       {error ? <div className="error-banner" role="alert">{error}</div> : null}
 
       <main>
@@ -122,35 +114,6 @@ export function App() {
         {view === 'import' ? <ImportView onImported={() => { setView('memory'); void refresh(); }} /> : null}
       </main>
     </div>
-  );
-}
-
-function ConnectPanel({ onConnected }: { onConnected(): void }) {
-  const [key, setKey] = useState('');
-  const [error, setError] = useState('');
-  return (
-    <section className="connect-panel" aria-labelledby="connect-title">
-      <div className="figure">FIG. 01</div>
-      <div>
-        <h2 id="connect-title">Connect this browser</h2>
-        <p>Paste the local <code>ae_live_</code> key created during setup. It remains in this browser only.</p>
-      </div>
-      <form onSubmit={(event) => {
-        event.preventDefault();
-        try {
-          saveApiKey(key);
-          setError('');
-          onConnected();
-        } catch (cause) {
-          setError(cause instanceof Error ? cause.message : 'Invalid local API key');
-        }
-      }}>
-        <label htmlFor="api-key">Local API key</label>
-        <input id="api-key" type="password" value={key} onChange={(event) => setKey(event.target.value)} placeholder="ae_live_…" required />
-        <button type="submit">Connect</button>
-        {error ? <span className="form-error" role="alert">{error}</span> : null}
-      </form>
-    </section>
   );
 }
 
