@@ -428,7 +428,11 @@ export class ContentService {
     }
     params.push(input.limit + 1);
     const result = await this.database.query<ContentRow>(
-      `SELECT c.* FROM content_items c
+      `SELECT c.id, c.content_type, c.title, c.summary, c.primary_text_kind,
+              c.external_url, c.source_agent_id, c.conversation_id,
+              c.turn_index, c.turn_role, c.turn_timestamp, c.turn_metadata,
+              c.created_at, c.updated_at
+         FROM content_items c
         WHERE c.tenant_id = $1 AND c.status <> 'deleted'
           AND ($2::uuid IS NULL OR c.library_id = $2)
           ${cursorSql}
@@ -438,7 +442,7 @@ export class ContentService {
     );
     const hasMore = result.rows.length > input.limit;
     const rows = result.rows.slice(0, input.limit);
-    return { items: rows.map((row) => this.present(row, ['summary', 'content', 'metadata'])), meta: { hasMore, nextCursor: hasMore && rows.length ? cursorEncode(rows[rows.length - 1] as ContentRow) : null }, scope };
+    return { items: rows.map((row) => this.present(row, ['summary'])), meta: { hasMore, nextCursor: hasMore && rows.length ? cursorEncode(rows[rows.length - 1] as ContentRow) : null }, scope };
   }
 
   async get(principal: Principal, id: string) {

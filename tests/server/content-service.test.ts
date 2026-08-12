@@ -204,4 +204,43 @@ describe('ContentService tenant boundaries', () => {
 
     expect(result.origin.rawArchiveManifest).toEqual(manifest);
   });
+
+  it('lists a lightweight summary projection without loading large lineage payloads', async () => {
+    const contentId = randomUUID();
+    const createdAt = new Date('2026-08-12T13:00:00.000Z');
+    const query = vi.fn().mockResolvedValue({
+      rows: [{
+        id: contentId,
+        content_type: 'chat',
+        title: 'Cowork history',
+        summary: 'A bounded summary.',
+        primary_text_kind: 'raw_text',
+        external_url: null,
+        source_agent_id: 'cowork',
+        conversation_id: 'cowork-session',
+        turn_index: null,
+        turn_role: null,
+        turn_timestamp: null,
+        turn_metadata: null,
+        created_at: createdAt,
+        updated_at: createdAt,
+      }],
+    });
+    const service = new ContentService(
+      { query } as unknown as Database,
+      { embed: vi.fn(), complete: vi.fn() },
+    );
+
+    const result = await service.list(
+      { tenantId: randomUUID(), apiKeyId: randomUUID() },
+      { limit: 50 },
+    );
+
+    const [sql] = query.mock.calls[0] as [string];
+    expect(sql).not.toContain('SELECT c.*');
+    expect(sql).not.toContain('raw_archive_manifest');
+    expect(result.items[0]).toMatchObject({ id: contentId, summary: 'A bounded summary.' });
+    expect(result.items[0]).not.toHaveProperty('content');
+    expect(result.items[0]).not.toHaveProperty('metadata');
+  });
 });
