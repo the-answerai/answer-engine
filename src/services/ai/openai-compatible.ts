@@ -3,7 +3,12 @@ import { ConfigurationError } from '../../utils/errors.js';
 
 export interface LanguageProvider {
   embed(text: string): Promise<number[]>;
-  complete(input: { system: string; prompt: string }): Promise<{ text: string; model: string; provider: string }>;
+  complete(input: {
+    system: string;
+    prompt: string;
+    maxTokens?: number;
+    responseFormat?: Record<string, unknown>;
+  }): Promise<{ text: string; model: string; provider: string }>;
 }
 
 async function postJson<T>(url: string, apiKey: string | undefined, body: unknown): Promise<T> {
@@ -40,7 +45,12 @@ export class OpenAiCompatibleProvider implements LanguageProvider {
     return embedding;
   }
 
-  async complete(input: { system: string; prompt: string }): Promise<{ text: string; model: string; provider: string }> {
+  async complete(input: {
+    system: string;
+    prompt: string;
+    maxTokens?: number;
+    responseFormat?: Record<string, unknown>;
+  }): Promise<{ text: string; model: string; provider: string }> {
     const model = env.MODELS_QA ?? env.MODELS_CHAT;
     if (!model) throw new ConfigurationError('MODELS_CHAT is required for summaries and answers');
     if (env.LLM_PROVIDER === 'anthropic') {
@@ -52,7 +62,7 @@ export class OpenAiCompatibleProvider implements LanguageProvider {
           'x-api-key': env.ANTHROPIC_API_KEY,
           'anthropic-version': '2023-06-01',
         },
-        body: JSON.stringify({ model, max_tokens: 2048, temperature: 0.1, system: input.system, messages: [{ role: 'user', content: input.prompt }] }),
+        body: JSON.stringify({ model, max_tokens: input.maxTokens ?? 2048, temperature: 0.1, system: input.system, messages: [{ role: 'user', content: input.prompt }] }),
       });
       if (!response.ok) throw new Error(`Anthropic returned ${response.status}: ${(await response.text()).slice(0, 500)}`);
       const data = await response.json() as { content: Array<{ type: string; text?: string }>; model?: string };
@@ -61,21 +71,24 @@ export class OpenAiCompatibleProvider implements LanguageProvider {
       return { text, model: data.model ?? model, provider: 'anthropic' };
     }
     const response = await postJson<{
-      choices: Array<{ message?: { content?: string | null } }>;
+      choices: Array<{ message?: { content?: string | null; reasoning_content?: string | null } }>;
       model?: string;
     }>(
       `${env.LLM_BASE_URL.replace(/\/$/, '')}/chat/completions`,
       env.LLM_API_KEY ?? env.OPENAI_API_KEY,
       {
         model,
+        max_tokens: input.maxTokens ?? 2048,
         temperature: 0.1,
+        ...(input.responseFormat ? { response_format: input.responseFormat } : {}),
         messages: [
           { role: 'system', content: input.system },
           { role: 'user', content: input.prompt },
         ],
       },
     );
-    const text = response.choices[0]?.message?.content?.trim();
+    const message = response.choices[0]?.message;
+    const text = message?.content?.trim() || message?.reasoning_content?.trim();
     if (!text) throw new Error('Model provider returned an empty completion');
     return { text, model: response.model ?? model, provider: env.LLM_PROVIDER };
   }

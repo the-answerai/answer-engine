@@ -438,6 +438,7 @@ export interface SaveContentImportRow {
 
 export interface SaveContentInput extends ScopedAgentInput {
   items: SaveContentImportRow[];
+  options?: { forceStore?: boolean };
 }
 
 export interface SaveContentResultItem {

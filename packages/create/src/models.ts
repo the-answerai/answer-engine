@@ -33,6 +33,11 @@ export interface ModelSetupDependencies {
   prompt?: Prompt;
 }
 
+interface NativeLmStudioModel {
+  key?: unknown;
+  loaded_instances?: unknown;
+}
+
 function nonEmpty(value: string | undefined, label: string): string {
   const trimmed = value?.trim();
   if (!trimmed) throw new Error(`${label} is required.`);
@@ -101,6 +106,47 @@ export async function listLmStudioModels(
       .filter(Boolean))];
   } catch {
     return [];
+  }
+}
+
+export async function prepareLmStudioModels(
+  models: ModelSpec,
+  url: string = DEFAULT_LM_STUDIO_URL,
+): Promise<void> {
+  const apiRoot = new URL(url).origin;
+  let available: NativeLmStudioModel[];
+  try {
+    const response = await fetch(`${apiRoot}/api/v1/models`, {
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const payload = await response.json() as { models?: NativeLmStudioModel[] };
+    available = Array.isArray(payload.models) ? payload.models : [];
+  } catch (error) {
+    throw new Error(
+      `Could not inspect LM Studio model state: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
+  for (const [kind, model] of Object.entries(models) as Array<['chat' | 'embedding', string]>) {
+    const state = available.find((candidate) => candidate.key === model);
+    if (Array.isArray(state?.loaded_instances) && state.loaded_instances.length > 0) continue;
+    const response = await fetch(`${apiRoot}/api/v1/models/load`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        context_length: kind === 'chat' ? 32_768 : 2_048,
+        ...(kind === 'chat' ? { flash_attention: true } : {}),
+      }),
+      signal: AbortSignal.timeout(600_000),
+    });
+    if (!response.ok) {
+      const detail = (await response.text()).slice(0, 500);
+      throw new Error(
+        `LM Studio could not load ${kind} model "${model}" (${response.status}): ${detail}`,
+      );
+    }
   }
 }
 

@@ -19,7 +19,9 @@ import {
   runSyncOnce,
   runSyncSourcesLoop,
   resolveSyncSourcesFromConfig,
+  DEFAULT_SYNC_CONCURRENCY,
   SYNC_IMPORT_MAX_BATCH_SIZE,
+  SYNC_IMPORT_MAX_CONCURRENCY,
   type ConfiguredSyncSource,
   type SyncRunSummary,
 } from '../sync/sync-daemon.js';
@@ -38,6 +40,7 @@ interface SyncCommandOptions {
   path?: string[];
   library?: string;
   batchSize: string;
+  concurrency: string;
   pollInterval: string;
   cursorFile?: string;
 }
@@ -74,6 +77,14 @@ function parseBatchSize(raw: string): number {
   return batchSize;
 }
 
+function parseConcurrency(raw: string): number {
+  const concurrency = parsePositiveInteger(raw, '--concurrency');
+  if (concurrency > SYNC_IMPORT_MAX_CONCURRENCY) {
+    throw new UserInputError(`--concurrency must be ${SYNC_IMPORT_MAX_CONCURRENCY} or less`);
+  }
+  return concurrency;
+}
+
 function printSummary(summary: SyncRunSummary): void {
   printJson({ data: summary });
 }
@@ -107,16 +118,21 @@ async function runOnceCommand(opts: SyncCommandOptions): Promise<void> {
   try {
     const sources = resolveCommandSources(opts);
     const batchSize = parseBatchSize(opts.batchSize);
+    const concurrency = parseConcurrency(opts.concurrency);
     const client = createClient();
+    let failedItems = 0;
     for (const source of sources) {
       const summary = await runSyncOnce({
         ...source,
         cursorFile: opts.cursorFile,
         batchSize,
+        concurrency,
         client,
       });
       printSummary(summary);
+      failedItems += summary.failedItems;
     }
+    if (failedItems > 0) process.exitCode = 1;
   } catch (error) {
     if (error instanceof UserInputError || error instanceof UserConfigError) {
       printError(error.message);
@@ -130,6 +146,7 @@ async function runDaemonCommand(opts: SyncCommandOptions): Promise<void> {
   try {
     const sources = resolveCommandSources(opts);
     const batchSize = parseBatchSize(opts.batchSize);
+    const concurrency = parseConcurrency(opts.concurrency);
     const pollIntervalMs = parsePositiveInteger(opts.pollInterval, '--poll-interval') * 1000;
     const client = createClient();
     printHeader('Answer Engine Sync');
@@ -139,6 +156,7 @@ async function runDaemonCommand(opts: SyncCommandOptions): Promise<void> {
         ...source,
         cursorFile: opts.cursorFile,
         batchSize,
+        concurrency,
         pollIntervalMs,
         client,
         onRun: printLoopSummary,
@@ -149,6 +167,7 @@ async function runDaemonCommand(opts: SyncCommandOptions): Promise<void> {
       sources,
       cursorFile: opts.cursorFile,
       batchSize,
+      concurrency,
       pollIntervalMs,
       client,
       onRun: printLoopSummary,
@@ -276,6 +295,7 @@ function addSyncOptions(command: Command, includePolling: boolean): Command {
     .option('--path <path>', 'Source file, directory, or simple transcript glob override (repeatable)', collectPath)
     .option('--library <slug>', 'Library slug to attach imported items to')
     .option('--batch-size <n>', `Items per synchronous import request (max ${SYNC_IMPORT_MAX_BATCH_SIZE})`, String(DEFAULT_SYNC_BATCH_SIZE))
+    .option('--concurrency <n>', `Concurrent history files to import (max ${SYNC_IMPORT_MAX_CONCURRENCY})`, String(DEFAULT_SYNC_CONCURRENCY))
     .option('--cursor-file <path>', 'Cursor JSON file override');
   if (includePolling) {
     command.option('--poll-interval <seconds>', 'Seconds between daemon scans', String(DEFAULT_POLL_INTERVAL_SECONDS));

@@ -44,11 +44,13 @@ export interface NormalizedDocumentImportRow extends ImportItem {
   content?: string;
 }
 
-// Mirror of the server's MAX_CONTENT_CHARS (src/config/content-limits.ts). The
-// derived `content` search projection must stay within the ingest cap so a
-// large conversation is never rejected at the API boundary; full fidelity is
-// preserved separately in source_data.chat_interchange + the raw archive.
-const MAX_DERIVED_CONTENT_CHARS = 5 * 1024 * 1024;
+const MAX_TITLE_CHARS = 500;
+// Keep the searchable projection comfortably below HTTP, embedding-model, and
+// PostgreSQL text-search limits. The byte-exact source remains in the raw
+// archive and the normalized event projection links back to it.
+const MAX_DERIVED_CONTENT_CHARS = 512 * 1024;
+const MAX_PROJECTED_EVENTS = 4_000;
+const MAX_PROJECTED_BLOCK_TEXT_CHARS = 512;
 
 const SOURCE_BY_SURFACE: Record<Conversation['surface'], ConversationImportRow['source']> = {
   codex: 'codex',
@@ -87,6 +89,81 @@ function eventSearchText(event: Event): string | undefined {
   return `[${event.role ?? event.category}] ${content}`;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function rawArchiveManifest(conversation: Conversation): Record<string, unknown> | undefined {
+  const manifest = conversation.provider_metadata_json.raw_archive_manifest;
+  return isRecord(manifest) ? manifest : undefined;
+}
+
+function archiveReference(
+  conversation: Conversation,
+  event: Event,
+  blockOrdinal?: number,
+): Record<string, unknown> {
+  const manifest = rawArchiveManifest(conversation);
+  return {
+    source_path: conversation.source_path,
+    source_sha256: conversation.source_sha256,
+    source_event_id: event.source_event_id,
+    ...(blockOrdinal === undefined ? {} : { block_ordinal: blockOrdinal }),
+    ...(typeof manifest?.manifest_path === 'string'
+      ? { manifest_path: manifest.manifest_path }
+      : {}),
+  };
+}
+
+function projectEvent(conversation: Conversation, event: Event): Record<string, unknown> {
+  return {
+    sequence: event.sequence,
+    source_event_id: event.source_event_id,
+    ...(event.parent_event_id ? { parent_event_id: event.parent_event_id } : {}),
+    ...(event.timestamp ? { timestamp: event.timestamp } : {}),
+    ...(event.timestamp_original ? { timestamp_original: event.timestamp_original } : {}),
+    category: event.category,
+    role: event.role,
+    provider_type: event.provider_type,
+    ...(event.provider_subtype ? { provider_subtype: event.provider_subtype } : {}),
+    raw_json: { raw_archive_ref: archiveReference(conversation, event) },
+    content_blocks: event.content_blocks.map((block) => {
+      const exposeText = block.block_type !== 'thinking'
+        && block.block_type !== 'encrypted'
+        && block.block_type !== 'opaque';
+      const text = exposeText && block.text
+        ? block.text.slice(0, MAX_PROJECTED_BLOCK_TEXT_CHARS)
+        : undefined;
+      const requiresArchiveReference = block.json_payload !== undefined
+        || block.text !== text;
+      return {
+        ordinal: block.ordinal,
+        block_type: block.block_type,
+        ...(text ? { text } : {}),
+        ...(block.mime_type ? { mime_type: block.mime_type } : {}),
+        ...(block.uri_or_path ? { uri_or_path: block.uri_or_path } : {}),
+        ...(block.tool_call_id ? { tool_call_id: block.tool_call_id } : {}),
+        ...(block.tool_name ? { tool_name: block.tool_name } : {}),
+        ...(block.is_error === undefined ? {} : { is_error: block.is_error }),
+        ...(requiresArchiveReference
+          ? { raw_archive_ref: archiveReference(conversation, event, block.ordinal) }
+          : {}),
+      };
+    }),
+  };
+}
+
+function projectedEvents(conversation: Conversation): Array<Record<string, unknown>> {
+  if (conversation.events.length <= MAX_PROJECTED_EVENTS) {
+    return conversation.events.map((event) => projectEvent(conversation, event));
+  }
+  const half = MAX_PROJECTED_EVENTS / 2;
+  return [
+    ...conversation.events.slice(0, half),
+    ...conversation.events.slice(-half),
+  ].map((event) => projectEvent(conversation, event));
+}
+
 export function conversationSearchText(conversation: Conversation): string | undefined {
   const content = [...conversation.events]
     .sort((left, right) => left.sequence - right.sequence)
@@ -101,8 +178,11 @@ export function conversationSearchText(conversation: Conversation): string | und
 
 export function conversationToImportRow(conversation: Conversation): ConversationImportRow {
   const source = SOURCE_BY_SURFACE[conversation.surface];
-  const title = conversation.title ?? `${source} conversation ${conversation.source_conversation_id}`;
+  const title = (conversation.title ?? `${source} conversation ${conversation.source_conversation_id}`)
+    .slice(0, MAX_TITLE_CHARS);
   const content = conversationSearchText(conversation);
+  const manifest = rawArchiveManifest(conversation);
+  const events = projectedEvents(conversation);
 
   return {
     title,
@@ -131,9 +211,13 @@ export function conversationToImportRow(conversation: Conversation): Conversatio
     'metadata.provider_metadata_json': conversation.provider_metadata_json,
     'source_data.chat_interchange': {
       interchange_version: CHAT_INTERCHANGE_VERSION,
-      events: conversation.events,
+      event_count: conversation.events.length,
+      projected_event_count: events.length,
+      omitted_event_count: conversation.events.length - events.length,
+      events,
       relations: conversation.relations,
     },
+    ...(manifest ? { raw_archive_manifest: manifest } : {}),
   };
 }
 

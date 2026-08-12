@@ -25,9 +25,13 @@ describe('verifyMemoryRoundTrip', () => {
     ];
     const requestedUrls: string[] = [];
     const requestHeaders: Array<NonNullable<RequestInit['headers']>> = [];
+    const requestBodies: Array<Record<string, unknown>> = [];
     const fetchImpl: typeof fetch = (input, init) => {
       requestedUrls.push(String(input));
       if (init?.headers) requestHeaders.push(init.headers);
+      if (typeof init?.body === 'string') {
+        requestBodies.push(JSON.parse(init.body) as Record<string, unknown>);
+      }
       const next = responses.shift();
       if (!next) return Promise.reject(new Error('Unexpected request'));
       return Promise.resolve(next);
@@ -46,6 +50,7 @@ describe('verifyMemoryRoundTrip', () => {
       'http://localhost:5050/api/v1/content/content-1/lineage',
     ]);
     expect(requestHeaders[0]).toMatchObject({ 'X-AE-Surface': 'mcp' });
+    expect(requestBodies[0]).toMatchObject({ options: { forceStore: true } });
   });
 
   it('fails when recall does not cite the memory that was just stored', async () => {

@@ -483,6 +483,7 @@ export async function handleSaveContent(
     items: rows,
     libraryId: input.libraryId,
     librarySlug: input.librarySlug,
+    options: { forceStore: true },
   });
   const result = response.data;
 

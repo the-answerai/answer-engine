@@ -1,9 +1,14 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   parseAgents,
   parseModelSpec,
+  prepareLmStudioModels,
   resolveModelSetup,
 } from '../models.js';
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe('installer option parsing', () => {
   it('parses explicit local models and agents for a headless install', () => {
@@ -74,6 +79,29 @@ describe('resolveModelSetup', () => {
         embedding_dimension: 1536,
       },
       connectors: { openai_api_key: 'sk-test' },
+    });
+  });
+});
+
+describe('prepareLmStudioModels', () => {
+  it('keeps a loaded chat model and explicitly loads the missing embedding model', async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        models: [
+          { key: 'qwen2.5', loaded_instances: [{ id: 'qwen2.5' }] },
+          { key: 'nomic-embed-text', loaded_instances: [] },
+        ],
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ status: 'loaded' }), { status: 200 }));
+    vi.stubGlobal('fetch', fetch);
+
+    await prepareLmStudioModels({ chat: 'qwen2.5', embedding: 'nomic-embed-text' });
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls[1]?.[0]).toBe('http://localhost:1234/api/v1/models/load');
+    expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toEqual({
+      model: 'nomic-embed-text',
+      context_length: 2048,
     });
   });
 });

@@ -40,7 +40,7 @@ describe('ContentService tenant boundaries', () => {
     expect(embed).not.toHaveBeenCalled();
   });
 
-  it('projects raw archive provenance and the canonical Cowork source into content storage', async () => {
+  it('enriches chat conversations while preserving raw provenance and canonical Cowork source', async () => {
     const tenantId = randomUUID();
     const libraryId = randomUUID();
     const contentId = randomUUID();
@@ -57,9 +57,24 @@ describe('ContentService tenant boundaries', () => {
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] });
     const release = vi.fn();
+    const complete = vi.fn().mockResolvedValue({
+      text: JSON.stringify({
+        summary: 'A durable Cowork memory.',
+        keywords: ['cowork', 'memory'],
+        tags: ['local-history'],
+        should_store: true,
+        store_reason: 'Contains a durable implementation decision.',
+        store_confidence: 0.98,
+      }),
+      model: 'local-chat',
+      provider: 'lmstudio',
+    });
     const service = new ContentService(
       { query: databaseQuery, connect: vi.fn().mockResolvedValue({ query: clientQuery, release }) } as unknown as Database,
-      { embed: vi.fn().mockRejectedValue(new Error('embedding disabled')), complete: vi.fn() },
+      {
+        embed: vi.fn().mockResolvedValue([0.1, 0.2]),
+        complete,
+      },
     );
 
     const result = await service.importContent(
@@ -74,10 +89,82 @@ describe('ContentService tenant boundaries', () => {
     );
 
     expect(result.completedItems).toBe(1);
+    expect(complete).toHaveBeenCalledWith(expect.objectContaining({
+      maxTokens: 768,
+      responseFormat: expect.objectContaining({ type: 'json_schema' }),
+    }));
     const [, insertParams] = clientQuery.mock.calls[2] as [string, unknown[]];
     expect(insertParams[10]).toEqual(manifest);
     expect(insertParams[13]).toBe('cowork');
+    expect(insertParams[19]).toBe('A durable Cowork memory.');
+    expect(insertParams[20]).toBe('active');
+    expect(insertParams[9]).toMatchObject({
+      storeDecision: {
+        shouldStore: true,
+        reason: 'Contains a durable implementation decision.',
+      },
+      enrichment: {
+        model: 'local-chat',
+        provider: 'lmstudio',
+      },
+    });
     expect(release).toHaveBeenCalledOnce();
+  });
+
+  it('archives low-value chat conversations while retaining their summary and raw record', async () => {
+    const tenantId = randomUUID();
+    const libraryId = randomUUID();
+    const contentId = randomUUID();
+    const databaseQuery = vi.fn().mockResolvedValue({
+      rows: [{ id: libraryId, slug: 'personal-memory', name: 'Personal Memory', item_count: '0' }],
+    });
+    const clientQuery = vi.fn()
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: contentId }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [], rowCount: 1 })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [] });
+    const service = new ContentService(
+      {
+        query: databaseQuery,
+        connect: vi.fn().mockResolvedValue({ query: clientQuery, release: vi.fn() }),
+      } as unknown as Database,
+      {
+        embed: vi.fn().mockResolvedValue([0.1, 0.2]),
+        complete: vi.fn().mockResolvedValue({
+          text: JSON.stringify({
+            summary: 'A brief acknowledgement.',
+            keywords: [],
+            tags: [],
+            should_store: false,
+            store_reason: 'Transient acknowledgement.',
+            store_confidence: 0.95,
+          }),
+          model: 'local-chat',
+          provider: 'lmstudio',
+        }),
+      },
+    );
+
+    const result = await service.importContent(
+      { tenantId, apiKeyId: randomUUID() },
+      {
+        items: [{
+          title: 'Acknowledgement',
+          content: 'Thanks, done.',
+          content_type: 'chat',
+          source_identifier: `codex:${randomUUID()}`,
+          source: 'codex',
+        }],
+      },
+    );
+
+    expect(result.completedItems).toBe(1);
+    const [, insertParams] = clientQuery.mock.calls[2] as [string, unknown[]];
+    expect(insertParams[19]).toBe('A brief acknowledgement.');
+    expect(insertParams[20]).toBe('archived');
   });
 
   it('returns raw archive provenance from the lineage endpoint contract', async () => {

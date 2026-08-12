@@ -45,6 +45,7 @@ function makeProgram(): Command {
 
 const tempDirs: string[] = [];
 const originalAeHome = process.env.AE_HOME;
+const originalExitCode = process.exitCode;
 const claudeFixtureDir = join(
   dirname(fileURLToPath(import.meta.url)),
   'fixtures',
@@ -105,6 +106,7 @@ describe('sync commands', () => {
   afterEach(() => {
     if (originalAeHome === undefined) delete process.env.AE_HOME;
     else process.env.AE_HOME = originalAeHome;
+    process.exitCode = originalExitCode;
 
     for (const dir of tempDirs.splice(0)) {
       rmSync(dir, { recursive: true, force: true });
@@ -291,8 +293,10 @@ sources:
       files: Record<string, { importedCount: number; line: number; offset: number }>;
     };
     expect(Object.values(cursor.files)).toEqual([]);
+    expect(process.exitCode).toBe(1);
 
     client.submitSyncImport.mockClear();
+    process.exitCode = undefined;
     client.submitSyncImport.mockResolvedValueOnce({
       data: {
         totalItems: 1,
@@ -317,6 +321,105 @@ sources:
     ]);
 
     expect(client.submitSyncImport).toHaveBeenCalledTimes(1);
+  });
+
+  it('checkpoints each successful file before a later file fails', async () => {
+    const dir = makeTempDir();
+    const firstTranscript = join(dir, 'first.jsonl');
+    const secondTranscript = join(dir, 'second.jsonl');
+    const cursorFile = join(dir, 'cursor.json');
+    process.env.AE_HOME = join(dir, 'home');
+    const makeTurn = (sessionId: string, content: string) => `${JSON.stringify({
+      type: 'user',
+      sessionId,
+      uuid: `${sessionId}-user`,
+      timestamp: '2026-06-01T12:00:00.000Z',
+      message: { role: 'user', content },
+    })}\n`;
+    writeFileSync(firstTranscript, makeTurn('session-first', 'First durable memory'), 'utf8');
+    writeFileSync(secondTranscript, makeTurn('session-second', 'Second durable memory'), 'utf8');
+    const client = mockClient();
+    client.submitSyncImport
+      .mockResolvedValueOnce({
+        data: {
+          totalItems: 1,
+          completedItems: 1,
+          failedItems: 0,
+          contentIds: ['content-first'],
+          failures: [],
+        },
+      })
+      .mockRejectedValueOnce(new Error('interrupted after first file'));
+
+    await expect(makeProgram().parseAsync([
+      'node',
+      'ae',
+      'sync',
+      'once',
+      '--path',
+      firstTranscript,
+      '--path',
+      secondTranscript,
+      '--cursor-file',
+      cursorFile,
+      '--concurrency',
+      '1',
+    ])).rejects.toThrow('interrupted after first file');
+
+    const cursor = JSON.parse(await readFile(cursorFile, 'utf8')) as {
+      files: Record<string, { importedCount: number }>;
+    };
+    expect(cursor.files[`claude-code:${firstTranscript}`]?.importedCount).toBe(1);
+    expect(cursor.files[`claude-code:${secondTranscript}`]).toBeUndefined();
+  });
+
+  it('bounds concurrent history-file imports while preserving every cursor', async () => {
+    const dir = makeTempDir();
+    const cursorFile = join(dir, 'cursor.json');
+    process.env.AE_HOME = join(dir, 'home');
+    const transcripts = Array.from({ length: 5 }, (_, index) => {
+      const transcript = join(dir, `conversation-${index}.jsonl`);
+      writeFileSync(transcript, `${JSON.stringify({
+        type: 'user',
+        sessionId: `session-${index}`,
+        uuid: `user-${index}`,
+        timestamp: '2026-06-01T12:00:00.000Z',
+        message: { role: 'user', content: `Durable memory ${index}` },
+      })}\n`, 'utf8');
+      return transcript;
+    });
+    const client = mockClient();
+    let active = 0;
+    let maxActive = 0;
+    client.submitSyncImport.mockImplementation(async (request) => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      active -= 1;
+      return {
+        data: {
+          totalItems: request.items.length,
+          completedItems: request.items.length,
+          failedItems: 0,
+          contentIds: request.items.map((_, index) => `content-${index + 1}`),
+          failures: [],
+        },
+      };
+    });
+
+    await makeProgram().parseAsync([
+      'node', 'ae', 'sync', 'once',
+      ...transcripts.flatMap((transcript) => ['--path', transcript]),
+      '--cursor-file', cursorFile,
+      '--concurrency', '2',
+    ]);
+
+    expect(maxActive).toBe(2);
+    const cursor = JSON.parse(await readFile(cursorFile, 'utf8')) as {
+      files: Record<string, { importedCount: number }>;
+    };
+    expect(Object.keys(cursor.files)).toHaveLength(5);
+    expect(Object.values(cursor.files).every(({ importedCount }) => importedCount === 1)).toBe(true);
   });
 
   it('reimports separate parent and child conversations after a subagent-only change', async () => {

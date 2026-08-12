@@ -43,6 +43,22 @@ export interface WriteRawArchiveResult {
   manifest: RawArchiveManifest;
 }
 
+export function attachRawArchiveManifest<
+  T extends { provider_metadata_json: Record<string, unknown> },
+>(conversations: readonly T[], archive: WriteRawArchiveResult): T[] {
+  const rawArchiveManifest = {
+    manifest_path: archive.manifestPath,
+    ...archive.manifest,
+  };
+  return conversations.map((conversation) => ({
+    ...conversation,
+    provider_metadata_json: {
+      ...conversation.provider_metadata_json,
+      raw_archive_manifest: rawArchiveManifest,
+    },
+  }));
+}
+
 function safeBaseName(path: string): string {
   const safe = basename(path).replace(/[^a-zA-Z0-9._-]/g, '_');
   return safe || 'source.bin';

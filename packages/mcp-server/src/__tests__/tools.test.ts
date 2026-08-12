@@ -620,6 +620,7 @@ describe('MCP Tool Handlers', () => {
       expect(client.saveContent).toHaveBeenCalledWith({
         libraryId: undefined,
         librarySlug: 'personal',
+        options: { forceStore: true },
         items: [
           {
             title: 'Codex Chat',
@@ -689,6 +690,7 @@ describe('MCP Tool Handlers', () => {
       expect(client.saveContent).toHaveBeenCalledWith({
         libraryId: undefined,
         librarySlug: undefined,
+        options: { forceStore: true },
         items: [
           {
             title: 'Civic Center - 23 - Acme Mechanical',
@@ -738,6 +740,7 @@ describe('MCP Tool Handlers', () => {
       expect(client.saveContent).toHaveBeenCalledWith({
         libraryId: undefined,
         librarySlug: undefined,
+        options: { forceStore: true },
         items: [
           {
             title: 'Loose Memory',
