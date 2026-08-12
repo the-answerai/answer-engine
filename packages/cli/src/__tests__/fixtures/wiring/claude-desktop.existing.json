@@ -1,0 +1,6 @@
+{
+	"preferences": { "quickEntry": true },
+	"mcpServers": {
+		"notes": { "command": "/opt/notes/server", "args": [] }
+	}
+}

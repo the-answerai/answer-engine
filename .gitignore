@@ -1,0 +1,44 @@
+# Dependencies and package-manager state
+node_modules/
+.pnpm-store/
+package-lock.json
+yarn.lock
+
+# Private local configuration
+.env
+.env.local
+.env.*.local
+.env.compose
+.answer-engine/
+
+# Build and test output
+dist/
+build/
+coverage/
+test-results/
+playwright-report/
+verification-*.png
+*.tsbuildinfo
+*.log
+
+# Local runtime data
+data/
+logs/
+tmp/
+uploads/
+backups/
+
+# Editor and operating-system files
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*.swo
+
+# Agent worktrees and transient loop state
+.worktrees/
+.claude/worktrees/
+.alpha-loop/sessions/
+.alpha-loop/auth/
+.alpha-loop/traces/
+review-*.json

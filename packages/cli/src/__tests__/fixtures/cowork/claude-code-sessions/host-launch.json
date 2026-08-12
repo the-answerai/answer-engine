@@ -1,0 +1,10 @@
+{
+  "cliSessionId": "host-overlap",
+  "bridgeSessionId": "bridge-fixture",
+  "createdAt": "2026-08-10T19:00:00.000Z",
+  "cwd": "/workspace/host",
+  "model": "claude-opus-host",
+  "effort": "medium",
+  "permissionMode": "default",
+  "completedTurns": 1
+}

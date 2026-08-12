@@ -1,0 +1,17 @@
+.git
+.github
+.env
+.env.local
+node_modules
+**/node_modules
+dist
+**/dist
+coverage
+test-results
+playwright-report
+.worktrees
+logs
+tmp
+backups
+*.log
+.DS_Store

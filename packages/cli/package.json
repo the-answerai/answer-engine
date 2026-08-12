@@ -1,0 +1,68 @@
+{
+  "name": "@answer-engine/cli",
+  "version": "1.1.0",
+  "description": "CLI for local Answer Engine memory, search, import, sync, and evaluation",
+  "engines": {
+    "node": ">=22.16.0"
+  },
+  "type": "module",
+  "main": "dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./wiring": {
+      "types": "./dist/wiring/index.d.ts",
+      "import": "./dist/wiring/index.js"
+    },
+    "./scaffold": {
+      "types": "./dist/scaffold.d.ts",
+      "import": "./dist/scaffold.js"
+    }
+  },
+  "bin": {
+    "ae": "dist/index.js"
+  },
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.d.ts"
+  ],
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/the-answerai/answer-engine.git",
+    "directory": "packages/cli"
+  },
+  "keywords": [
+    "answer-engine",
+    "cli",
+    "search",
+    "content",
+    "ai"
+  ],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "chalk": "^5.3.0",
+    "csv-parse": "^6.2.1",
+    "jsonc-parser": "^3.3.1",
+    "smol-toml": "^1.6.1",
+    "yaml": "^2.3.4",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "@types/node": "^20.10.5",
+    "vitest": "^1.0.4"
+  }
+}

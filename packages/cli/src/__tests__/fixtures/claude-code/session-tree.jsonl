@@ -1,0 +1,20 @@
+{"type":"user","sessionId":"session-tree","uuid":"u-root","timestamp":"2026-08-10T20:00:00.000Z","cwd":"/workspace/project","gitBranch":"feat/tree","version":"2.1.0","message":{"role":"user","content":"Start the implementation"}}
+{"type":"assistant","sessionId":"session-tree","uuid":"a-main","parentUuid":"u-root","timestamp":"2026-08-10T20:00:01.000Z","requestId":"request-1","message":{"role":"assistant","model":"claude-opus-test","usage":{"input_tokens":10,"output_tokens":20},"content":[{"type":"text","text":"I will inspect it."},{"type":"thinking","thinking":"Need a focused investigation.","signature":"signed-thinking"},{"type":"tool_use","id":"spawn-tool","name":"Task","input":{"subagent_type":"researcher"}}]}}
+{"type":"user","sessionId":"session-tree","uuid":"tool-result-1","parentUuid":"a-main","timestamp":"2026-08-10T20:00:02.000Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"spawn-tool","content":"Research complete","is_error":false}]}}
+{"type":"user","sessionId":"session-tree","uuid":"u-branch","parentUuid":"a-main","timestamp":"2026-08-10T20:00:03.000Z","message":{"role":"user","content":"Take the alternate branch"}}
+{"type":"assistant","sessionId":"session-tree","uuid":"a-side","parentUuid":"u-root","timestamp":"2026-08-10T20:00:04.000Z","isSidechain":true,"message":{"role":"assistant","content":[{"type":"text","text":"Sidechain note"}]}}
+{"type":"ai-title","sessionId":"session-tree","uuid":"title-ai","timestamp":"2026-08-10T20:00:05.000Z","title":"Generated title"}
+{"type":"custom-title","sessionId":"session-tree","uuid":"title-custom","timestamp":"2026-08-10T20:00:06.000Z","title":"Pinned project title"}
+{"type":"ai-title","sessionId":"session-tree","uuid":"title-ai-late","timestamp":"2026-08-10T20:00:06.500Z","title":"Later generated title"}
+{"type":"system","subtype":"compact_boundary","sessionId":"session-tree","uuid":"compact-1","timestamp":"2026-08-10T20:00:07.000Z","summary":"Earlier context compacted"}
+{"type":"system","subtype":"stop_hook_summary","sessionId":"session-tree","uuid":"system-stop","timestamp":"2026-08-10T20:00:07.100Z","summary":"Hook stopped"}
+{"type":"system","subtype":"api_error","sessionId":"session-tree","uuid":"system-error","timestamp":"2026-08-10T20:00:07.200Z","summary":"API error"}
+{"type":"system","subtype":"informational","sessionId":"session-tree","uuid":"system-info","timestamp":"2026-08-10T20:00:07.300Z","summary":"Information"}
+{"type":"system","subtype":"model_refusal_fallback","sessionId":"session-tree","uuid":"system-refusal","timestamp":"2026-08-10T20:00:07.400Z","summary":"Fallback used"}
+{"type":"system","subtype":"local_command","sessionId":"session-tree","uuid":"system-command","timestamp":"2026-08-10T20:00:07.500Z","summary":"Command completed"}
+{"type":"attachment","sessionId":"session-tree","uuid":"attachment-1","timestamp":"2026-08-10T20:00:08.000Z","filePath":"/workspace/project/spec.md","mimeType":"text/markdown"}
+{"type":"mode","subtype":"plan","sessionId":"session-tree","uuid":"mode-1","timestamp":"2026-08-10T20:00:09.000Z","mode":"plan"}
+{"type":"pr-link","sessionId":"session-tree","uuid":"pr-link-1","timestamp":"2026-08-10T20:00:09.100Z","url":"https://github.com/example/repo/pull/1"}
+{"type":"frame-link","sessionId":"session-tree","uuid":"frame-link-1","timestamp":"2026-08-10T20:00:09.200Z","frameId":"frame-1"}
+{"type":"queue-operation","operation":"enqueue","sessionId":"session-tree","uuid":"queue-1","timestamp":"2026-08-10T20:00:09.300Z"}
+{"type":"last-prompt","sessionId":"session-tree","timestamp":"2026-08-10T20:00:09.400Z","promptId":"prompt-1"}

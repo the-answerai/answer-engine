@@ -1,0 +1,49 @@
+{
+  "name": "@answer-engine/mcp-server",
+  "version": "1.1.0",
+  "description": "MCP server for local Answer Engine memory and retrieval",
+  "engines": {
+    "node": ">=22.16.0"
+  },
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "answer-engine-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.d.ts"
+  ],
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && node --max-old-space-size=4096 node_modules/typescript/bin/tsc",
+    "dev": "node --max-old-space-size=4096 node_modules/typescript/bin/tsc --watch",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/the-answerai/answer-engine.git",
+    "directory": "packages/mcp-server"
+  },
+  "keywords": [
+    "answer-engine",
+    "mcp",
+    "model-context-protocol",
+    "search",
+    "ai"
+  ],
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "@types/node": "^20.10.5",
+    "vitest": "^1.0.4"
+  }
+}

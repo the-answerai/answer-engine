@@ -1,0 +1,4 @@
+{"type":"user","sessionId":"cowork-session","uuid":"audit-user-record","message":{"id":"cowork-user-1","role":"user","content":"Audit duplicate prompt"},"_audit_hmac":"signed-user","_audit_timestamp":"2026-08-10T20:00:00.100Z"}
+{"type":"assistant","sessionId":"cowork-session","uuid":"audit-assistant-record","message":{"id":"cowork-assistant-1","role":"assistant","content":"Audit duplicate response"},"_audit_hmac":"signed-assistant","_audit_timestamp":"2026-08-10T20:00:01.100Z"}
+{"type":"rate_limit_event","sessionId":"cowork-session","uuid":"audit-rate-limit","rate_limit_info":{"status":"allowed"},"_audit_hmac":"signed-rate-limit","_audit_timestamp":"2026-08-10T20:00:01.500Z"}
+{"type":"result","sessionId":"cowork-session","uuid":"audit-result","subtype":"success","total_cost_usd":0.01,"_audit_hmac":"signed-result","_audit_timestamp":"2026-08-10T20:00:03.000Z"}

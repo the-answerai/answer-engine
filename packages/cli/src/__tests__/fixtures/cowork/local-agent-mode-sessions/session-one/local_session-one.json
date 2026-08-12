@@ -1,0 +1,14 @@
+{
+  "cliSessionId": "cowork-session",
+  "createdAt": "2026-08-10T20:00:00.000Z",
+  "cwd": "/workspace/cowork",
+  "model": "claude-opus-cowork",
+  "effort": "high",
+  "initialMessage": "Canonical nested Cowork prompt",
+  "account": {
+    "name": "Sensitive Fixture User",
+    "email": "sensitive.fixture@example.com"
+  },
+  "enabledTools": ["Read", "Write"],
+  "mountedFiles": ["workspace/output.txt"]
+}

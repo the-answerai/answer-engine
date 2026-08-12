@@ -1,0 +1,2 @@
+{"type":"user","sessionId":"host-overlap","uuid":"host-user-1","timestamp":"2026-08-10T19:00:00.000Z","message":{"role":"user","content":"Host Claude Code prompt"}}
+{"type":"assistant","sessionId":"host-overlap","uuid":"host-assistant-1","parentUuid":"host-user-1","timestamp":"2026-08-10T19:00:01.000Z","message":{"role":"assistant","content":"Host Claude Code response"}}

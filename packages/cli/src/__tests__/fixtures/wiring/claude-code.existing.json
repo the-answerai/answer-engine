@@ -1,0 +1,11 @@
+{
+    "theme": "dark",
+    "mcpServers": {
+        "filesystem": { "command": "node", "args": ["filesystem.js"] },
+        "answer-engine": {
+            "command": "old-command",
+            "env": { "ANSWER_ENGINE_API_KEY": "old-key" }
+        }
+    },
+    "telemetry": false
+}

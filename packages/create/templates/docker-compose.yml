@@ -1,0 +1,82 @@
+x-answer-engine-image: &answer-engine-image "${ANSWER_ENGINE_IMAGE:-ghcr.io/the-answerai/answer-engine:1.1.0}"
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: answerengine
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  migrate:
+    image: *answer-engine-image
+    pull_policy: missing
+    command: ["node", "dist/scripts/migrate.js"]
+    env_file: [.env.compose]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  init:
+    image: *answer-engine-image
+    pull_policy: missing
+    command: ["node", "dist/scripts/init.js"]
+    env_file: [.env.compose]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
+  api:
+    image: *answer-engine-image
+    pull_policy: missing
+    command: ["node", "dist/server.js"]
+    env_file: [.env.compose]
+    ports:
+      - "127.0.0.1:5050:5000"
+    volumes:
+      - answerengine_blobs:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:5000/health"]
+      interval: 5s
+      timeout: 5s
+      start_period: 20s
+      retries: 20
+    restart: unless-stopped
+    init: true
+
+volumes:
+  postgres_data:
+  redis_data:
+  answerengine_blobs:

@@ -1,0 +1,84 @@
+x-answer-engine-image: &answer-engine-image
+  image: "${ANSWER_ENGINE_IMAGE:-ghcr.io/the-answerai/answer-engine:1.1.0}"
+  pull_policy: "${ANSWER_ENGINE_PULL_POLICY:-missing}"
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: "${DATABASE_NAME:-answerengine}"
+      POSTGRES_USER: "${DATABASE_USER:-postgres}"
+      POSTGRES_PASSWORD: "${DATABASE_PASSWORD:-postgres}"
+    ports:
+      - "127.0.0.1:${DATABASE_PORT_HOST:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USER:-postgres} -d ${DATABASE_NAME:-answerengine}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:${REDIS_PORT_HOST:-6380}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  migrate:
+    <<: *answer-engine-image
+    command: ["node", "dist/scripts/migrate.js"]
+    env_file: [.env.compose]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  init:
+    <<: *answer-engine-image
+    command: ["node", "dist/scripts/init.js"]
+    env_file: [.env.compose]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
+  api:
+    <<: *answer-engine-image
+    command: ["node", "dist/server.js"]
+    env_file: [.env.compose]
+    ports:
+      - "127.0.0.1:${ANSWER_ENGINE_PORT:-5050}:5000"
+    volumes:
+      - answerengine_data:/data
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:5000/health"]
+      interval: 5s
+      timeout: 5s
+      start_period: 20s
+      retries: 20
+    restart: unless-stopped
+    init: true
+
+volumes:
+  postgres_data:
+  redis_data:
+  answerengine_data:

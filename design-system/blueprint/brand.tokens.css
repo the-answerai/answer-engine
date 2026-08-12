@@ -1,0 +1,172 @@
+/* =============================================================================
+   ANSWER ENGINE — BLUEPRINT DESIGN SYSTEM
+   brand.tokens.css  ·  THE SINGLE SWAP-TO-REBRAND FILE
+   -----------------------------------------------------------------------------
+   This is the ONLY file you edit to change the brand. Everything else
+   (blueprint.css, motion.css, blueprint.js, the app, every marketing page)
+   reads from the SEMANTIC tokens defined here and never hard-codes a value.
+
+   To rebrand:
+     1. Change the @import font URL + the three --bp-font-* primitives.
+     2. Change the --bp-color-* and --bp-*-rgb primitives.
+     3. (Optional) retune the --motion-* / --ease-* tokens for a different feel.
+   Do NOT touch the SEMANTIC layer unless you are remapping roles.
+
+   Layers:
+     PRIMITIVES  raw brand values            (--bp-*)        ← edit to rebrand
+     SEMANTIC    role-based, components use   (--surface …)   ← the public contract
+   ========================================================================== */
+
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Sans+Condensed:wght@500;600;700&display=optional");
+
+:root {
+  /* ---------------------------------------------------------------------------
+     1 · PRIMITIVES — the brand. Change these to become a different brand.
+     ------------------------------------------------------------------------ */
+
+  /* Paper / ink */
+  --bp-paper:        #EDE9DF;   /* drafting paper, the page */
+  --bp-paper-2:      #F1EEE6;   /* raised panels, cards */
+  --bp-ink:          #16181C;   /* primary line & text */
+  --bp-ink-soft:     #3A3D44;   /* body text */
+  --bp-ink-faint:    #6B6E76;   /* captions, metadata */
+
+  /* Accent (the "active / query / link" colour — blueprint blue) */
+  --bp-accent:       #1B3A8F;
+  --bp-accent-deep:  #16306F;   /* pressed / hover-darkened */
+
+  /* Marker (figure numbers, revision marks, "drawn in red" callouts) */
+  --bp-marker:       #B4341F;   /* oxide red */
+
+  /* Dark instrument panel (code blocks, benchmark readouts) */
+  --bp-panel:        #15171B;
+  --bp-panel-text:   #d6d9df;
+  --bp-panel-rule:   #2a2d34;
+  --bp-panel-key:    #7fa0e6;   /* json keys */
+  --bp-panel-str:    #9fc08a;   /* strings */
+  --bp-panel-dim:    #8b8f99;   /* comments / dim */
+  --bp-panel-warn:   #c98a6b;   /* annotations */
+
+  /* RGB triplets (so alpha variants can be derived) */
+  --bp-ink-rgb:      22, 24, 28;
+  --bp-accent-rgb:   27, 58, 143;
+
+  /* Type — swap these three to change the typographic voice */
+  --bp-font-display: "IBM Plex Sans Condensed", "IBM Plex Sans", system-ui, sans-serif;
+  --bp-font-body:    "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --bp-font-mono:    "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  /* ---------------------------------------------------------------------------
+     2 · SEMANTIC TOKENS — the contract. Components reference ONLY these.
+     ------------------------------------------------------------------------ */
+
+  /* Surfaces & text */
+  --surface:         var(--bp-paper);
+  --surface-2:       var(--bp-paper-2);
+  --surface-inverse: var(--bp-panel);
+  --text:            var(--bp-ink);
+  --text-soft:       var(--bp-ink-soft);
+  --text-faint:      var(--bp-ink-faint);
+  --text-on-dark:    var(--bp-panel-text);
+
+  /* Accent / marker */
+  --accent:          var(--bp-accent);
+  --accent-strong:   var(--bp-accent-deep);
+  --marker:          var(--bp-marker);
+
+  /* Lines — the blueprint is built from hairlines */
+  --rule:            var(--bp-ink);                       /* 2px frame & primary borders use this colour */
+  --rule-faint:      rgba(var(--bp-ink-rgb), .28);        /* interior dividers */
+  --rule-w:          2px;                                 /* frame weight */
+  --hair-w:          1px;                                 /* hairline weight */
+  --hair:            var(--hair-w) solid var(--rule);
+  --hair-faint:      var(--hair-w) solid var(--rule-faint);
+  --frame:           var(--rule-w) solid var(--rule);
+
+  /* Washes derived from accent/ink */
+  --grid:            rgba(var(--bp-accent-rgb), .08);     /* the page grid-paper lines */
+  --grid-size:       22px;                                /* grid pitch */
+  --accent-wash:     rgba(var(--bp-accent-rgb), .06);     /* recommended-row / highlight fill */
+  --accent-wash-2:   rgba(var(--bp-accent-rgb), .10);
+  --selection:       rgba(var(--bp-accent-rgb), .22);
+  --focus:           var(--accent);
+
+  /* Code / readout panel roles */
+  --panel-bg:        var(--bp-panel);
+  --panel-text:      var(--bp-panel-text);
+  --panel-rule:      var(--bp-panel-rule);
+  --panel-key:       var(--bp-panel-key);
+  --panel-str:       var(--bp-panel-str);
+  --panel-dim:       var(--bp-panel-dim);
+  --panel-warn:      var(--bp-panel-warn);
+
+  /* Fonts */
+  --font-display:    var(--bp-font-display);
+  --font-body:       var(--bp-font-body);
+  --font-mono:       var(--bp-font-mono);
+
+  /* Type scale (fluid). Blueprint = big sans headlines, condensed section heads,
+     small mono labels. */
+  --fs-display:      clamp(30px, 4.6vw, 50px);
+  --fs-h2:           clamp(22px, 3vw, 30px);
+  --fs-h3:           19px;
+  --fs-h4:           18px;
+  --fs-lead:         clamp(15px, 1.6vw, 17.5px);
+  --fs-body:         16px;
+  --fs-sm:           14px;
+  --fs-mono:         12px;
+  --fs-label:        11px;     /* uppercase mono labels */
+  --fs-tag:          9.5px;    /* tiniest mono coordinate/figure tags */
+
+  --lh-tight:        1.03;
+  --lh-head:         1.1;
+  --lh-body:         1.55;
+
+  --tracking-label:  .14em;    /* uppercase mono labels */
+  --tracking-tight:  -.018em;  /* big headlines */
+
+  /* Spacing scale (4px base) */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 22px; --sp-6: 26px; --sp-7: 32px; --sp-8: 44px;
+  --sp-section: 64px;          /* vertical rhythm between figure sections */
+
+  /* Geometry — blueprint is SQUARE. Radius is near-zero by design. */
+  --radius:    0px;
+  --radius-sm: 0px;            /* keep crisp; bump to 2px max if a brand needs it */
+  --maxw:      1180px;
+  --gutter:    24px;
+
+  /* ---------------------------------------------------------------------------
+     3 · MOTION TOKENS — the "fast, foundational, precise" feel.
+         Mechanical, snappy, drafting-instrument motion (never floaty fades).
+     ------------------------------------------------------------------------ */
+  --motion-instant: 80ms;     /* state flips: button invert, toggle */
+  --motion-fast:    140ms;     /* hovers, small UI */
+  --motion-base:    260ms;     /* reveals, draws */
+  --motion-slow:    460ms;     /* long line-draws, section plot-in */
+  --motion-reveal:  420ms;     /* section "draft-in" */
+  --motion-stagger:  60ms;     /* per-item reveal delay step */
+
+  --ease-mech:  cubic-bezier(.2, .8, .2, 1);    /* precise & snappy — the default */
+  --ease-plot:  cubic-bezier(.65, 0, .35, 1);   /* a plotter pen drawing a line */
+  --ease-out:   cubic-bezier(.16, 1, .3, 1);    /* decisive settle */
+  --ease-step:  steps(1, end);                  /* mechanical, no in-between */
+
+  /* Graph engine tuning (read by blueprint.js via getComputedStyle) */
+  --graph-height:      560px;
+  --graph-drift-amp:   8;       /* px node drift amplitude (unitless number) */
+  --graph-query-speed: 0.012;   /* trace progress per frame */
+}
+
+/* Honour reduced-motion globally by collapsing motion tokens to ~0.
+   blueprint.js ALSO checks the media query, but this makes pure-CSS motion safe. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-instant: 1ms;
+    --motion-fast:    1ms;
+    --motion-base:    1ms;
+    --motion-slow:    1ms;
+    --motion-reveal:  1ms;
+    --motion-stagger: 0ms;
+  }
+}

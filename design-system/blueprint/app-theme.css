@@ -1,0 +1,70 @@
+/* =============================================================================
+   BLUEPRINT DESIGN SYSTEM — app-theme.css
+   Tailwind v4 BRIDGE for the React app (packages/web-ui).
+
+   The app uses shadcn/Tailwind v4 semantic colour roles (--color-background,
+   --color-foreground, --color-primary …). This file remaps those roles onto
+   the Blueprint SEMANTIC tokens, so EVERY existing component
+   (bg-background, text-foreground, border-border, …) rethemes to Blueprint
+   WITHOUT touching a single .tsx file.
+
+   INSTALL (in packages/web-ui/src/globals.css), replace the @theme block with:
+
+       @import "tailwindcss";
+       @import "../../../design-system/blueprint/brand.tokens.css";   // defines --surface, --text, --accent …
+       @import "../../../design-system/blueprint/app-theme.css";      // maps shadcn roles → Blueprint
+       // (optionally) @import ".../blueprint.css"  for bp-* marketing components inside the app
+
+   Rebrand the whole app by editing brand.tokens.css. Nothing here changes.
+   ========================================================================== */
+
+@theme {
+  /* Core surfaces / text */
+  --color-background:            var(--surface);
+  --color-foreground:            var(--text);
+  --color-card:                  var(--surface-2);
+  --color-card-foreground:       var(--text);
+  --color-popover:               var(--surface-2);
+  --color-popover-foreground:    var(--text);
+
+  /* Accent / actions */
+  --color-primary:               var(--accent);
+  --color-primary-foreground:    var(--surface-2);
+  --color-secondary:             var(--surface-2);
+  --color-secondary-foreground:  var(--text);
+  --color-accent:                var(--accent-wash);
+  --color-accent-foreground:     var(--accent);
+  --color-muted:                 var(--surface-2);
+  --color-muted-foreground:      var(--text-faint);
+  --color-destructive:           var(--marker);
+  --color-destructive-foreground: var(--surface-2);
+
+  /* Lines / inputs / focus */
+  --color-border:                var(--rule-faint);
+  --color-input:                 var(--rule-faint);
+  --color-ring:                  var(--focus);
+
+  /* Sidebar / app chrome */
+  --color-sidebar-background:        var(--surface-2);
+  --color-sidebar-foreground:        var(--text-soft);
+  --color-sidebar-primary:           var(--accent);
+  --color-sidebar-primary-foreground: var(--surface-2);
+  --color-sidebar-accent:            var(--accent-wash);
+  --color-sidebar-accent-foreground: var(--accent);
+  --color-sidebar-border:            var(--rule-faint);
+  --color-sidebar-ring:              var(--focus);
+
+  /* Geometry — Blueprint is square. The app's rounded chrome flattens out. */
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius);
+  --radius-lg: var(--radius);
+  --radius-xl: var(--radius);
+
+  /* Typography — make the app speak IBM Plex like the marketing site */
+  --font-sans:  var(--font-body);
+  --font-mono:  var(--font-mono);
+}
+
+/* Tailwind v4 generates utilities at build time from @theme, but these roles
+   resolve var(--surface) etc. at RUNTIME — so swapping brand.tokens.css (or
+   calling applyBrand()) rethemes the app live, no rebuild required. */

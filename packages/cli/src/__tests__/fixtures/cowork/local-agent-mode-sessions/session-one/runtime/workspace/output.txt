@@ -1,0 +1,1 @@
+Cowork output artifact. It must be archived and linked, never emitted as chat content.

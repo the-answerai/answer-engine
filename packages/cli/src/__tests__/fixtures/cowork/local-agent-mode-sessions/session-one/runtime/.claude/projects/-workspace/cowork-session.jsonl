@@ -1,0 +1,2 @@
+{"type":"user","sessionId":"cowork-session","uuid":"cowork-user-1","timestamp":"2026-08-10T20:00:00.000Z","cwd":"/workspace/cowork","message":{"role":"user","content":"Canonical nested Cowork prompt"}}
+{"type":"assistant","sessionId":"cowork-session","uuid":"cowork-assistant-1","parentUuid":"cowork-user-1","timestamp":"2026-08-10T20:00:01.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Canonical nested Cowork response"}],"model":"claude-opus-cowork"}}

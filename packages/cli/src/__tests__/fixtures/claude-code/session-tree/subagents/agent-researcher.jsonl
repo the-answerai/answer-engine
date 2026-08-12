@@ -1,0 +1,2 @@
+{"type":"user","sessionId":"session-tree","agentId":"researcher","uuid":"sub-u-1","timestamp":"2026-08-10T20:00:01.250Z","message":{"role":"user","content":"Investigate the adapter"}}
+{"type":"assistant","sessionId":"session-tree","agentId":"researcher","uuid":"sub-a-1","parentUuid":"sub-u-1","timestamp":"2026-08-10T20:00:01.750Z","message":{"role":"assistant","model":"claude-sonnet-test","content":[{"type":"text","text":"The adapter needs tree preservation."}]}}

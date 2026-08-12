@@ -1,0 +1,18 @@
+{"timestamp":"2026-08-10T20:00:00.000Z","type":"session_meta","payload":{"id":"codex-session-915","session_id":"codex-session-915","timestamp":"2026-08-10T20:00:00.000Z","cwd":"/workspace/fixture","model_provider":"openai","cli_version":"1.2.3","source":"cli","thread_source":"local","originator":"codex","base_instructions":"fixture instructions","dynamic_tools":[{"name":"fixture_tool"}],"history_mode":"save-all","context_window":200000,"git":{"branch":"meta-branch","origin_url":"https://example.com/meta.git"}}}
+{"timestamp":"2026-08-10T20:00:01.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Remember the blue launch checklist."}]}}
+{"timestamp":"2026-08-10T20:00:01.100Z","type":"event_msg","payload":{"type":"user_message","message":"Remember the blue launch checklist.","images":[],"local_images":[]}}
+{"timestamp":"2026-08-10T20:00:02.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"I will remember the blue launch checklist."}]}}
+{"timestamp":"2026-08-10T20:00:02.100Z","type":"event_msg","payload":{"type":"agent_message","message":"I will remember the blue launch checklist."}}
+{"timestamp":"2026-08-10T20:00:03.000Z","type":"response_item","payload":{"type":"function_call","name":"exec_command","arguments":"{\"cmd\":\"pwd\"}","call_id":"call-standard"}}
+{"timestamp":"2026-08-10T20:00:04.000Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call-standard","output":"Chunk ID: fixture\nProcess exited with code 0"}}
+{"timestamp":"2026-08-10T20:00:05.000Z","type":"response_item","payload":{"type":"custom_tool_call","id":"custom-item-1","name":"apply_patch","input":"*** Begin Patch","call_id":"call-custom","status":"completed"}}
+{"timestamp":"2026-08-10T20:00:06.000Z","type":"response_item","payload":{"type":"custom_tool_call_output","call_id":"call-custom","output":"Done!"}}
+{"timestamp":"2026-08-10T20:00:07.000Z","type":"response_item","payload":{"type":"web_search_call","id":"web-item-1","status":"completed","action":{"type":"search","query":"fixture query"}}}
+{"timestamp":"2026-08-10T20:00:08.000Z","type":"response_item","payload":{"type":"reasoning","summary":[{"type":"summary_text","text":"opaque summary wrapper"}],"content":null,"encrypted_content":"gAAAAA-fixture-encrypted-reasoning"}}
+{"timestamp":"2026-08-10T20:00:09.000Z","type":"turn_context","payload":{"turn_id":"turn-1","cwd":"/workspace/turn","model":"gpt-5-test","effort":"high","approval_policy":"never"}}
+{"timestamp":"2026-08-10T20:00:10.000Z","type":"world_state","payload":{"kind":"full","state":{"active":true}}}
+{"timestamp":"2026-08-10T20:00:11.000Z","type":"compacted","payload":{"replacement_history":[{"type":"message","role":"user"}]}}
+{"timestamp":"2026-08-10T20:00:12.000Z","type":"inter_agent_communication_metadata","payload":{"agent_id":"agent-1","trigger":"fixture"}}
+{"timestamp":"2026-08-10T20:00:13.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"output_tokens":25}}}}
+{"timestamp":"2026-08-10T20:00:14.000Z","type":"future_envelope","payload":[{"future_value":42}]}
+{"timestamp":"2026-08-10T20:00:15.000Z","type":"response_item","payload":{"type":"future_response_item","future_protocol":{"enabled":true}}}

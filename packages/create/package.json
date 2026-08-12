@@ -1,0 +1,50 @@
+{
+  "name": "@answer-engine/create",
+  "version": "1.1.0",
+  "description": "One-command local installer for Answer Engine",
+  "type": "module",
+  "engines": {
+    "node": ">=22.16.0"
+  },
+  "bin": {
+    "create-answer-engine": "dist/index.js"
+  },
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "templates/**",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc && node -e \"require('node:fs').chmodSync('dist/index.js', 0o755)\"",
+    "type-check": "tsc -p tsconfig.lint.json --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/the-answerai/answer-engine.git",
+    "directory": "packages/create"
+  },
+  "keywords": [
+    "answer-engine",
+    "installer",
+    "local-first",
+    "mcp"
+  ],
+  "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@answer-engine/cli": "workspace:*",
+    "chalk": "^5.3.0",
+    "commander": "^12.1.0",
+    "yaml": "^2.8.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.5",
+    "typescript": "^5.3.3",
+    "vitest": "^1.0.4"
+  }
+}

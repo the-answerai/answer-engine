@@ -1,0 +1,10 @@
+Answer Engine
+Copyright 2026 TheAnswer.ai, Inc.
+
+The core Answer Engine distribution is licensed under the Apache License,
+Version 2.0.
+
+The components in packages/mcp-server and packages/cli are separately
+licensed under the MIT License. Other subdirectories, including private
+packages and applications, may carry their own licenses or remain unlicensed.
+A license file in a subdirectory applies to that component.

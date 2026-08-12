@@ -1,0 +1,16 @@
+# Keep this comment and spacing exactly as written.
+model = "gpt-5"
+
+[mcp_servers.filesystem]
+command = "node"
+args = [ "filesystem.js" ]
+
+[mcp_servers.answer-engine]
+command = "old-command"
+args = ["old-package"]
+
+[mcp_servers.answer-engine.env]
+ANSWER_ENGINE_API_KEY = "old-key"
+
+[features]
+multi_agent = true
