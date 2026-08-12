@@ -2,7 +2,7 @@ import { resolve } from 'node:path';
 import { homedir } from 'node:os';
 import chalk from 'chalk';
 import { detectOwnedPorts, persistApiKey, startStack } from './docker.js';
-import { resolveModelSetup } from './models.js';
+import { parseModelSpec, prepareLmStudioModels, resolveModelSetup } from './models.js';
 import type { InstallerOptions } from './options.js';
 import { formatPreflightFailures, runPreflight } from './preflight.js';
 import { createPrompt } from './prompt.js';
@@ -41,6 +41,14 @@ export async function install(
 
   output.write(chalk.cyan('2/6 Models'));
   const modelSetup = await resolveModelSetup(options, { prompt });
+  if (modelSetup.config.models.chat_provider === 'lmstudio') {
+    await prepareLmStudioModels(
+      parseModelSpec(
+        `chat=${modelSetup.config.models.chat},embedding=${modelSetup.config.models.embedding}`,
+      ),
+      options.lmStudioUrl,
+    );
+  }
   output.write(chalk.green(
     `  ${modelSetup.config.models.chat_provider}: ${modelSetup.config.models.chat}; `
     + `${modelSetup.config.models.embedding_provider}: ${modelSetup.config.models.embedding}`,

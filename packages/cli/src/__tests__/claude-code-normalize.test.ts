@@ -189,7 +189,13 @@ describe('Claude Code conversation normalization', () => {
     expect(parent?.events.some((event) => event.source_event_id === 'sub-u-1')).toBe(false);
 
     const repeated = await claudeCodeSource.readConversations!(files[0]);
-    expect(repeated.conversations).toEqual(result.conversations);
+    const withoutArchiveInstance = (conversation: (typeof result.conversations)[number]) => {
+      const { raw_archive_manifest: _manifest, ...providerMetadata } = conversation.provider_metadata_json;
+      return { ...conversation, provider_metadata_json: providerMetadata };
+    };
+    expect(repeated.conversations.map(withoutArchiveInstance)).toEqual(
+      result.conversations.map(withoutArchiveInstance),
+    );
   });
 
   it('archives every normalized source with matching SHA-256 provenance', async () => {
@@ -272,5 +278,45 @@ describe('Claude Code conversation normalization', () => {
       'live-user',
       'live-assistant',
     ]);
+  });
+
+  it('keeps the first canonical UUID event and audits later replayed records', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'ae-claude-duplicates-'));
+    tempDirs.push(root);
+    process.env.AE_HOME = join(root, 'ae-home');
+    const sessionPath = join(root, 'duplicate-session.jsonl');
+    const records = [
+      {
+        type: 'user', sessionId: 'duplicate-session', uuid: 'shared-uuid',
+        timestamp: '2026-08-10T20:00:00.000Z', promptId: 'first',
+        message: { role: 'user', content: 'Canonical prompt' },
+      },
+      {
+        type: 'assistant', sessionId: 'duplicate-session', uuid: 'assistant-uuid',
+        parentUuid: 'shared-uuid', timestamp: '2026-08-10T20:00:01.000Z',
+        message: { role: 'assistant', content: 'Canonical response' },
+      },
+      {
+        type: 'user', sessionId: 'duplicate-session', uuid: 'shared-uuid',
+        timestamp: '2026-08-10T20:00:00.000Z', promptId: 'replayed', slug: 'later-run',
+        message: { role: 'user', content: 'Canonical prompt' },
+      },
+    ];
+    writeFileSync(sessionPath, `${records.map((record) => JSON.stringify(record)).join('\n')}\n`, 'utf8');
+    const [file] = await claudeCodeSource.discover({ paths: [sessionPath] });
+
+    const result = await claudeCodeSource.readConversations!(file);
+
+    expect(result.conversations[0].events.map((event) => event.source_event_id)).toEqual([
+      'shared-uuid', 'assistant-uuid',
+    ]);
+    expect(result.conversations[0].events.map((event) => event.sequence)).toEqual([0, 1]);
+    expect(result.conversations[0].provider_metadata_json).toMatchObject({
+      duplicate_event_records: [{
+        source_event_id: 'shared-uuid',
+        canonical_line: 1,
+        duplicate_lines: [3],
+      }],
+    });
   });
 });

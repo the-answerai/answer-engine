@@ -18,6 +18,8 @@ import {
 } from './types.js';
 
 export const SYNC_IMPORT_MAX_BATCH_SIZE = 25;
+export const DEFAULT_SYNC_CONCURRENCY = 2;
+export const SYNC_IMPORT_MAX_CONCURRENCY = 8;
 
 type SyncClient = Pick<AnswerEngineClient, 'submitSyncImport'>
   & Partial<Pick<AnswerEngineClient, 'deleteContent'>>;
@@ -32,6 +34,7 @@ export interface SyncRunOptions {
   maxFileBytes?: number;
   cursorFile?: string;
   batchSize: number;
+  concurrency?: number;
   libraryId?: string;
   librarySlug?: string;
   client: SyncClient;
@@ -68,6 +71,7 @@ export interface SyncSourcesLoopOptions {
   sources: ConfiguredSyncSource[];
   cursorFile?: string;
   batchSize: number;
+  concurrency?: number;
   client: SyncClient;
   pollIntervalMs: number;
   onRun?: (summary: SyncRunSummary) => void;
@@ -266,6 +270,31 @@ async function runLocalDirSyncOnce(
   return summary;
 }
 
+async function processWithConcurrency<T>(
+  values: readonly T[],
+  concurrency: number,
+  handler: (value: T) => Promise<void>,
+): Promise<void> {
+  let nextIndex = 0;
+  let firstError: unknown;
+  const worker = async (): Promise<void> => {
+    while (firstError === undefined) {
+      const index = nextIndex;
+      nextIndex += 1;
+      if (index >= values.length) return;
+      try {
+        await handler(values[index] as T);
+      } catch (error) {
+        firstError = error;
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, values.length) }, () => worker()),
+  );
+  if (firstError !== undefined) throw firstError;
+}
+
 export async function runSyncOnce(options: SyncRunOptions): Promise<SyncRunSummary> {
   const cursorStore = new CursorStore(options.cursorFile);
   if (options.sourceId === LOCAL_DIR_SOURCE_ID) {
@@ -273,6 +302,7 @@ export async function runSyncOnce(options: SyncRunOptions): Promise<SyncRunSumma
   }
 
   const source = getSource(options.sourceId);
+  const warn = options.onWarning ?? defaultWarning;
   const files = await source.discover({ paths: options.paths });
   const summary: SyncRunSummary = {
     sourceId: source.id,
@@ -284,7 +314,10 @@ export async function runSyncOnce(options: SyncRunOptions): Promise<SyncRunSumma
     parseErrors: 0,
   };
 
-  for (const file of files) {
+  await processWithConcurrency(
+    files,
+    options.concurrency ?? DEFAULT_SYNC_CONCURRENCY,
+    async (file) => {
     const cursor = await cursorStore.get(source.id, file.path);
     if (source.readConversations) {
       const sourceSha256 = source.fingerprint
@@ -303,8 +336,9 @@ export async function runSyncOnce(options: SyncRunOptions): Promise<SyncRunSumma
             lastMtimeMs: file.mtimeMs,
             fileIdentity: file.identity,
           });
+          await cursorStore.save();
         }
-        continue;
+        return;
       }
 
       const readResult = await source.readConversations(file);
@@ -324,6 +358,13 @@ export async function runSyncOnce(options: SyncRunOptions): Promise<SyncRunSumma
         failedCount = imported.failedItems;
         summary.turnsImported += imported.importedItems;
         summary.failedItems += imported.failedItems;
+        for (const failure of imported.failures) {
+          warn(
+            `import failed for ${file.path}`
+            + `${failure.rowIndex === undefined ? '' : ` row ${failure.rowIndex}`}: `
+            + `${failure.error ?? failure.reason ?? 'unknown import error'}`,
+          );
+        }
       }
 
       if (failedCount === 0) {
@@ -341,8 +382,9 @@ export async function runSyncOnce(options: SyncRunOptions): Promise<SyncRunSumma
             ? `${lastConversation.provider}:${lastConversation.surface}:${lastConversation.source_conversation_id}`
             : cursor.lastImportedSourceIdentifier,
         });
+        await cursorStore.save();
       }
-      continue;
+      return;
     }
 
     if (!source.readNewTurns) {
@@ -365,6 +407,13 @@ export async function runSyncOnce(options: SyncRunOptions): Promise<SyncRunSumma
       failedCount = imported.failedItems;
       summary.turnsImported += imported.importedItems;
       summary.failedItems += imported.failedItems;
+      for (const failure of imported.failures) {
+        warn(
+          `import failed for ${file.path}`
+          + `${failure.rowIndex === undefined ? '' : ` row ${failure.rowIndex}`}: `
+          + `${failure.error ?? failure.reason ?? 'unknown import error'}`,
+        );
+      }
     }
 
     if (failedCount === 0) {
@@ -372,8 +421,10 @@ export async function runSyncOnce(options: SyncRunOptions): Promise<SyncRunSumma
         ...readResult.nextCursor,
         importedCount: cursor.importedCount + importedCount,
       });
+      await cursorStore.save();
     }
-  }
+    },
+  );
 
   await cursorStore.save();
   return summary;
@@ -399,6 +450,7 @@ export async function runSyncLoop(options: SyncLoopOptions): Promise<void> {
     }],
     cursorFile: options.cursorFile,
     batchSize: options.batchSize,
+    concurrency: options.concurrency,
     client: options.client,
     pollIntervalMs: options.pollIntervalMs,
     onRun: options.onRun,
@@ -422,6 +474,7 @@ export async function runSyncSourcesLoop(options: SyncSourcesLoopOptions): Promi
           ...source,
           cursorFile: options.cursorFile,
           batchSize: options.batchSize,
+          concurrency: options.concurrency,
           client: options.client,
         });
         options.onRun?.(summary);

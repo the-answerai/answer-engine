@@ -286,6 +286,39 @@ function resolvedTitle(records: readonly ClaudeCodeParsedRecord[]): string | und
   return aiTitles.at(-1);
 }
 
+function canonicalEventRecords(records: readonly ClaudeCodeParsedRecord[]): {
+  records: ClaudeCodeParsedRecord[];
+  duplicates: Array<{ source_event_id: string; canonical_line: number; duplicate_lines: number[] }>;
+} {
+  const canonical: ClaudeCodeParsedRecord[] = [];
+  const firstByUuid = new Map<string, ClaudeCodeParsedRecord>();
+  const duplicateLines = new Map<string, number[]>();
+  for (const record of records) {
+    const uuid = getString(record.value, 'uuid');
+    if (!uuid) {
+      canonical.push(record);
+      continue;
+    }
+    const first = firstByUuid.get(uuid);
+    if (!first) {
+      firstByUuid.set(uuid, record);
+      canonical.push(record);
+      continue;
+    }
+    const lines = duplicateLines.get(uuid) ?? [];
+    lines.push(record.line);
+    duplicateLines.set(uuid, lines);
+  }
+  return {
+    records: canonical,
+    duplicates: [...duplicateLines.entries()].map(([sourceEventId, lines]) => ({
+      source_event_id: sourceEventId,
+      canonical_line: firstByUuid.get(sourceEventId)?.line ?? 0,
+      duplicate_lines: lines,
+    })),
+  };
+}
+
 function streamConversation(
   stream: ClaudeCodeStream,
   options: {
@@ -298,7 +331,8 @@ function streamConversation(
     extraMetadata?: Record<string, unknown>;
   },
 ): Conversation {
-  const events = stream.records.map((record, index) => recordToEvent(record, stream.path, index));
+  const canonical = canonicalEventRecords(stream.records);
+  const events = canonical.records.map((record, index) => recordToEvent(record, stream.path, index));
   const timestamps = events.flatMap((event) => event.timestamp ? [event.timestamp] : []);
   const cwd = latestString(stream.records, 'cwd');
   const model = latestString(stream.records, 'model');
@@ -310,6 +344,9 @@ function streamConversation(
     ...(options.extraMetadata ?? {}),
     ...(stream.agentId ? { agentId: stream.agentId } : {}),
     sessionId: conversationId(stream),
+    ...(canonical.duplicates.length > 0
+      ? { duplicate_event_records: canonical.duplicates }
+      : {}),
   };
   const gitBranch = latestString(stream.records, 'gitBranch');
   const version = latestString(stream.records, 'version');
@@ -320,7 +357,7 @@ function streamConversation(
   if (usage !== undefined) providerMetadata.usage = usage;
 
   const relations: Relation[] = events.flatMap((event, index) => {
-    const record = stream.records[index]?.value;
+    const record = canonical.records[index]?.value;
     if (!record || record.isSidechain !== true) return [];
     return [{
       relation_type: 'sidechain' as const,

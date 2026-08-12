@@ -60,6 +60,7 @@ export async function verifyMemoryRoundTrip(options: VerifyOptions): Promise<str
     'POST',
     {
       libraryId: LOCAL_LIBRARY_ID,
+      options: { forceStore: true },
       items: [{
         title: `Answer Engine installer verification ${marker}`,
         content_type: 'chat',

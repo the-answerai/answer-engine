@@ -93,5 +93,5 @@ Examples:
 if (process.argv.length <= 2) {
   program.help();
 } else {
-  program.parse();
+  await program.parseAsync();
 }

@@ -1,6 +1,7 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname, join, resolve, sep } from 'node:path';
+import { attachRawArchiveManifest } from '../raw-archive.js';
 import type {
   ConversationReadResult,
   TranscriptDiscoverOptions,
@@ -252,8 +253,7 @@ export const coworkSource: TranscriptSource = {
       };
     });
 
-    return {
-      conversations: normalizeCoworkSession({
+    const conversations = normalizeCoworkSession({
         main: bundle.main,
         subagents: bundle.subagents,
         outerMetadata: outer.metadata,
@@ -265,7 +265,9 @@ export const coworkSource: TranscriptSource = {
           sha256: auditManifest.sha256,
         },
         artifacts,
-      }),
+      });
+    return {
+      conversations: attachRawArchiveManifest(conversations, bundle.archive),
       errors: bundle.errors,
       processedLines: bundle.processedLines,
       sourceFingerprint: bundle.sourceFingerprint,

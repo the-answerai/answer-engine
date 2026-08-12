@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname, join, resolve, sep } from 'node:path';
-import { writeRawArchive } from '../raw-archive.js';
+import { attachRawArchiveManifest, writeRawArchive } from '../raw-archive.js';
 import type {
   ConversationReadResult,
   TranscriptDiscoverOptions,
@@ -278,15 +278,16 @@ export const codexSource: TranscriptSource = {
     );
     const metadata = await cachedThreadMetadata(join(codexHome(), 'state_5.sqlite'));
     const threadMeta = findThreadMetadata(metadata, file.path, parsed.records);
-    return {
-      conversations: normalizeCodexSession({
+    const conversations = normalizeCodexSession({
         records: parsed.records,
         path: file.path,
         sha256: manifest.sha256,
         fallbackTimestamp: manifest.mtime,
         ...(threadMeta ? { threadMeta } : {}),
         archived: isArchivedPath(file.path),
-      }),
+      });
+    return {
+      conversations: attachRawArchiveManifest(conversations, archive),
       errors: parsed.errors,
       processedLines: parsed.processedLines,
       sourceFingerprint: manifest.sha256,

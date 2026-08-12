@@ -61,6 +61,7 @@ function parseStore(raw: string): TranscriptCursorStoreData {
 
 export class CursorStore {
   private data: TranscriptCursorStoreData | null = null;
+  private saveQueue: Promise<void> = Promise.resolve();
 
   constructor(private readonly filePath: string = getDefaultCursorFile()) {}
 
@@ -106,10 +107,14 @@ export class CursorStore {
   }
 
   async save(): Promise<void> {
-    const data = await this.load();
-    await mkdir(dirname(this.filePath), { recursive: true });
-    const tmpPath = `${this.filePath}.${process.pid}.${Date.now()}.tmp`;
-    await writeFile(tmpPath, JSON.stringify(data, null, 2), { encoding: 'utf8', mode: 0o600 });
-    await rename(tmpPath, this.filePath);
+    const save = async (): Promise<void> => {
+      const data = await this.load();
+      await mkdir(dirname(this.filePath), { recursive: true });
+      const tmpPath = `${this.filePath}.${process.pid}.${Date.now()}.tmp`;
+      await writeFile(tmpPath, JSON.stringify(data, null, 2), { encoding: 'utf8', mode: 0o600 });
+      await rename(tmpPath, this.filePath);
+    };
+    this.saveQueue = this.saveQueue.then(save, save);
+    await this.saveQueue;
   }
 }
