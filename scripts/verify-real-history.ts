@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
+import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
-import { dirname, isAbsolute, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
@@ -67,6 +68,15 @@ const RealHistoryRowSchema = z.object({
   raw_archive_manifest: z.unknown().nullable(),
 }).strict();
 
+const RealHistoryIndexRowSchema = z.object({
+  id: NonEmptyStringSchema,
+  source: TranscriptSourceSchema,
+  source_identifier: NonEmptyStringSchema,
+  summary: z.string().nullable(),
+  manifest_path: z.string().nullable(),
+  manifest_valid: z.boolean(),
+}).strict();
+
 export type RealHistoryRow = z.infer<typeof RealHistoryRowSchema>;
 
 export interface RealHistoryDatabase {
@@ -77,6 +87,8 @@ export interface RealHistoryVerificationOptions {
   tenantId: string;
   cursorFile: string;
   syncSummaryFiles: string[];
+  syncLogFile?: string;
+  syncAfter?: string;
   sampleSize: number;
 }
 
@@ -92,6 +104,7 @@ export interface RealHistoryVerificationReport {
   sampledArchives: Record<TranscriptSource, number>;
   sampledFiles: Record<TranscriptSource, number>;
   syncRuns: Record<TranscriptSource, number>;
+  syncCompletedAt: Record<TranscriptSource, string | null>;
 }
 
 export class RealHistoryVerificationError extends Error {
@@ -104,9 +117,28 @@ export class RealHistoryVerificationError extends Error {
 const RealHistoryVerificationOptionsSchema = z.object({
   tenantId: z.string().uuid(),
   cursorFile: NonEmptyStringSchema,
-  syncSummaryFiles: z.array(NonEmptyStringSchema).min(1),
+  syncSummaryFiles: z.array(NonEmptyStringSchema),
+  syncLogFile: NonEmptyStringSchema.optional(),
+  syncAfter: z.string().datetime().optional(),
   sampleSize: z.number().int().positive().max(100),
-}).strict();
+}).strict().superRefine((value, context) => {
+  const hasSummaries = value.syncSummaryFiles.length > 0;
+  const hasLog = value.syncLogFile !== undefined;
+  if (hasSummaries === hasLog) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'provide either sync summary files or one sync log file',
+      path: ['syncSummaryFiles'],
+    });
+  }
+  if (value.syncAfter && !hasLog) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'syncAfter requires syncLogFile',
+      path: ['syncAfter'],
+    });
+  }
+});
 
 function emptySourceCounts(): Record<TranscriptSource, number> {
   return { 'claude-code': 0, codex: 0, cowork: 0 };
@@ -155,7 +187,6 @@ function inventorySource(key: string): TranscriptSource | undefined {
 
 async function verifyInventory(
   cursorFile: string,
-  expected: Readonly<Record<TranscriptSource, number>>,
 ): Promise<Record<TranscriptSource, number>> {
   const inventory = parseDocument(
     CursorInventorySchema,
@@ -172,11 +203,6 @@ async function verifyInventory(
     }
   }
   for (const source of TRANSCRIPT_SOURCES) {
-    if (counts[source] !== expected[source]) {
-      throw new RealHistoryVerificationError(
-        `${source} inventory: expected ${expected[source]}, found ${counts[source]}`,
-      );
-    }
     if (skipped[source] > 0) {
       throw new RealHistoryVerificationError(
         `${source} cursor inventory reports ${skipped[source]} skipped item`
@@ -188,18 +214,19 @@ async function verifyInventory(
 }
 
 async function verifySyncSummaries(
-  files: readonly string[],
+  summaries: readonly z.infer<typeof SyncRunSummarySchema>[],
   cursorFile: string,
+  cursorInventory: Readonly<Record<TranscriptSource, number>>,
   expected: Readonly<Record<TranscriptSource, number>>,
-): Promise<Record<TranscriptSource, number>> {
-  const counts = emptySourceCounts();
-  for (const file of files) {
-    const summary = parseDocument<z.infer<typeof SyncRunSummarySchema>>(
-      SyncSummaryDocumentSchema,
-      await readJson(file, 'sync summary'),
-      'sync summary',
-    );
-    counts[summary.sourceId] += 1;
+): Promise<{
+  inventory: Record<TranscriptSource, number>;
+  runs: Record<TranscriptSource, number>;
+}> {
+  const inventory = emptySourceCounts();
+  const runs = emptySourceCounts();
+  for (const summary of summaries) {
+    runs[summary.sourceId] += 1;
+    inventory[summary.sourceId] = summary.filesScanned;
     if (resolve(summary.cursorFile) !== resolve(cursorFile)) {
       throw new RealHistoryVerificationError(
         `${summary.sourceId} sync summary references a different cursor inventory`,
@@ -211,21 +238,86 @@ async function verifySyncSummaries(
         + `${summary.failedItems} failed items, ${summary.parseErrors} parse errors`,
       );
     }
-    if (summary.filesScanned !== expected[summary.sourceId]) {
+    if (summary.filesScanned < expected[summary.sourceId]) {
       throw new RealHistoryVerificationError(
-        `${summary.sourceId} sync scan: expected ${expected[summary.sourceId]} files, `
+        `${summary.sourceId} sync scan: expected at least ${expected[summary.sourceId]} files, `
         + `found ${summary.filesScanned}`,
+      );
+    }
+    if (cursorInventory[summary.sourceId] < summary.filesScanned) {
+      throw new RealHistoryVerificationError(
+        `${summary.sourceId} cursor inventory: expected at least ${summary.filesScanned}, `
+        + `found ${cursorInventory[summary.sourceId]}`,
       );
     }
   }
   for (const source of TRANSCRIPT_SOURCES) {
-    if (counts[source] !== 1) {
+    if (runs[source] !== 1) {
       throw new RealHistoryVerificationError(
-        `${source} requires exactly one successful sync summary; found ${counts[source]}`,
+        `${source} requires exactly one successful sync summary; found ${runs[source]}`,
       );
     }
   }
-  return counts;
+  return { inventory, runs };
+}
+
+interface SyncEvidence {
+  summaries: z.infer<typeof SyncRunSummarySchema>[];
+  completedAt: Record<TranscriptSource, string | null>;
+}
+
+async function readSyncEvidence(
+  options: z.infer<typeof RealHistoryVerificationOptionsSchema>,
+): Promise<SyncEvidence> {
+  const completedAt: Record<TranscriptSource, string | null> = {
+    'claude-code': null,
+    codex: null,
+    cowork: null,
+  };
+  if (!options.syncLogFile) {
+    const summaries = await Promise.all(options.syncSummaryFiles.map(async (file) => (
+      parseDocument<z.infer<typeof SyncRunSummarySchema>>(
+        SyncSummaryDocumentSchema,
+        await readJson(file, 'sync summary'),
+        'sync summary',
+      )
+    )));
+    return { summaries, completedAt };
+  }
+
+  const log = (await readBytes(options.syncLogFile, 'sync service log')).toString('utf8');
+  const latest = new Map<TranscriptSource, {
+    timestamp: string;
+    summary: z.infer<typeof SyncRunSummarySchema>;
+  }>();
+  const pattern = /^\[([^\]]+)\] source=(claude-code|codex|cowork) files=(\d+) found=(\d+) imported=(\d+) failed=(\d+) parseErrors=(\d+)$/gm;
+  for (const match of log.matchAll(pattern)) {
+    const timestamp = z.string().datetime().parse(match[1]);
+    if (options.syncAfter && timestamp < options.syncAfter) continue;
+    const sourceId = TranscriptSourceSchema.parse(match[2]);
+    const summary = SyncRunSummarySchema.parse({
+      sourceId,
+      cursorFile: options.cursorFile,
+      filesScanned: Number(match[3]),
+      turnsFound: Number(match[4]),
+      turnsImported: Number(match[5]),
+      failedItems: Number(match[6]),
+      parseErrors: Number(match[7]),
+    });
+    latest.set(sourceId, { timestamp, summary });
+  }
+  const summaries: z.infer<typeof SyncRunSummarySchema>[] = [];
+  for (const source of TRANSCRIPT_SOURCES) {
+    const evidence = latest.get(source);
+    if (!evidence) {
+      throw new RealHistoryVerificationError(
+        `${source} has no sync service run${options.syncAfter ? ` after ${options.syncAfter}` : ''}`,
+      );
+    }
+    summaries.push(evidence.summary);
+    completedAt[source] = evidence.timestamp;
+  }
+  return { summaries, completedAt };
 }
 
 function canonicalJson(value: unknown): string {
@@ -258,6 +350,31 @@ function sampleScore(row: RealHistoryRow): string {
 
 interface ValidatedHistoryRow extends RealHistoryRow {
   manifest: z.infer<typeof StoredRawArchiveManifestSchema>;
+}
+
+type RealHistoryIndexRow = z.infer<typeof RealHistoryIndexRowSchema>;
+
+function validateIndexRows(rows: unknown[]): Array<RealHistoryIndexRow & { manifest_path: string }> {
+  const parsedRows = rows.map((row) => parseDocument(
+    RealHistoryIndexRowSchema,
+    row,
+    'database history index row',
+  ));
+  const missingSummaries = parsedRows.filter((row) => !row.summary?.trim());
+  if (missingSummaries.length > 0) {
+    throw new RealHistoryVerificationError(
+      `${missingSummaries.length} history rows are missing summaries`,
+    );
+  }
+  const missingManifests = parsedRows.filter((row) => (
+    !row.manifest_valid || !row.manifest_path?.trim()
+  ));
+  if (missingManifests.length > 0) {
+    throw new RealHistoryVerificationError(
+      `${missingManifests.length} history rows are missing raw archive manifests`,
+    );
+  }
+  return parsedRows as Array<RealHistoryIndexRow & { manifest_path: string }>;
 }
 
 function validateRows(rows: unknown[]): ValidatedHistoryRow[] {
@@ -325,14 +442,14 @@ async function verifySampledManifest(row: ValidatedHistoryRow): Promise<number> 
 }
 
 function selectSamples(
-  rows: readonly ValidatedHistoryRow[],
+  rows: readonly Array<RealHistoryIndexRow & { manifest_path: string }>,
   source: TranscriptSource,
   sampleSize: number,
-): ValidatedHistoryRow[] {
-  const uniqueManifests = new Map<string, ValidatedHistoryRow>();
+): Array<RealHistoryIndexRow & { manifest_path: string }> {
+  const uniqueManifests = new Map<string, RealHistoryIndexRow & { manifest_path: string }>();
   for (const row of rows) {
-    if (row.source !== source || uniqueManifests.has(row.manifest.manifest_path)) continue;
-    uniqueManifests.set(row.manifest.manifest_path, row);
+    if (row.source !== source || uniqueManifests.has(row.manifest_path)) continue;
+    uniqueManifests.set(row.manifest_path, row);
   }
   return [...uniqueManifests.values()]
     .sort((left, right) => sampleScore(left).localeCompare(sampleScore(right)))
@@ -345,14 +462,23 @@ export async function verifyRealHistory(
 ): Promise<RealHistoryVerificationReport> {
   const options = RealHistoryVerificationOptionsSchema.parse(input);
   const expected = dependencies.expectedInventory ?? EXPECTED_REAL_HISTORY_INVENTORY;
-  const inventory = await verifyInventory(options.cursorFile, expected);
-  const syncRuns = await verifySyncSummaries(
-    options.syncSummaryFiles,
+  const cursorInventory = await verifyInventory(options.cursorFile);
+  const syncEvidenceInput = await readSyncEvidence(options);
+  const syncEvidence = await verifySyncSummaries(
+    syncEvidenceInput.summaries,
     options.cursorFile,
+    cursorInventory,
     expected,
   );
   const query = await dependencies.database.query<unknown>(
-    `SELECT id::text, source, source_identifier, summary, raw_archive_manifest
+    `SELECT id::text, source, source_identifier, summary,
+            raw_archive_manifest->>'manifest_path' AS manifest_path,
+            CASE
+              WHEN jsonb_typeof(raw_archive_manifest) = 'object'
+               AND jsonb_typeof(raw_archive_manifest->'files') = 'array'
+              THEN jsonb_array_length(raw_archive_manifest->'files') > 0
+              ELSE false
+            END AS manifest_valid
        FROM content_items
       WHERE tenant_id = $1
         AND content_type = 'chat'
@@ -360,11 +486,12 @@ export async function verifyRealHistory(
       ORDER BY source, source_identifier, id`,
     [options.tenantId, TRANSCRIPT_SOURCES],
   );
-  const rows = validateRows(query.rows);
+  const rows = validateIndexRows(query.rows);
   const historyRows = emptySourceCounts();
   const validatedManifests = emptySourceCounts();
   const sampledArchives = emptySourceCounts();
   const sampledFiles = emptySourceCounts();
+  const sampleCandidates: Array<RealHistoryIndexRow & { manifest_path: string }> = [];
 
   for (const row of rows) {
     historyRows[row.source] += 1;
@@ -380,30 +507,144 @@ export async function verifyRealHistory(
         `${source} archive sample: expected ${options.sampleSize}, found ${samples.length}`,
       );
     }
-    for (const sample of samples) {
-      sampledFiles[source] += await verifySampledManifest(sample);
-      sampledArchives[source] += 1;
-    }
+    sampleCandidates.push(...samples);
+  }
+
+  const sampleQuery = await dependencies.database.query<unknown>(
+    `SELECT id::text, source, source_identifier, summary, raw_archive_manifest
+       FROM content_items
+      WHERE tenant_id = $1
+        AND id = ANY($2::uuid[])
+      ORDER BY source, source_identifier, id`,
+    [options.tenantId, sampleCandidates.map((sample) => sample.id)],
+  );
+  const samples = validateRows(sampleQuery.rows);
+  if (samples.length !== sampleCandidates.length) {
+    throw new RealHistoryVerificationError(
+      `archive sample query: expected ${sampleCandidates.length}, found ${samples.length}`,
+    );
+  }
+  for (const sample of samples) {
+    sampledFiles[sample.source] += await verifySampledManifest(sample);
+    sampledArchives[sample.source] += 1;
   }
 
   return {
-    inventory,
+    inventory: syncEvidence.inventory,
     historyRows,
     validatedManifests,
     sampledArchives,
     sampledFiles,
-    syncRuns,
+    syncRuns: syncEvidence.runs,
+    syncCompletedAt: syncEvidenceInput.completedAt,
   };
 }
 
-function parseCliOptions(argv: readonly string[]): RealHistoryVerificationOptions {
+type ProcessRunner = (
+  command: string,
+  args: readonly string[],
+  input: string,
+) => Promise<{ status: number; stdout: string; stderr: string }>;
+
+const runProcess: ProcessRunner = (command, args, input) => new Promise((resolvePromise, reject) => {
+  const child = spawn(command, [...args], { stdio: ['pipe', 'pipe', 'pipe'] });
+  let stdout = '';
+  let stderr = '';
+  child.stdout.setEncoding('utf8');
+  child.stderr.setEncoding('utf8');
+  child.stdout.on('data', (chunk: string) => { stdout += chunk; });
+  child.stderr.on('data', (chunk: string) => { stderr += chunk; });
+  child.on('error', reject);
+  child.on('close', (status) => resolvePromise({ status: status ?? 1, stdout, stderr }));
+  child.stdin.end(input);
+});
+
+export class InstallerComposeDatabase implements RealHistoryDatabase {
+  constructor(
+    private readonly home: string,
+    private readonly runner: ProcessRunner = runProcess,
+    private readonly configuredProjectName?: string,
+  ) {}
+
+  private async projectName(): Promise<string> {
+    if (this.configuredProjectName) return this.configuredProjectName;
+    const environment = (await readBytes(
+      join(this.home, '.env.compose'),
+      'installer Compose environment',
+    )).toString('utf8');
+    const projectName = environment.match(/^COMPOSE_PROJECT_NAME=([a-zA-Z0-9_-]+)$/m)?.[1];
+    if (!projectName) {
+      throw new RealHistoryVerificationError(
+        'installer Compose environment is missing a safe COMPOSE_PROJECT_NAME',
+      );
+    }
+    return projectName;
+  }
+
+  async query<Row>(text: string, values: unknown[]): Promise<{ rows: Row[] }> {
+    const tenantId = z.string().uuid().parse(values[0]);
+    const parameters: Array<[string, string]> = [['tenant_id', tenantId]];
+    let parameterized = text.replace('$1', ":'tenant_id'::uuid");
+    if (parameterized.includes('$2::text[]')) {
+      const sources = z.array(TranscriptSourceSchema)
+        .length(TRANSCRIPT_SOURCES.length)
+        .parse(values[1]);
+      parameterized = parameterized.replace(
+        '$2::text[]',
+        "string_to_array(:'sources', ',')::text[]",
+      );
+      parameters.push(['sources', sources.join(',')]);
+    } else if (parameterized.includes('$2::uuid[]')) {
+      const ids = z.array(z.string().uuid()).min(1).max(100).parse(values[1]);
+      parameterized = parameterized.replace(
+        '$2::uuid[]',
+        "string_to_array(:'ids', ',')::uuid[]",
+      );
+      parameters.push(['ids', ids.join(',')]);
+    }
+    if (/\$\d+/.test(parameterized)) {
+      throw new RealHistoryVerificationError('installer database query has unsupported parameters');
+    }
+    const sql = `SELECT row_to_json(history)::text FROM (${parameterized}) history;\n`;
+    const projectName = await this.projectName();
+    const result = await this.runner('docker', [
+      'compose',
+      '--project-name', projectName,
+      '--project-directory', this.home,
+      '--env-file', join(this.home, '.env.compose'),
+      '-f', join(this.home, 'docker-compose.yml'),
+      'exec', '-T', 'postgres',
+      'psql', '-U', 'postgres', '-d', 'answerengine',
+      '-v', 'ON_ERROR_STOP=1',
+      ...parameters.flatMap(([name, value]) => ['-v', `${name}=${value}`]),
+      '-Atq', '-f', '-',
+    ], sql);
+    if (result.status !== 0) {
+      throw new RealHistoryVerificationError(
+        `installer database query failed: ${result.stderr.trim() || `exit ${result.status}`}`,
+      );
+    }
+    const parsed = result.stdout.split(/\r?\n/)
+      .filter((line) => line.trim())
+      .map((line) => JSON.parse(line) as unknown);
+    return { rows: parsed as Row[] };
+  }
+}
+
+function parseCliOptions(argv: readonly string[]): {
+  installerHome?: string;
+  verification: RealHistoryVerificationOptions;
+} {
   const parsed = parseArgs({
     args: [...argv],
     allowPositionals: false,
     strict: true,
     options: {
       'cursor-file': { type: 'string', default: syncCursorFilePath() },
+      'installer-home': { type: 'string' },
       'sample-size': { type: 'string', default: '3' },
+      'sync-after': { type: 'string' },
+      'sync-log': { type: 'string' },
       'sync-summary': { type: 'string', multiple: true },
       'tenant-id': {
         type: 'string',
@@ -411,28 +652,38 @@ function parseCliOptions(argv: readonly string[]): RealHistoryVerificationOption
       },
     },
   });
-  return RealHistoryVerificationOptionsSchema.parse({
+  const verification = RealHistoryVerificationOptionsSchema.parse({
     tenantId: parsed.values['tenant-id'],
     cursorFile: parsed.values['cursor-file'],
     syncSummaryFiles: parsed.values['sync-summary'] ?? [],
+    syncLogFile: parsed.values['sync-log'],
+    syncAfter: parsed.values['sync-after'],
     sampleSize: Number(parsed.values['sample-size']),
   });
+  return {
+    verification,
+    ...(parsed.values['installer-home']
+      ? { installerHome: resolve(parsed.values['installer-home']) }
+      : {}),
+  };
 }
 
 async function main(): Promise<void> {
   const options = parseCliOptions(process.argv.slice(2));
-  const pool = createDatabasePool();
-  const database: RealHistoryDatabase = {
-    async query<Row>(text: string, values: unknown[]): Promise<{ rows: Row[] }> {
-      const result = await pool.query(text, values);
-      return { rows: result.rows as unknown as Row[] };
-    },
-  };
+  const pool = options.installerHome ? undefined : createDatabasePool();
+  const database: RealHistoryDatabase = options.installerHome
+    ? new InstallerComposeDatabase(options.installerHome)
+    : {
+      async query<Row>(text: string, values: unknown[]): Promise<{ rows: Row[] }> {
+        const result = await pool?.query(text, values);
+        return { rows: (result?.rows ?? []) as unknown as Row[] };
+      },
+    };
   try {
-    const report = await verifyRealHistory(options, { database });
+    const report = await verifyRealHistory(options.verification, { database });
     process.stdout.write(`${JSON.stringify({ success: true, data: report }, null, 2)}\n`);
   } finally {
-    await pool.end();
+    await pool?.end();
   }
 }
 

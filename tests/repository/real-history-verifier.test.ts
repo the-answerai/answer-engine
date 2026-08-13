@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  InstallerComposeDatabase,
   type RealHistoryDatabase,
   type RealHistoryRow,
   verifyRealHistory,
@@ -26,6 +27,23 @@ class FixtureDatabase implements RealHistoryDatabase {
 
   async query<Row>(text: string, values: readonly unknown[]): Promise<{ rows: Row[] }> {
     this.queries.push({ text, values });
+    if (text.includes('AS manifest_path')) {
+      return {
+        rows: this.rows.map((row) => {
+          const manifest = row.raw_archive_manifest as Record<string, unknown> | null;
+          return {
+            id: row.id,
+            source: row.source,
+            source_identifier: row.source_identifier,
+            summary: row.summary,
+            manifest_path: typeof manifest?.manifest_path === 'string'
+              ? manifest.manifest_path
+              : null,
+            manifest_valid: Array.isArray(manifest?.files) && manifest.files.length > 0,
+          } as Row;
+        }),
+      };
+    }
     return { rows: this.rows as unknown as Row[] };
   }
 }
@@ -141,8 +159,73 @@ describe('real history acceptance verifier', () => {
     expect(report.historyRows).toEqual({ 'claude-code': 1, codex: 1, cowork: 1 });
     expect(report.sampledArchives).toEqual({ 'claude-code': 1, codex: 1, cowork: 1 });
     expect(report.sampledFiles).toEqual({ 'claude-code': 1, codex: 1, cowork: 1 });
-    expect(fixture.database.queries).toHaveLength(1);
+    expect(fixture.database.queries).toHaveLength(2);
     expect(fixture.database.queries[0]?.values).toEqual([TENANT_ID, SOURCES]);
+    expect(fixture.database.queries[1]?.values).toEqual([
+      TENANT_ID,
+      ['history-0', 'history-1', 'history-2'],
+    ]);
+  });
+
+  it('accepts recent zero-failure runs from the background service log', async () => {
+    const fixture = await createFixture();
+    const syncLogFile = join(tempDirectories.at(-1) as string, 'sync.out.log');
+    await writeFile(syncLogFile, [
+      '[2026-08-13T06:59:59.000Z] source=claude-code files=1 found=1 imported=1 failed=0 parseErrors=0',
+      '[2026-08-13T07:00:00.000Z] source=claude-code files=1 found=0 imported=0 failed=0 parseErrors=0',
+      '[2026-08-13T07:00:01.000Z] source=codex files=1 found=0 imported=0 failed=0 parseErrors=0',
+      '[2026-08-13T07:00:02.000Z] source=cowork files=1 found=0 imported=0 failed=0 parseErrors=0',
+    ].join('\n'));
+
+    const report = await verifyRealHistory({
+      cursorFile: fixture.cursorFile,
+      sampleSize: 1,
+      syncAfter: '2026-08-13T07:00:00.000Z',
+      syncLogFile,
+      syncSummaryFiles: [],
+      tenantId: TENANT_ID,
+    }, {
+      database: fixture.database,
+      expectedInventory: EXPECTED_INVENTORY,
+    });
+
+    expect(report.syncCompletedAt).toEqual({
+      'claude-code': '2026-08-13T07:00:00.000Z',
+      codex: '2026-08-13T07:00:01.000Z',
+      cowork: '2026-08-13T07:00:02.000Z',
+    });
+  });
+
+  it('queries the installer-managed database through its Compose project', async () => {
+    const calls: Array<{ command: string; args: readonly string[]; input: string }> = [];
+    const row = {
+      id: 'history-1',
+      source: 'codex',
+      source_identifier: 'codex:history-1',
+      summary: 'summary',
+      raw_archive_manifest: null,
+    };
+    const database = new InstallerComposeDatabase('/tmp/installer-home', async (
+      command,
+      args,
+      input,
+    ) => {
+      calls.push({ command, args, input });
+      return { status: 0, stdout: JSON.stringify(row), stderr: '' };
+    }, 'answer-engine-test');
+
+    const result = await database.query<unknown>(
+      'SELECT * FROM content_items WHERE tenant_id = $1 AND source = ANY($2::text[])',
+      [TENANT_ID, SOURCES],
+    );
+
+    expect(result.rows).toEqual([row]);
+    expect(calls[0]?.command).toBe('docker');
+    expect(calls[0]?.args).toContain('/tmp/installer-home/docker-compose.yml');
+    expect(calls[0]?.args).toContain('answer-engine-test');
+    expect(calls[0]?.args).toContain(`tenant_id=${TENANT_ID}`);
+    expect(calls[0]?.input).toContain("tenant_id = :'tenant_id'::uuid");
+    expect(calls[0]?.input).toContain("string_to_array(:'sources', ',')::text[]");
   });
 
   it('rejects an incomplete cursor inventory', async () => {
@@ -162,7 +245,61 @@ describe('real history acceptance verifier', () => {
     }, {
       database: fixture.database,
       expectedInventory: EXPECTED_INVENTORY,
-    })).rejects.toThrow('cowork inventory: expected 1, found 0');
+    })).rejects.toThrow('cowork cursor inventory: expected at least 1, found 0');
+  });
+
+  it('does not count stale cursor entries as currently discovered files', async () => {
+    const fixture = await createFixture();
+    const cursor = JSON.parse(await readFile(fixture.cursorFile, 'utf8')) as {
+      files: Record<string, Record<string, unknown>>;
+    };
+    const firstClaudeCursor = Object.entries(cursor.files)
+      .find(([key]) => key.startsWith('claude-code:'))?.[1];
+    if (!firstClaudeCursor) throw new Error('Claude cursor fixture is missing');
+    cursor.files['claude-code:/deleted-session.jsonl'] = { ...firstClaudeCursor };
+    await writeFile(fixture.cursorFile, JSON.stringify(cursor));
+
+    const report = await verifyRealHistory({
+      cursorFile: fixture.cursorFile,
+      sampleSize: 1,
+      syncSummaryFiles: fixture.syncSummaryFiles,
+      tenantId: TENANT_ID,
+    }, {
+      database: fixture.database,
+      expectedInventory: EXPECTED_INVENTORY,
+    });
+
+    expect(report.inventory['claude-code']).toBe(1);
+  });
+
+  it('accepts append-only source growth above the required baseline', async () => {
+    const fixture = await createFixture();
+    const cursor = JSON.parse(await readFile(fixture.cursorFile, 'utf8')) as {
+      files: Record<string, Record<string, unknown>>;
+    };
+    const firstClaudeCursor = Object.entries(cursor.files)
+      .find(([key]) => key.startsWith('claude-code:'))?.[1];
+    if (!firstClaudeCursor) throw new Error('Claude cursor fixture is missing');
+    cursor.files['claude-code:/new-session.jsonl'] = { ...firstClaudeCursor };
+    await writeFile(fixture.cursorFile, JSON.stringify(cursor));
+    const claudeSummaryPath = fixture.syncSummaryFiles[0] as string;
+    const summary = JSON.parse(await readFile(claudeSummaryPath, 'utf8')) as {
+      data: Record<string, unknown>;
+    };
+    summary.data.filesScanned = 2;
+    await writeFile(claudeSummaryPath, JSON.stringify(summary));
+
+    const report = await verifyRealHistory({
+      cursorFile: fixture.cursorFile,
+      sampleSize: 1,
+      syncSummaryFiles: fixture.syncSummaryFiles,
+      tenantId: TENANT_ID,
+    }, {
+      database: fixture.database,
+      expectedInventory: EXPECTED_INVENTORY,
+    });
+
+    expect(report.inventory['claude-code']).toBe(2);
   });
 
   it('rejects cursor inventory entries with accumulated parse skips', async () => {
