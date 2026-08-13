@@ -41,9 +41,14 @@ pnpm test
 pnpm build
 ```
 
-Any UI change must also be verified in a browser at desktop and 375px mobile
-width. Exercise the changed interaction, capture a screenshot, and check focus
-and reduced-motion behavior.
+Any UI change must also be verified with `pnpm browser:ui` at desktop and 375px
+mobile width. Exercise the changed interaction, capture a screenshot, and check
+focus and reduced-motion behavior. Alpha Loop runs `pnpm browser:prepare` in the
+issue worktree before starting its sandboxed worker; this prelaunches Chrome and
+keeps the shared socket/profile under `/tmp/answer-engine-oss-browser`. Do not
+run the raw CLI from a worker or bypass `browser:prepare`. Do not substitute
+`playwright-cli` for live verification. Playwright remains valid only for the
+repository's automated E2E test suite.
 
 ## Engineering rules
 
