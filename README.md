@@ -113,6 +113,7 @@ Core routes:
 | `GET/POST /api/v1/batch-jobs` | Manage provider-neutral local batch work |
 | `GET/POST /api/v1/access-tokens` | Manage tenant- or library-scoped `ae_live_` tokens |
 | `GET /api/v1/audit` | Page local tenant or library audit history |
+| `GET/PATCH /api/v1/settings` | Manage safe local workspace preferences without exposing provider credentials |
 | `GET/POST /api/v1/content/:id/blobs` | List or store local content blobs |
 
 The all-content system library is provisioned automatically. User-defined

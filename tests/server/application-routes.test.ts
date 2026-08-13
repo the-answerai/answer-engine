@@ -53,6 +53,16 @@ describe('neutral application routes', () => {
     expect(previewLibrary).not.toHaveBeenCalled();
   });
 
+  it('rejects untyped dashboard widgets before persistence', async () => {
+    const createDashboard = vi.fn();
+    const response = await request(routeApp({ createDashboard }))
+      .post(`/api/v1/libraries/${randomUUID()}/dashboards`)
+      .send({ name: 'Unsafe view', widgets: [{ type: 'remote-script', config: { url: 'https://example.com' } }] });
+
+    expect(response.status).toBe(400);
+    expect(createDashboard).not.toHaveBeenCalled();
+  });
+
   it('returns a newly minted access token only from the creation response', async () => {
     const rawToken = 'ae_live_creation_only_secret';
     const createAccessToken = vi.fn().mockResolvedValue({
@@ -64,6 +74,36 @@ describe('neutral application routes', () => {
 
     expect(response.status).toBe(201);
     expect(response.body.data.token).toBe(rawToken);
+  });
+
+  it('reads and validates local-owner settings without accepting unknown or secret fields', async () => {
+    const settings = {
+      defaultPageSize: 50,
+      defaultLibraryId: null,
+      density: 'compact',
+      defaultExportFormat: 'json',
+    };
+    const getSettings = vi.fn().mockResolvedValue(settings);
+    const updateSettings = vi.fn().mockResolvedValue(settings);
+    const app = routeApp({ getSettings, updateSettings });
+
+    const getResponse = await request(app).get('/api/v1/settings');
+    const invalidResponse = await request(app)
+      .patch('/api/v1/settings')
+      .send({ providerApiKey: 'must-not-be-accepted' });
+    const patchResponse = await request(app)
+      .patch('/api/v1/settings')
+      .send({ defaultPageSize: 50, density: 'compact' });
+
+    expect(getResponse.status).toBe(200);
+    expect(getResponse.body.data).toEqual(settings);
+    expect(invalidResponse.status).toBe(400);
+    expect(updateSettings).toHaveBeenCalledTimes(1);
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ tenantId: expect.any(String) }),
+      { defaultPageSize: 50, density: 'compact' },
+    );
+    expect(patchResponse.body.data).toEqual(settings);
   });
 
   it('returns a conflict response for database integrity violations', async () => {
@@ -94,7 +134,7 @@ describe('neutral application routes', () => {
 
     expect(response.status).toBe(200);
     expect(Object.keys(response.body.endpoints)).toEqual(expect.arrayContaining([
-      'content', 'agent', 'tags', 'libraries', 'batchJobs', 'accessTokens', 'audit',
+      'content', 'agent', 'tags', 'libraries', 'batchJobs', 'accessTokens', 'audit', 'settings',
     ]));
     expect(JSON.stringify(response.body)).not.toMatch(/rbac|billing|permissions|teams|roles/i);
   });

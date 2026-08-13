@@ -3,6 +3,7 @@ import { Link, NavLink, useParams } from 'react-router-dom';
 import { Button, ConfirmDialog, Dialog, EmptyState, Field, LoadingState, Notice, PageHeader, SubmitForm, errorMessage, formatDate } from '../components';
 import { useContent, useCreateLibrary, useDeleteLibrary, useLibraries, useLibrary, useLibraryMembers, usePreviewLibrary, useSetLibraryMembership, useTags, useUpdateLibrary } from '../hooks';
 import type { FilterCondition, Library, LibraryFilter } from '../types';
+import { AuditPanel, DashboardsPanel, RecipesPanel, ReportsPanel } from './LibraryAdvanced';
 
 export function LibrariesPage() {
   const libraries = useLibraries(); const create = useCreateLibrary(); const update = useUpdateLibrary(); const remove = useDeleteLibrary();
@@ -18,10 +19,11 @@ export function LibrariesPage() {
 }
 
 export function LibraryPage() {
-  const { libraryId } = useParams(); const library = useLibrary(libraryId); const [tab, setTab] = useState<'members' | 'overview'>('members');
+  const { libraryId, section = 'members' } = useParams(); const library = useLibrary(libraryId);
   if (library.isLoading) return <section className="workspace-page"><LoadingState label="Loading library" /></section>;
   if (library.error || !library.data) return <section className="workspace-page"><Notice kind="error">{errorMessage(library.error, 'Library not found.')}</Notice></section>;
-  return <section className="workspace-page"><PageHeader eyebrow="FIG. 04A / LIBRARY" title={library.data.name} description={library.data.description || 'A focused workspace over local content.'} actions={<Link className="button primary" to={`/libraries/${library.data.id}/answers`}>Ask this library</Link>} /><div className="subnav"><button className={tab === 'members' ? 'active' : ''} onClick={() => setTab('members')}>Members</button><button className={tab === 'overview' ? 'active' : ''} onClick={() => setTab('overview')}>Overview & filter</button><NavLink to="/libraries">All libraries</NavLink></div>{tab === 'members' ? <LibraryMembers library={library.data} /> : <LibraryOverview library={library.data} />}</section>;
+  const base = `/libraries/${library.data.id}`;
+  return <section className="workspace-page"><PageHeader eyebrow="FIG. 04A / LIBRARY" title={library.data.name} description={library.data.description || 'A focused workspace over local content.'} actions={<Link className="button primary" to={`${base}/answers`}>Ask this library</Link>} /><div className="subnav library-subnav"><NavLink end to={base}>Members</NavLink><NavLink to={`${base}/overview`}>Overview & filter</NavLink><NavLink to={`${base}/recipes`}>Recipes</NavLink><NavLink to={`${base}/reports`}>Reports</NavLink><NavLink to={`${base}/dashboards`}>Dashboards</NavLink><NavLink to={`${base}/audit`}>Audit</NavLink><NavLink to="/settings">Tokens & settings</NavLink><NavLink to="/libraries">All libraries</NavLink></div>{section === 'members' ? <LibraryMembers library={library.data} /> : section === 'overview' ? <LibraryOverview library={library.data} /> : section === 'recipes' ? <RecipesPanel libraryId={library.data.id} /> : section === 'reports' ? <ReportsPanel libraryId={library.data.id} /> : section === 'dashboards' ? <DashboardsPanel libraryId={library.data.id} /> : section === 'audit' ? <AuditPanel libraryId={library.data.id} /> : <Notice kind="error">Unknown library section.</Notice>}</section>;
 }
 
 function LibraryMembers({ library }: { library: Library }) {

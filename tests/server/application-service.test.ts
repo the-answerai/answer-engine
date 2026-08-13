@@ -43,4 +43,41 @@ describe('ApplicationService storage consistency', () => {
 
     expect(remove).toHaveBeenCalledWith(storageKey);
   });
+
+  it('preserves installer-managed tenant settings while returning only local UI preferences', async () => {
+    const tenantId = randomUUID();
+    const defaultLibraryId = randomUUID();
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ id: defaultLibraryId }] })
+      .mockResolvedValueOnce({ rows: [{ settings: {
+        no_training: true,
+        providerApiKey: 'hidden',
+        defaultPageSize: 50,
+        defaultLibraryId,
+        density: 'comfortable',
+        defaultExportFormat: 'csv',
+      } }] })
+      .mockResolvedValueOnce({ rows: [] });
+    const service = new ApplicationService(
+      { query } as unknown as Database,
+      { embed: vi.fn(), complete: vi.fn() },
+      {} as LocalBlobStorage,
+    );
+
+    await expect(service.updateSettings(
+      { tenantId, apiKeyId: randomUUID() },
+      { defaultPageSize: 50, defaultLibraryId, defaultExportFormat: 'csv' },
+    )).resolves.toEqual({
+      defaultPageSize: 50,
+      defaultLibraryId,
+      density: 'comfortable',
+      defaultExportFormat: 'csv',
+    });
+
+    expect(query.mock.calls[1]?.[0]).toContain("settings || $2::jsonb");
+    expect(query.mock.calls[1]?.[1]).toEqual([
+      tenantId,
+      JSON.stringify({ defaultPageSize: 50, defaultLibraryId, defaultExportFormat: 'csv' }),
+    ]);
+  });
 });

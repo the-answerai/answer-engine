@@ -634,6 +634,24 @@ paths:
       summary: Page through local tenant or library audit history
       responses:
         '200': { $ref: '#/components/responses/Success' }
+  /api/v1/settings:
+    get:
+      tags: [Operations]
+      summary: Read safe local workspace preferences
+      description: Returns only neutral UI preferences; installer-managed provider credentials are never exposed.
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    patch:
+      tags: [Operations]
+      summary: Update safe local workspace preferences
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LocalSettingsUpdate' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/ValidationError' }
   /api/v1/content/{id}/blobs:
     parameters:
       - { $ref: '#/components/parameters/ContentId' }
@@ -940,16 +958,42 @@ components:
       properties:
         name: { type: string, minLength: 1, maxLength: 200 }
         description: { type: [string, 'null'], maxLength: 2000 }
-        layout: { type: array, items: { type: object, additionalProperties: true }, default: [] }
-        widgets: { type: array, items: { type: object, additionalProperties: true }, default: [] }
+        layout: { type: array, maxItems: 100, items: { $ref: '#/components/schemas/DashboardLayout' }, default: [] }
+        widgets: { type: array, maxItems: 100, items: { $ref: '#/components/schemas/DashboardWidget' }, default: [] }
     DashboardUpdate:
       type: object
       additionalProperties: false
       properties:
         name: { type: string, minLength: 1, maxLength: 200 }
         description: { type: [string, 'null'], maxLength: 2000 }
-        layout: { type: array, items: { type: object, additionalProperties: true } }
-        widgets: { type: array, items: { type: object, additionalProperties: true } }
+        layout: { type: array, maxItems: 100, items: { $ref: '#/components/schemas/DashboardLayout' } }
+        widgets: { type: array, maxItems: 100, items: { $ref: '#/components/schemas/DashboardWidget' } }
+    DashboardLayout:
+      type: object
+      additionalProperties: false
+      required: [widgetId, x, y, width, height]
+      properties:
+        widgetId: { type: string, format: uuid }
+        x: { type: integer, minimum: 0, maximum: 11 }
+        y: { type: integer, minimum: 0, maximum: 10000 }
+        width: { type: integer, minimum: 1, maximum: 12 }
+        height: { type: integer, minimum: 1, maximum: 100 }
+    DashboardWidget:
+      type: object
+      additionalProperties: false
+      required: [id, type, title, config]
+      properties:
+        id: { type: string, format: uuid }
+        type: { enum: [metric, markdown, report, recent_content] }
+        title: { type: string, minLength: 1, maxLength: 200 }
+        config:
+          type: object
+          additionalProperties: false
+          properties:
+            value: { type: string, maxLength: 2000 }
+            body: { type: string, maxLength: 50000 }
+            reportId: { type: string, format: uuid }
+            limit: { type: integer, minimum: 1, maximum: 100 }
     BatchJobInput:
       type: object
       additionalProperties: false
@@ -984,6 +1028,14 @@ components:
         name: { type: string, minLength: 1, maxLength: 200 }
         description: { type: [string, 'null'], maxLength: 1000 }
         expiresAt: { type: [string, 'null'], format: date-time }
+    LocalSettingsUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        defaultPageSize: { type: integer, minimum: 10, maximum: 100 }
+        defaultLibraryId: { type: [string, 'null'], format: uuid }
+        density: { enum: [comfortable, compact] }
+        defaultExportFormat: { enum: [json, csv, markdown] }
     BlobUpload:
       type: object
       additionalProperties: false

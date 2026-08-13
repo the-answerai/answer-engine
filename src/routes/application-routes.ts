@@ -14,6 +14,7 @@ import {
   LibraryMembersSchema,
   LibraryPreviewSchema,
   LibraryUpdateSchema,
+  LocalSettingsUpdateSchema,
   PageSchema,
   RecipeCreateSchema,
   RecipePreviewSchema,
@@ -253,6 +254,14 @@ export function createApplicationRoutes(service: ApplicationService): Router {
 
   router.get('/audit', async (req, res, next) => {
     try { res.json(envelope(await service.listAudit(principal(req), AuditQuerySchema.parse(req.query)))); }
+    catch (error) { next(error); }
+  });
+
+  router.get('/settings', async (req, res, next) => {
+    try { res.json(envelope(await service.getSettings(principal(req)))); } catch (error) { next(error); }
+  });
+  router.patch('/settings', async (req, res, next) => {
+    try { res.json(envelope(await service.updateSettings(principal(req), LocalSettingsUpdateSchema.parse(req.body)))); }
     catch (error) { next(error); }
   });
 

@@ -1,4 +1,5 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
 
@@ -49,6 +50,25 @@ describe('local application shell', () => {
 
     const navigation = await screen.findByRole('navigation', { name: 'Primary' });
     expect([...navigation.querySelectorAll('a')].map((link) => link.textContent?.replace(/^\d+/, '')))
-      .toEqual(['Content', 'Import', 'Tags', 'Libraries', 'Answers']);
+      .toEqual(['Content', 'Import', 'Tags', 'Libraries', 'Answers', 'Batch Jobs', 'Settings']);
+  });
+
+  it('keeps keyboard focus inside the open mobile navigation and restores the menu button', async () => {
+    installApiMock();
+    window.history.replaceState({}, '', '/content');
+    const user = userEvent.setup();
+    render(<App />);
+
+    const menuButton = await screen.findByRole('button', { name: 'Open navigation' });
+    await user.click(menuButton);
+    const links = screen.getByRole('navigation', { name: 'Primary' }).querySelectorAll('a');
+    expect(document.activeElement).toBe(links[0]);
+
+    links[links.length - 1]?.focus();
+    await user.tab();
+    expect(document.activeElement).toBe(links[0]);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('button', { name: 'Close navigation' })).toBeNull();
+    expect(document.activeElement).toBe(menuButton);
   });
 });

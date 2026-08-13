@@ -69,11 +69,29 @@ export const ReportCreateSchema = z.object({
 }).strict();
 export const ReportUpdateSchema = ReportCreateSchema.partial().strict();
 
+const DashboardWidgetSchema = z.object({
+  id: UuidSchema,
+  type: z.enum(['metric', 'markdown', 'report', 'recent_content']),
+  title: z.string().trim().min(1).max(200),
+  config: z.object({
+    value: z.string().max(2_000).optional(),
+    body: z.string().max(50_000).optional(),
+    reportId: UuidSchema.optional(),
+    limit: z.number().int().min(1).max(100).optional(),
+  }).strict(),
+}).strict();
+const DashboardLayoutSchema = z.object({
+  widgetId: UuidSchema,
+  x: z.number().int().min(0).max(11),
+  y: z.number().int().min(0).max(10_000),
+  width: z.number().int().min(1).max(12),
+  height: z.number().int().min(1).max(100),
+}).strict();
 export const DashboardCreateSchema = z.object({
   name: z.string().trim().min(1).max(200),
   description: z.string().trim().max(2_000).nullable().optional(),
-  layout: z.array(z.record(z.unknown())).default([]),
-  widgets: z.array(z.record(z.unknown())).default([]),
+  layout: z.array(DashboardLayoutSchema).max(100).default([]),
+  widgets: z.array(DashboardWidgetSchema).max(100).default([]),
 }).strict();
 export const DashboardUpdateSchema = DashboardCreateSchema.partial().strict();
 
@@ -102,6 +120,13 @@ export const AuditQuerySchema = PageSchema.extend({
   libraryId: UuidSchema.optional(),
   action: z.string().trim().max(120).optional(),
   resourceType: z.string().trim().max(120).optional(),
+}).strict();
+
+export const LocalSettingsUpdateSchema = z.object({
+  defaultPageSize: z.number().int().min(10).max(100).optional(),
+  defaultLibraryId: UuidSchema.nullable().optional(),
+  density: z.enum(['comfortable', 'compact']).optional(),
+  defaultExportFormat: z.enum(['json', 'csv', 'markdown']).optional(),
 }).strict();
 
 export const BlobUploadSchema = z.object({

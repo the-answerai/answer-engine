@@ -1,28 +1,64 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   assignTag,
+  cancelBatchJob,
+  cancelGeneratedReport,
+  cancelRecipeRun,
+  createAccessToken,
+  createBatchJob,
+  createDashboard,
   createLibrary,
+  createRecipe,
+  createReport,
   createTag,
   deleteContent,
   deleteLibrary,
+  deleteDashboard,
+  deleteRecipe,
+  deleteReport,
   deleteTag,
   getContent,
+  getBatchJob,
   getLibrary,
+  getRecipeRun,
+  getSettings,
   importContent,
   inspectLineage,
   listArtifacts,
+  listAccessTokens,
+  listAudit,
+  listBatchJobs,
   listBlobs,
   listContent,
   listLibraries,
+  listDashboards,
   listLibraryMembers,
+  listGeneratedReports,
+  listRecipeRuns,
+  listRecipes,
+  listReports,
   listTags,
   previewImport,
   previewLibrary,
+  previewRecipe,
+  retryBatchJob,
+  retryGeneratedReport,
+  retryRecipeRun,
+  revokeAccessToken,
+  runRecipe,
+  generateReport,
   setLibraryMembership,
   updateLibrary,
+  updateDashboard,
+  updateRecipe,
+  updateReport,
+  updateSettings,
+  updateAccessToken,
   updateTag,
 } from './api';
-import type { ContentFilters, ImportItem, LibraryFilter, Tag } from './types';
+import type { BatchJob, ContentFilters, Dashboard, ImportItem, LibraryFilter, LocalSettings, RecipeInput, ReportInput, Tag } from './types';
+
+const isActive = (status?: string) => status === 'queued' || status === 'running';
 
 export function useContent(filters: ContentFilters) {
   return useQuery({ queryKey: ['content', filters], queryFn: () => listContent(filters) });
@@ -165,3 +201,56 @@ export function useImportContent() {
     [['content'], ['libraries']],
   );
 }
+
+export function useRecipes(libraryId: string) {
+  return useQuery({ queryKey: ['libraries', libraryId, 'recipes'], queryFn: () => listRecipes(libraryId), enabled: Boolean(libraryId) });
+}
+export function useCreateRecipe(libraryId: string) { return useInvalidatingMutation((input: RecipeInput) => createRecipe(libraryId, input), [['libraries', libraryId, 'recipes']]); }
+export function useUpdateRecipe(libraryId: string) { return useInvalidatingMutation(({ id, input }: { id: string; input: Partial<RecipeInput> }) => updateRecipe(libraryId, id, input), [['libraries', libraryId, 'recipes']]); }
+export function useDeleteRecipe(libraryId: string) { return useInvalidatingMutation((id: string) => deleteRecipe(libraryId, id), [['libraries', libraryId, 'recipes']]); }
+export function usePreviewRecipe(libraryId: string) { return useMutation({ mutationFn: ({ id, contentIds }: { id: string; contentIds?: string[] }) => previewRecipe(libraryId, id, { contentIds, limit: 3 }) }); }
+export function useRunRecipe(libraryId: string) { return useInvalidatingMutation((id: string) => runRecipe(libraryId, id), [['libraries', libraryId, 'recipe-runs']]); }
+export function useRecipeRuns(libraryId: string, recipeId?: string) {
+  return useQuery({
+    queryKey: ['libraries', libraryId, 'recipe-runs', recipeId],
+    queryFn: () => listRecipeRuns(libraryId, recipeId as string),
+    enabled: Boolean(recipeId),
+    refetchInterval: (query) => query.state.data?.some((run) => isActive(run.status)) ? 1_500 : false,
+  });
+}
+export function useRecipeRun(libraryId: string, runId?: string) {
+  return useQuery({ queryKey: ['libraries', libraryId, 'recipe-run', runId], queryFn: () => getRecipeRun(libraryId, runId as string), enabled: Boolean(runId), refetchInterval: (query) => isActive(query.state.data?.status) ? 1_500 : false });
+}
+export function useCancelRecipeRun(libraryId: string) { return useInvalidatingMutation((id: string) => cancelRecipeRun(libraryId, id), [['libraries', libraryId, 'recipe-runs'], ['libraries', libraryId, 'recipe-run']]); }
+export function useRetryRecipeRun(libraryId: string) { return useInvalidatingMutation((id: string) => retryRecipeRun(libraryId, id), [['libraries', libraryId, 'recipe-runs'], ['libraries', libraryId, 'recipe-run']]); }
+
+export function useReports(libraryId: string) { return useQuery({ queryKey: ['libraries', libraryId, 'reports'], queryFn: () => listReports(libraryId), enabled: Boolean(libraryId) }); }
+export function useCreateReport(libraryId: string) { return useInvalidatingMutation((input: ReportInput) => createReport(libraryId, input), [['libraries', libraryId, 'reports']]); }
+export function useUpdateReport(libraryId: string) { return useInvalidatingMutation(({ id, input }: { id: string; input: Partial<ReportInput> }) => updateReport(libraryId, id, input), [['libraries', libraryId, 'reports']]); }
+export function useDeleteReport(libraryId: string) { return useInvalidatingMutation((id: string) => deleteReport(libraryId, id), [['libraries', libraryId, 'reports']]); }
+export function useGenerateReport(libraryId: string) { return useInvalidatingMutation((id: string) => generateReport(libraryId, id), [['libraries', libraryId, 'generated-reports']]); }
+export function useGeneratedReports(libraryId: string, reportId?: string) {
+  return useQuery({ queryKey: ['libraries', libraryId, 'generated-reports', reportId], queryFn: () => listGeneratedReports(libraryId, reportId as string), enabled: Boolean(reportId), refetchInterval: (query) => query.state.data?.some((report) => isActive(report.status)) ? 1_500 : false });
+}
+export function useCancelGeneratedReport(libraryId: string, reportId: string) { return useInvalidatingMutation((id: string) => cancelGeneratedReport(libraryId, reportId, id), [['libraries', libraryId, 'generated-reports']]); }
+export function useRetryGeneratedReport(libraryId: string, reportId: string) { return useInvalidatingMutation((id: string) => retryGeneratedReport(libraryId, reportId, id), [['libraries', libraryId, 'generated-reports']]); }
+
+export function useDashboards(libraryId: string) { return useQuery({ queryKey: ['libraries', libraryId, 'dashboards'], queryFn: () => listDashboards(libraryId), enabled: Boolean(libraryId) }); }
+export function useCreateDashboard(libraryId: string) { return useInvalidatingMutation((input: Parameters<typeof createDashboard>[1]) => createDashboard(libraryId, input), [['libraries', libraryId, 'dashboards']]); }
+export function useUpdateDashboard(libraryId: string) { return useInvalidatingMutation(({ id, input }: { id: string; input: Partial<Pick<Dashboard, 'name' | 'description' | 'layout' | 'widgets'>> }) => updateDashboard(libraryId, id, input), [['libraries', libraryId, 'dashboards']]); }
+export function useDeleteDashboard(libraryId: string) { return useInvalidatingMutation((id: string) => deleteDashboard(libraryId, id), [['libraries', libraryId, 'dashboards']]); }
+
+export function useBatchJobs(cursor?: string) { return useQuery({ queryKey: ['batch-jobs', cursor], queryFn: () => listBatchJobs({ cursor, limit: 25 }), refetchInterval: (query) => query.state.data?.items.some((job) => isActive(job.status)) ? 1_500 : false }); }
+export function useBatchJob(jobId?: string) { return useQuery({ queryKey: ['batch-jobs', 'detail', jobId], queryFn: () => getBatchJob(jobId as string), enabled: Boolean(jobId), refetchInterval: (query) => isActive(query.state.data?.status) ? 1_500 : false }); }
+export function useCreateBatchJob() { return useInvalidatingMutation((input: { libraryId?: string | null; kind: BatchJob['kind']; name: string; input: Record<string, unknown>; contentIds?: string[] }) => createBatchJob(input), [['batch-jobs']]); }
+export function useCancelBatchJob() { return useInvalidatingMutation(cancelBatchJob, [['batch-jobs']]); }
+export function useRetryBatchJob() { return useInvalidatingMutation(retryBatchJob, [['batch-jobs']]); }
+
+export function useAccessTokens() { return useQuery({ queryKey: ['access-tokens'], queryFn: listAccessTokens }); }
+export function useCreateAccessToken() { return useInvalidatingMutation(createAccessToken, [['access-tokens'], ['audit']]); }
+export function useUpdateAccessToken() { return useInvalidatingMutation(({ id, input }: { id: string; input: Parameters<typeof updateAccessToken>[1] }) => updateAccessToken(id, input), [['access-tokens'], ['audit']]); }
+export function useRevokeAccessToken() { return useInvalidatingMutation(revokeAccessToken, [['access-tokens'], ['audit']]); }
+
+export function useAudit(input: { libraryId?: string; action?: string; resourceType?: string; cursor?: string }) { return useQuery({ queryKey: ['audit', input], queryFn: () => listAudit({ ...input, limit: 25 }) }); }
+export function useSettings() { return useQuery({ queryKey: ['settings'], queryFn: getSettings }); }
+export function useUpdateSettings() { return useInvalidatingMutation((input: Partial<LocalSettings>) => updateSettings(input), [['settings']]); }

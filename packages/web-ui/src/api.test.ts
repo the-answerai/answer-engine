@@ -4,10 +4,14 @@ import {
   clearLegacyBrowserApiKey,
   initializeLocalUiSession,
   listContent,
+  listBatchJobs,
   askAnswer,
+  getSettings,
   setLibraryMembership,
   listMemories,
   searchMemories,
+  updateSettings,
+  rowsToCsv,
 } from './api';
 
 describe('local API client', () => {
@@ -158,6 +162,50 @@ describe('local API client', () => {
       2,
       `/api/v1/libraries/${libraryId}/includes/${contentId}`,
       expect.objectContaining({ method: 'PUT' }),
+    );
+  });
+
+  it('loads and patches safe local settings without credential fields', async () => {
+    const settings = {
+      defaultPageSize: 50,
+      defaultLibraryId: null,
+      density: 'compact' as const,
+      defaultExportFormat: 'csv' as const,
+    };
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(JSON.stringify({
+      success: true,
+      data: settings,
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+
+    await expect(getSettings()).resolves.toEqual(settings);
+    await expect(updateSettings({ defaultPageSize: 50, density: 'compact' })).resolves.toEqual(settings);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/v1/settings', expect.objectContaining({
+      method: 'PATCH',
+      body: JSON.stringify({ defaultPageSize: 50, density: 'compact' }),
+    }));
+    expect(JSON.stringify(fetchMock.mock.calls)).not.toMatch(/providerApiKey|secret/i);
+  });
+
+  it('escapes heterogeneous export rows as safe CSV', () => {
+    expect(rowsToCsv([
+      { title: 'One, two', status: 'ok' },
+      { title: 'Quoted "value"', error: 'line one\nline two' },
+    ])).toBe('"title","status","error"\n"One, two","ok",""\n"Quoted ""value""","","line one\nline two"');
+  });
+
+  it('encodes batch cursors without losing server pagination state', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      success: true,
+      data: { items: [], hasMore: true, nextCursor: 'next-batch-page' },
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+
+    await expect(listBatchJobs({ cursor: 'current page', limit: 50 })).resolves.toEqual({
+      items: [], hasMore: true, nextCursor: 'next-batch-page',
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/batch-jobs?limit=50&cursor=current+page',
+      expect.objectContaining({ credentials: 'same-origin' }),
     );
   });
 });

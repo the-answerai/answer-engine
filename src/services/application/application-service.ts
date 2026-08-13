@@ -18,6 +18,7 @@ import {
   LibraryMembersSchema,
   LibraryPreviewSchema,
   LibraryUpdateSchema,
+  LocalSettingsUpdateSchema,
   PageSchema,
   RecipeCreateSchema,
   RecipePreviewSchema,
@@ -47,6 +48,28 @@ type ReportCreate = z.infer<typeof ReportCreateSchema>;
 type ReportUpdate = z.infer<typeof ReportUpdateSchema>;
 type DashboardCreate = z.infer<typeof DashboardCreateSchema>;
 type DashboardUpdate = z.infer<typeof DashboardUpdateSchema>;
+type LocalSettingsUpdate = z.infer<typeof LocalSettingsUpdateSchema>;
+
+const DEFAULT_LOCAL_SETTINGS = {
+  defaultPageSize: 25,
+  defaultLibraryId: null,
+  density: 'comfortable' as const,
+  defaultExportFormat: 'json' as const,
+};
+
+function publicLocalSettings(raw: unknown) {
+  const settings = z.record(z.unknown()).catch({}).parse(raw);
+  return {
+    defaultPageSize: z.number().int().min(10).max(100).catch(DEFAULT_LOCAL_SETTINGS.defaultPageSize)
+      .parse(settings.defaultPageSize),
+    defaultLibraryId: z.string().uuid().nullable().catch(DEFAULT_LOCAL_SETTINGS.defaultLibraryId)
+      .parse(settings.defaultLibraryId),
+    density: z.enum(['comfortable', 'compact']).catch(DEFAULT_LOCAL_SETTINGS.density)
+      .parse(settings.density),
+    defaultExportFormat: z.enum(['json', 'csv', 'markdown']).catch(DEFAULT_LOCAL_SETTINGS.defaultExportFormat)
+      .parse(settings.defaultExportFormat),
+  };
+}
 
 interface LibraryRecord {
   id: string;
@@ -1187,6 +1210,32 @@ export class ApplicationService {
     return { items, hasMore, nextCursor: hasMore && items.length
       ? encodeCursor(items[items.length - 1]!.createdAt, items[items.length - 1]!.id)
       : null };
+  }
+
+  async getSettings(principal: Principal) {
+    this.assertTenantAccess(principal);
+    const result = await this.database.query<{ settings: unknown }>(
+      'SELECT settings FROM tenants WHERE id=$1 AND is_active=true',
+      [principal.tenantId],
+    );
+    if (!result.rows[0]) throw new NotFoundError('Local workspace not found');
+    return publicLocalSettings(result.rows[0].settings);
+  }
+
+  async updateSettings(principal: Principal, raw: LocalSettingsUpdate) {
+    this.assertTenantAccess(principal);
+    const input = LocalSettingsUpdateSchema.parse(raw);
+    if (input.defaultLibraryId) await this.libraryRecord(principal, input.defaultLibraryId);
+    const result = await this.database.query<{ settings: unknown }>(
+      `UPDATE tenants SET settings = settings || $2::jsonb
+        WHERE id=$1 AND is_active=true RETURNING settings`,
+      [principal.tenantId, JSON.stringify(input)],
+    );
+    if (!result.rows[0]) throw new NotFoundError('Local workspace not found');
+    await this.audit(principal, 'settings.update', 'tenant', principal.tenantId, null, {
+      fields: Object.keys(input),
+    });
+    return publicLocalSettings(result.rows[0].settings);
   }
 
   async uploadBlob(
