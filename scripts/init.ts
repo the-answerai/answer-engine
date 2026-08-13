@@ -33,11 +33,13 @@ async function main(): Promise<void> {
       [LOCAL_TENANT_ID, 'Local Answer Engine', 'local'],
     );
     await client.query(
-      `INSERT INTO libraries (id, tenant_id, name, slug, description)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO libraries (id, tenant_id, name, slug, description, kind)
+       VALUES ($1, $2, $3, $4, $5, 'system_all_content')
        ON CONFLICT (tenant_id, slug) DO UPDATE SET
          name = EXCLUDED.name,
          description = EXCLUDED.description,
+         kind = 'system_all_content',
+         filter_predicate = NULL,
          is_active = true`,
       [
         LOCAL_LIBRARY_ID,

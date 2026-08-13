@@ -25,7 +25,7 @@ RUN pnpm build \
     --strict \
     --skipLibCheck \
     --outDir dist/scripts \
-    scripts/database.ts scripts/migrate.ts scripts/init.ts scripts/boot-check-local.ts
+    scripts/database.ts scripts/migration-utils.ts scripts/migrate.ts scripts/rollback.ts scripts/init.ts scripts/boot-check-local.ts
 
 FROM node:22.16.0-bookworm-slim AS runtime
 
