@@ -268,6 +268,62 @@ describe('Alpha Loop repository posture', () => {
     }
   });
 
+  it('recovers a normal browser open once after a stale project daemon fails', async () => {
+    const fixtureRoot = mkdtempSync(join(root, '.agent-browser-open-recovery-test-'));
+    const runtimeDirectory = mkdtempSync(join(tmpdir(), 'answer-engine-browser-open-test-'));
+    const fakeBinDirectory = join(fixtureRoot, 'fake-bin');
+    const fakeDaemonDirectory = join(fixtureRoot, 'old-worktree/node_modules/agent-browser/bin');
+    const fakeDaemon = join(fakeDaemonDirectory, 'agent-browser-test');
+    const invocationFile = join(runtimeDirectory, 'pnpm-invocations');
+    const attemptFile = join(runtimeDirectory, 'attempt');
+    let daemon: ReturnType<typeof spawn> | undefined;
+
+    try {
+      mkdirSync(fakeBinDirectory, { recursive: true });
+      mkdirSync(fakeDaemonDirectory, { recursive: true });
+      mkdirSync(join(runtimeDirectory, 'socket'), { recursive: true });
+      copyFileSync('/bin/sleep', fakeDaemon);
+      chmodSync(fakeDaemon, 0o755);
+      writeFileSync(
+        join(fakeBinDirectory, 'pnpm'),
+        `#!/usr/bin/env bash\nprintf '%s\\n' "$*" >> "${invocationFile}"\nif [[ ! -f "${attemptFile}" ]]; then\n  touch "${attemptFile}"\n  exit 1\nfi\n`,
+      );
+      chmodSync(join(fakeBinDirectory, 'pnpm'), 0o755);
+
+      daemon = spawn(fakeDaemon, ['120'], { stdio: 'ignore' });
+      if (daemon.pid === undefined) throw new Error('Fake stale daemon did not start');
+      writeFileSync(join(runtimeDirectory, 'socket/answer-engine-oss.pid'), String(daemon.pid));
+
+      const result = spawnSync('bash', ['scripts/agent-browser.sh', 'open', 'http://127.0.0.1:3200/content'], {
+        cwd: root,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          AE_AGENT_BROWSER_RUNTIME_DIR: runtimeDirectory,
+          PATH: `${fakeBinDirectory}:${process.env.PATH ?? ''}`,
+        },
+      });
+
+      expect(result.status, result.stderr).toBe(0);
+      expect(readFileSync(invocationFile, 'utf8').trim().split('\n')).toEqual([
+        'exec agent-browser open http://127.0.0.1:3200/content',
+        'exec agent-browser open http://127.0.0.1:3200/content',
+      ]);
+      await once(daemon, 'exit');
+      expect(daemon.exitCode !== null || daemon.signalCode !== null).toBe(true);
+    } finally {
+      if (daemon?.pid !== undefined) {
+        try {
+          process.kill(daemon.pid, 'SIGTERM');
+        } catch {
+          // The recovery path is expected to stop it.
+        }
+      }
+      rmSync(fixtureRoot, { recursive: true, force: true });
+      rmSync(runtimeDirectory, { recursive: true, force: true });
+    }
+  });
+
   it('defines only the five paid capability families as private', () => {
     const agentGuide = read('AGENTS.md');
     const readme = read('README.md');

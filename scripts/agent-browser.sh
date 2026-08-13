@@ -37,6 +37,7 @@ stop_project_daemon() {
   fi
 
   kill -0 "$daemon_pid" 2>/dev/null || return 0
+  [[ "$(ps -p "$daemon_pid" -o stat=)" == Z* ]] && return 0
 
   checkout_root="$(git rev-parse --show-toplevel)"
   common_dir="$(git rev-parse --path-format=absolute --git-common-dir)"
@@ -86,6 +87,14 @@ if [[ "${1:-}" == "prepare" ]]; then
   stop_project_daemon
   shift
   set -- open about:blank "$@"
+fi
+
+if [[ "${1:-}" == "open" ]]; then
+  if pnpm exec agent-browser "$@"; then
+    exit 0
+  fi
+  echo "agent-browser open failed; resetting the validated project daemon and retrying once" >&2
+  stop_project_daemon
 fi
 
 exec pnpm exec agent-browser "$@"
