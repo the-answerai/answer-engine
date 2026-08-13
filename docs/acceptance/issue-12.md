@@ -135,5 +135,20 @@ server/repository tests (one database integration test intentionally skipped),
 138 CLI tests, 62 MCP tests, 27 installer tests, 33 web tests, and every package
 build.
 
-The epic-level `alpha-loop run --verify-only 6` result is appended after the
-review fixes are committed, because the runner requires a clean worktree.
+The epic-level gate was run from clean commit `75bae18`:
+
+```text
+node ../../../alpha-loop/dist/cli.js run --verify-only 6
+```
+
+Alpha Loop found all six children for evaluation, but its nested Codex process
+could not initialize inside the already managed Codex sandbox: the parent
+sandbox made `~/.codex/state_5.sqlite` read-only and rejected the nested
+in-process app-server client with `Operation not permitted`. Alpha Loop therefore
+returned `verdict=partial`, posted an unparsed-output comment, and added
+`needs-human-input` to epic #6. No product assertion or repository test failed.
+
+This is the only incomplete gate. It must be rerun from the host orchestrator
+after this commit is available to session PR #35; a nested Codex process cannot
+be made authoritative from within this worker sandbox. Epic #6 and issue #12
+remain open, and npm publication remains out of scope.
