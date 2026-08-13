@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import type { Principal } from '../types/api.js';
 import type { ApplicationService } from '../services/application/application-service.js';
-import { AccessDeniedError } from '../utils/errors.js';
+import { requireApiCapability } from '../middleware/api-capability.js';
 import {
   AccessTokenCreateSchema,
   AccessTokenUpdateSchema,
@@ -14,6 +14,7 @@ import {
   LibraryMembersSchema,
   LibraryPreviewSchema,
   LibraryUpdateSchema,
+  LocalSettingsUpdateSchema,
   PageSchema,
   RecipeCreateSchema,
   RecipePreviewSchema,
@@ -41,15 +42,11 @@ function envelope<T>(data: T, meta?: Record<string, unknown>) {
 export function createApplicationRoutes(service: ApplicationService): Router {
   const router = Router();
 
-  router.use((req, _res, next) => {
+  router.use(requireApiCapability((req) => {
     const isRead = req.method === 'GET'
       || (req.method === 'POST' && req.path.endsWith('/preview'));
-    if (!isRead && req.apiCapabilities && !req.apiCapabilities.includes('write')) {
-      next(new AccessDeniedError());
-      return;
-    }
-    next();
-  });
+    return isRead ? 'read' : 'write';
+  }));
 
   router.get('/tags', async (req, res, next) => {
     try { res.json(envelope(await service.listTags(principal(req)))); } catch (error) { next(error); }
@@ -253,6 +250,14 @@ export function createApplicationRoutes(service: ApplicationService): Router {
 
   router.get('/audit', async (req, res, next) => {
     try { res.json(envelope(await service.listAudit(principal(req), AuditQuerySchema.parse(req.query)))); }
+    catch (error) { next(error); }
+  });
+
+  router.get('/settings', async (req, res, next) => {
+    try { res.json(envelope(await service.getSettings(principal(req)))); } catch (error) { next(error); }
+  });
+  router.patch('/settings', async (req, res, next) => {
+    try { res.json(envelope(await service.updateSettings(principal(req), LocalSettingsUpdateSchema.parse(req.body)))); }
     catch (error) { next(error); }
   });
 

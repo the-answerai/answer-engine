@@ -300,7 +300,9 @@ export class LocalApplicationWorker {
   private async processBatch(job: BatchClaim): Promise<void> {
     try {
       const input = z.record(z.unknown()).parse(job.input);
-      const ids = z.array(z.string().uuid()).max(10_000).catch([]).parse(input.contentIds);
+      const ids = z.array(z.string().uuid()).max(10_000).optional().parse(input.contentIds);
+      const excludedIds = z.array(z.string().uuid()).max(10_000).catch([])
+        .parse(input.excludeContentIds);
       const parameters: unknown[] = [job.tenant_id];
       let membership = 'TRUE';
       if (job.library_id) {
@@ -315,20 +317,27 @@ export class LocalApplicationWorker {
           filter: filter(library.rows[0].filter_predicate), parameters,
         });
       }
-      const idsParameter = parameters.push(ids);
+      const selected = ids
+        ? `AND c.id=ANY($${parameters.push(ids)}::uuid[])`
+        : '';
+      const excluded = excludedIds.length
+        ? `AND NOT (c.id=ANY($${parameters.push(excludedIds)}::uuid[]))`
+        : '';
       const content = await this.database.query<{
         id: string; title: string; content: string | null; summary: string | null;
       }>(
         `SELECT c.id,c.title,c.content,c.summary FROM content_items c
           WHERE c.tenant_id=$1 AND c.status <> 'deleted'
-            AND (cardinality($${idsParameter}::uuid[])=0 OR c.id=ANY($${idsParameter}::uuid[]))
-            AND ${membership}
+            ${selected} ${excluded} AND ${membership}
           ORDER BY c.created_at,c.id`,
         parameters,
       );
+      const resolvedContentIds = content.rows.map((item) => item.id);
       await this.database.query(
-        `UPDATE batch_jobs SET total_count=$3 WHERE tenant_id=$1 AND id=$2`,
-        [job.tenant_id, job.id, content.rows.length],
+        `UPDATE batch_jobs SET total_count=$3,
+                input=jsonb_set(input,'{contentIds}',to_jsonb($4::uuid[]),true)
+          WHERE tenant_id=$1 AND id=$2`,
+        [job.tenant_id, job.id, resolvedContentIds.length, resolvedContentIds],
       );
       for (const item of content.rows) {
         const state = await this.database.query<{ status: string }>(

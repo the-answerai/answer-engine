@@ -18,6 +18,7 @@ import {
   LibraryMembersSchema,
   LibraryPreviewSchema,
   LibraryUpdateSchema,
+  LocalSettingsUpdateSchema,
   PageSchema,
   RecipeCreateSchema,
   RecipePreviewSchema,
@@ -47,6 +48,30 @@ type ReportCreate = z.infer<typeof ReportCreateSchema>;
 type ReportUpdate = z.infer<typeof ReportUpdateSchema>;
 type DashboardCreate = z.infer<typeof DashboardCreateSchema>;
 type DashboardUpdate = z.infer<typeof DashboardUpdateSchema>;
+type LocalSettingsUpdate = z.infer<typeof LocalSettingsUpdateSchema>;
+
+const DEFAULT_LOCAL_SETTINGS = {
+  defaultPageSize: 25,
+  defaultLibraryId: null,
+  density: 'comfortable' as const,
+  defaultExportFormat: 'json' as const,
+};
+
+const PROTECTED_LOCAL_ACCESS_TOKEN_NAME = 'Local installer';
+
+function publicLocalSettings(raw: unknown) {
+  const settings = z.record(z.unknown()).catch({}).parse(raw);
+  return {
+    defaultPageSize: z.number().int().min(10).max(100).catch(DEFAULT_LOCAL_SETTINGS.defaultPageSize)
+      .parse(settings.defaultPageSize),
+    defaultLibraryId: z.string().uuid().nullable().catch(DEFAULT_LOCAL_SETTINGS.defaultLibraryId)
+      .parse(settings.defaultLibraryId),
+    density: z.enum(['comfortable', 'compact']).catch(DEFAULT_LOCAL_SETTINGS.density)
+      .parse(settings.density),
+    defaultExportFormat: z.enum(['json', 'csv', 'markdown']).catch(DEFAULT_LOCAL_SETTINGS.defaultExportFormat)
+      .parse(settings.defaultExportFormat),
+  };
+}
 
 interface LibraryRecord {
   id: string;
@@ -1071,13 +1096,28 @@ export class ApplicationService {
       throw new ConflictError('Only failed, partial, or canceled jobs can be retried');
     }
     const input = z.record(z.unknown()).parse(job.input);
-    const contentIds = z.array(z.string().uuid()).max(10_000).optional()
+    const originalContentIds = z.array(z.string().uuid()).max(10_000).optional()
       .parse(input.contentIds);
+    const successfulContentIds = new Set(
+      z.array(z.object({ contentId: z.string().uuid(), status: z.string() }))
+        .parse(job.results)
+        .filter((result) => result.status === 'success')
+        .map((result) => result.contentId),
+    );
+    const contentIds = originalContentIds?.filter((contentId) => !successfulContentIds.has(contentId));
+    const retryInput = { ...input };
+    if (contentIds) {
+      retryInput.contentIds = contentIds;
+    } else if (successfulContentIds.size) {
+      const priorExclusions = z.array(z.string().uuid()).max(10_000).catch([])
+        .parse(input.excludeContentIds);
+      retryInput.excludeContentIds = [...new Set([...priorExclusions, ...successfulContentIds])];
+    }
     return this.createBatchJob(principal, {
       libraryId: (job.libraryId as string | null) ?? undefined,
       kind: z.enum(['prompt', 'export', 'import']).parse(job.kind),
       name: `${String(job.name)} retry`,
-      input,
+      input: retryInput,
       contentIds,
     });
   }
@@ -1091,12 +1131,22 @@ export class ApplicationService {
          FROM api_keys WHERE tenant_id=$1 ORDER BY created_at DESC,id DESC`,
       [principal.tenantId],
     );
-    return result.rows;
+    return result.rows.map((row) => {
+      const token = row as { id: string; name: string } & Record<string, unknown>;
+      return {
+        ...token,
+        isCurrent: token.id === principal.apiKeyId,
+        isProtected: token.name === PROTECTED_LOCAL_ACCESS_TOKEN_NAME,
+      };
+    });
   }
 
   async createAccessToken(principal: Principal, raw: z.infer<typeof AccessTokenCreateSchema>) {
     this.assertTenantAccess(principal);
     const input = AccessTokenCreateSchema.parse(raw);
+    if (input.name === PROTECTED_LOCAL_ACCESS_TOKEN_NAME) {
+      throw new ConflictError('The local installer token name is reserved');
+    }
     if (input.libraryId) await this.libraryRecord(principal, input.libraryId);
     const token = `ae_live_${randomBytes(32).toString('base64url')}`;
     const result = await this.database.query(
@@ -1120,7 +1170,11 @@ export class ApplicationService {
     raw: z.infer<typeof AccessTokenUpdateSchema>,
   ) {
     this.assertTenantAccess(principal);
+    await this.assertMutableAccessToken(principal, tokenId);
     const input = AccessTokenUpdateSchema.parse(raw);
+    if (input.name === PROTECTED_LOCAL_ACCESS_TOKEN_NAME) {
+      throw new ConflictError('The local installer token name is reserved');
+    }
     const result = await this.database.query(
       `UPDATE api_keys SET
          name=CASE WHEN $3::boolean THEN $4 ELSE name END,
@@ -1143,6 +1197,7 @@ export class ApplicationService {
 
   async revokeAccessToken(principal: Principal, tokenId: string) {
     this.assertTenantAccess(principal);
+    await this.assertMutableAccessToken(principal, tokenId);
     const result = await this.database.query<{ id: string; libraryId: string | null }>(
       `UPDATE api_keys SET revoked_at=NOW()
         WHERE tenant_id=$1 AND id=$2 AND revoked_at IS NULL
@@ -1153,6 +1208,22 @@ export class ApplicationService {
     await this.audit(principal, 'access_token.revoke', 'access_token', tokenId,
       result.rows[0].libraryId);
     return { id: tokenId, revoked: true };
+  }
+
+  private async assertMutableAccessToken(principal: Principal, tokenId: string): Promise<void> {
+    const result = await this.database.query<{ name: string }>(
+      `SELECT name FROM api_keys
+        WHERE tenant_id=$1 AND id=$2 AND revoked_at IS NULL`,
+      [principal.tenantId, tokenId],
+    );
+    const token = result.rows[0];
+    if (!token) throw new NotFoundError('Access token not found');
+    if (token.name === PROTECTED_LOCAL_ACCESS_TOKEN_NAME) {
+      throw new ConflictError('The local installer token is protected and cannot be changed or revoked');
+    }
+    if (tokenId === principal.apiKeyId) {
+      throw new ConflictError('The access token authenticating this request cannot be changed or revoked');
+    }
   }
 
   async listAudit(principal: Principal, raw: z.infer<typeof AuditQuerySchema>) {
@@ -1187,6 +1258,32 @@ export class ApplicationService {
     return { items, hasMore, nextCursor: hasMore && items.length
       ? encodeCursor(items[items.length - 1]!.createdAt, items[items.length - 1]!.id)
       : null };
+  }
+
+  async getSettings(principal: Principal) {
+    this.assertTenantAccess(principal);
+    const result = await this.database.query<{ settings: unknown }>(
+      'SELECT settings FROM tenants WHERE id=$1 AND is_active=true',
+      [principal.tenantId],
+    );
+    if (!result.rows[0]) throw new NotFoundError('Local workspace not found');
+    return publicLocalSettings(result.rows[0].settings);
+  }
+
+  async updateSettings(principal: Principal, raw: LocalSettingsUpdate) {
+    this.assertTenantAccess(principal);
+    const input = LocalSettingsUpdateSchema.parse(raw);
+    if (input.defaultLibraryId) await this.libraryRecord(principal, input.defaultLibraryId);
+    const result = await this.database.query<{ settings: unknown }>(
+      `UPDATE tenants SET settings = settings || $2::jsonb
+        WHERE id=$1 AND is_active=true RETURNING settings`,
+      [principal.tenantId, JSON.stringify(input)],
+    );
+    if (!result.rows[0]) throw new NotFoundError('Local workspace not found');
+    await this.audit(principal, 'settings.update', 'tenant', principal.tenantId, null, {
+      fields: Object.keys(input),
+    });
+    return publicLocalSettings(result.rows[0].settings);
   }
 
   async uploadBlob(

@@ -1,4 +1,7 @@
-import { type FormEvent, useMemo, useState } from 'react';
+import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { downloadTextFile } from '../api';
 import {
   Button,
   ConfirmDialog,
@@ -22,10 +25,12 @@ import {
   useDeleteContent,
   useLibraries,
   useSetLibraryMembership,
+  useSettings,
   useTags,
 } from '../hooks';
-import type { ContentFilters, ContentItem, ContentSort, ContentType } from '../types';
+import type { Artifact, ContentFilters, ContentItem, ContentSort, ContentType } from '../types';
 import { CONTENT_TYPES } from '../types';
+import { SelectedContentBatchButton } from './BatchJobsPage';
 
 const PAGE_SIZE = 25;
 
@@ -38,9 +43,25 @@ export function ContentPage() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const tags = useTags();
+  const libraries = useLibraries();
+  const settings = useSettings();
+  const defaultsApplied = useRef(false);
   const query = useContent({ ...filters, cursor: cursorHistory[cursorHistory.length - 1] });
   const items = query.data?.items ?? [];
   const allSelected = items.length > 0 && items.every((item) => selected.has(item.id));
+  useEffect(() => {
+    if (defaultsApplied.current || !settings.data || !libraries.data
+      || typeof settings.data.defaultPageSize !== 'number') return;
+    defaultsApplied.current = true;
+    const defaultLibraryId = libraries.data.some(
+      (library) => library.id === settings.data?.defaultLibraryId,
+    ) ? settings.data.defaultLibraryId : null;
+    setFilters((current) => ({
+      ...current,
+      limit: settings.data.defaultPageSize,
+      libraryId: defaultLibraryId ?? undefined,
+    }));
+  }, [libraries.data, settings.data]);
 
   function search(event: FormEvent) {
     event.preventDefault();
@@ -74,6 +95,7 @@ export function ContentPage() {
           <Button type="submit">Search</Button>
         </form>
         <div className="filter-row">
+          <Field label="Library"><select value={filters.libraryId ?? ''} onChange={(event) => updateFilter('libraryId', event.target.value || undefined)}><option value="">All content</option>{libraries.data?.map((library) => <option key={library.id} value={library.id}>{library.name}</option>)}</select></Field>
           <Field label="Type"><select value={filters.contentTypes?.[0] ?? ''} onChange={(event) => updateFilter('contentTypes', event.target.value ? [event.target.value as ContentType] : undefined)}><option value="">All types</option>{CONTENT_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</select></Field>
           <Field label="Source"><select value={filters.sources?.[0] ?? ''} onChange={(event) => updateFilter('sources', event.target.value ? [event.target.value] : undefined)}><option value="">All sources</option><option value="claude-code">Claude</option><option value="codex">Codex</option><option value="cowork">Cowork</option><option value="local-ui">Manual import</option></select></Field>
           <Field label="Tag"><select value={filters.tags?.[0] ?? ''} onChange={(event) => updateFilter('tags', event.target.value ? [event.target.value] : undefined)}><option value="">All tags</option>{tags.data?.map((tag) => <option key={tag.id} value={tag.slug}>{tag.label}</option>)}</select></Field>
@@ -84,7 +106,7 @@ export function ContentPage() {
           <Field label="Direction"><select value={filters.sortDirection} onChange={(event) => updateFilter('sortDirection', event.target.value as 'asc' | 'desc')}><option value="desc">Descending</option><option value="asc">Ascending</option></select></Field>
         </div>
       </div>
-      {selected.size ? <div className="bulk-bar" role="status"><strong>{selected.size} selected</strong><Button onClick={() => setBulkOpen(true)}>Organize</Button><Button variant="danger" onClick={() => setDeleteOpen(true)}>Delete</Button><Button variant="quiet" onClick={() => setSelected(new Set())}>Clear</Button></div> : null}
+      {selected.size ? <div className="bulk-bar" role="status"><strong>{selected.size} selected</strong><Button onClick={() => setBulkOpen(true)}>Organize</Button><SelectedContentBatchButton contentIds={[...selected]} /><Button variant="danger" onClick={() => setDeleteOpen(true)}>Delete</Button><Button variant="quiet" onClick={() => setSelected(new Set())}>Clear</Button></div> : null}
       {query.error ? <Notice kind="error">{errorMessage(query.error, 'Unable to load content.')}</Notice> : null}
       {query.isLoading ? <LoadingState label="Loading content" /> : null}
       {!query.isLoading && !items.length ? <EmptyState title="No content found">Import supported history or clear filters to see more records.</EmptyState> : null}
@@ -126,13 +148,25 @@ export function ContentInspector({ contentId, onClose }: { contentId: string | n
       {tab === 'raw' ? <><h3>Raw content</h3><pre>{item.content || 'No raw text is stored.'}</pre></> : null}
       {tab === 'metadata' ? <JsonPanel title="Source metadata" value={{ sourceData: item.sourceData, metadata: item.metadata, analysisData: item.analysisData, turnMetadata: item.turnMetadata }} /> : null}
       {tab === 'lineage' ? lineage.isLoading ? <LoadingState /> : <JsonPanel title="Lineage" value={lineage.data ?? {}} /> : null}
-      {tab === 'artifacts' ? artifacts.isLoading ? <LoadingState /> : <div className="artifact-list">{artifacts.data?.map((artifact) => <article key={artifact.id}><header><strong>{artifact.artifactType}</strong><span>v{artifact.version} · {artifact.status}</span></header>{artifact.textContent ? <pre>{artifact.textContent}</pre> : <pre>{JSON.stringify(artifact.dataJson, null, 2)}</pre>}</article>) || <p>No artifacts.</p>}</div> : null}
+      {tab === 'artifacts' ? artifacts.isLoading ? <LoadingState /> : <ArtifactBrowser artifacts={artifacts.data ?? []} /> : null}
       {tab === 'archive' ? <><JsonPanel title="Raw archive manifest" value={item.rawArchiveManifest ?? lineage.data?.origin?.rawArchiveManifest ?? {}} /><h3>Attachments</h3>{blobs.data?.length ? <ul className="file-list">{blobs.data.map((blob) => <li key={blob.id}><a href={`/api/v1/blobs/${blob.id}/download`}>{blob.fileName}</a><span>{blob.mediaType} · {blob.byteSize} bytes</span></li>)}</ul> : <p>No raw archive attachments are registered.</p>}</> : null}
     </div></> : null}
   </Dialog>;
 }
 
 function JsonPanel({ title, value }: { title: string; value: unknown }) { return <><h3>{title}</h3><pre>{JSON.stringify(value, null, 2)}</pre></>; }
+
+function ArtifactBrowser({ artifacts }: { artifacts: Artifact[] }) {
+  const groups = useMemo(() => [...new Set(artifacts.map((artifact) => artifact.artifactType))], [artifacts]);
+  const [type, setType] = useState(groups[0] ?? '');
+  const versions = artifacts.filter((artifact) => artifact.artifactType === (groups.includes(type) ? type : groups[0]));
+  const [artifactId, setArtifactId] = useState('');
+  const selected = versions.find((artifact) => artifact.id === artifactId) ?? versions[0];
+  if (!artifacts.length) return <p>No artifacts.</p>;
+  const body = selected?.textContent ?? JSON.stringify(selected?.dataJson ?? {}, null, 2);
+  const isMarkdown = selected?.artifactType.includes('report') || selected?.metadata?.format === 'markdown';
+  return <div className="artifact-browser"><div className="tab-list" role="tablist" aria-label="Artifact types">{groups.map((name) => <button role="tab" aria-selected={(selected?.artifactType ?? groups[0]) === name} key={name} onClick={() => { setType(name); setArtifactId(''); }}>{name}</button>)}</div>{selected ? <><div className="artifact-toolbar"><Field label="Version"><select value={selected.id} onChange={(event) => setArtifactId(event.target.value)}>{versions.map((artifact) => <option key={artifact.id} value={artifact.id}>v{artifact.version}{artifact.isCurrent ? ' · current' : ''} · {formatDate(artifact.createdAt)}</option>)}</select></Field><Button variant="secondary" onClick={() => downloadTextFile(`${selected.artifactType}-v${selected.version}.${isMarkdown ? 'md' : selected.dataJson ? 'json' : 'txt'}`, body, isMarkdown ? 'text/markdown' : selected.dataJson ? 'application/json' : 'text/plain')}>Download version</Button></div><dl className="detail-grid"><dt>Status</dt><dd>{selected.status}{selected.isCurrent ? ' · current' : ''}</dd><dt>Recipe version</dt><dd>{selected.recipeVersion ?? 'Base artifact'}</dd><dt>Prompt hash</dt><dd><code>{selected.promptHash?.slice(0, 16) ?? '—'}</code></dd><dt>Model</dt><dd>{selected.modelId ?? '—'}</dd><dt>Lineage</dt><dd>{selected.sourceContentIds?.join(', ') || selected.supersedesId || '—'}</dd></dl>{isMarkdown && selected.textContent ? <div className="markdown"><ReactMarkdown remarkPlugins={[remarkGfm]}>{selected.textContent}</ReactMarkdown></div> : <pre>{body}</pre>}</> : null}</div>;
+}
 
 function BulkOrganizeDialog({ open, contentIds, onClose }: { open: boolean; contentIds: string[]; onClose(): void }) {
   const tags = useTags(); const libraries = useLibraries(); const assign = useAssignTag(); const membership = useSetLibraryMembership();

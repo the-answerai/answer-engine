@@ -76,6 +76,7 @@ export function createApp<TConfig = Record<string, never>>(options: CreateAppOpt
       tags: '/api/v1/tags', libraries: '/api/v1/libraries',
       batchJobs: '/api/v1/batch-jobs', accessTokens: '/api/v1/access-tokens',
       audit: '/api/v1/audit',
+      settings: '/api/v1/settings',
       ...(extensions?.endpointMetadata ?? {}),
     },
   }));

@@ -113,17 +113,24 @@ Core routes:
 | `GET/POST /api/v1/batch-jobs` | Manage provider-neutral local batch work |
 | `GET/POST /api/v1/access-tokens` | Manage tenant- or library-scoped `ae_live_` tokens |
 | `GET /api/v1/audit` | Page local tenant or library audit history |
+| `GET/PATCH /api/v1/settings` | Manage safe local workspace preferences without exposing provider credentials |
 | `GET/POST /api/v1/content/:id/blobs` | List or store local content blobs |
 
 The all-content system library is provisioned automatically. User-defined
 libraries are saved filters with manual include/exclude overrides; excludes win
 conflicts. Library-scoped tokens apply that same membership predicate to direct
 content reads, search, grounded answers, artifacts, and blobs. Raw token values
-are returned once when created and are stored only as SHA-256 hashes.
+are returned once when created and are stored only as SHA-256 hashes. Token
+capabilities are independent: `read` permits retrieval, while `write` permits
+mutations without implicitly granting read access.
 
 Recipe, report, and batch work is claimed transactionally by the local
 PostgreSQL worker. The worker uses the configured language-provider facade and
 persists observable progress and per-item results without a hosted queue.
+Batch retries skip records that already succeeded. The protected installer
+credential cannot be edited or revoked through the token API, preventing local
+browser lockout. Workspace defaults drive content page size/library scope,
+density, and batch export format in the web application.
 `LOCAL_WORKER_POLL_MS` controls its polling interval (default `1000`, minimum
 `250`); blob bytes remain under `AE_HOME/blobs`.
 

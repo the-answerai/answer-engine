@@ -1,6 +1,13 @@
 import type {
   Artifact,
+  AccessToken,
+  AuditEntry,
   AskResult,
+  BatchJob,
+  CursorPage,
+  Dashboard,
+  DashboardLayoutItem,
+  DashboardWidget,
   ContentBlob,
   ContentFilters,
   ContentItem,
@@ -12,7 +19,16 @@ import type {
   LibraryFilter,
   LibraryMemberPage,
   LineageResult,
+  LocalSettings,
+  MintedAccessToken,
   PageMeta,
+  Recipe,
+  RecipeInput,
+  RecipePreviewItem,
+  RecipeRun,
+  ReportDefinition,
+  ReportInput,
+  GeneratedReport,
   Tag,
 } from './types';
 
@@ -138,6 +154,10 @@ export function listArtifacts(contentId: string): Promise<Artifact[]> {
   return request(`/api/v1/content/${encodeURIComponent(contentId)}/artifacts`);
 }
 
+export function getArtifact(artifactId: string): Promise<Artifact> {
+  return request(`/api/v1/artifacts/${encodeURIComponent(artifactId)}`);
+}
+
 export function listBlobs(contentId: string): Promise<ContentBlob[]> {
   return request(`/api/v1/content/${encodeURIComponent(contentId)}/blobs`);
 }
@@ -239,6 +259,102 @@ export function setLibraryMembership(
     `/api/v1/libraries/${encodeURIComponent(libraryId)}/${mode}s/${encodeURIComponent(contentId)}`,
     json(active ? 'PUT' : 'DELETE'),
   );
+}
+
+const libraryPath = (libraryId: string) => `/api/v1/libraries/${encodeURIComponent(libraryId)}`;
+
+export function listRecipes(libraryId: string): Promise<Recipe[]> {
+  return request(`${libraryPath(libraryId)}/recipes`);
+}
+export function createRecipe(libraryId: string, input: RecipeInput): Promise<Recipe> {
+  return request(`${libraryPath(libraryId)}/recipes`, json('POST', input));
+}
+export function updateRecipe(libraryId: string, recipeId: string, input: Partial<RecipeInput>): Promise<Recipe> {
+  return request(`${libraryPath(libraryId)}/recipes/${encodeURIComponent(recipeId)}`, json('PATCH', input));
+}
+export function deleteRecipe(libraryId: string, recipeId: string): Promise<void> {
+  return request(`${libraryPath(libraryId)}/recipes/${encodeURIComponent(recipeId)}`, json('DELETE'));
+}
+export function previewRecipe(libraryId: string, recipeId: string, input: { contentIds?: string[]; limit?: number } = {}): Promise<{ items: RecipePreviewItem[] }> {
+  return request(`${libraryPath(libraryId)}/recipes/${encodeURIComponent(recipeId)}/preview`, json('POST', { limit: 3, ...input }));
+}
+export function runRecipe(libraryId: string, recipeId: string): Promise<RecipeRun> {
+  return request(`${libraryPath(libraryId)}/recipes/${encodeURIComponent(recipeId)}/runs`, json('POST'));
+}
+export function listRecipeRuns(libraryId: string, recipeId: string): Promise<RecipeRun[]> {
+  return request(`${libraryPath(libraryId)}/recipes/${encodeURIComponent(recipeId)}/runs`);
+}
+export function getRecipeRun(libraryId: string, runId: string): Promise<RecipeRun> {
+  return request(`${libraryPath(libraryId)}/runs/${encodeURIComponent(runId)}`);
+}
+export function cancelRecipeRun(libraryId: string, runId: string): Promise<RecipeRun> {
+  return request(`${libraryPath(libraryId)}/runs/${encodeURIComponent(runId)}/cancel`, json('POST'));
+}
+export function retryRecipeRun(libraryId: string, runId: string): Promise<RecipeRun> {
+  return request(`${libraryPath(libraryId)}/runs/${encodeURIComponent(runId)}/retry`, json('POST'));
+}
+
+export function listReports(libraryId: string): Promise<ReportDefinition[]> { return request(`${libraryPath(libraryId)}/reports`); }
+export function createReport(libraryId: string, input: ReportInput): Promise<ReportDefinition> { return request(`${libraryPath(libraryId)}/reports`, json('POST', input)); }
+export function updateReport(libraryId: string, reportId: string, input: Partial<ReportInput>): Promise<ReportDefinition> { return request(`${libraryPath(libraryId)}/reports/${encodeURIComponent(reportId)}`, json('PATCH', input)); }
+export function deleteReport(libraryId: string, reportId: string): Promise<void> { return request(`${libraryPath(libraryId)}/reports/${encodeURIComponent(reportId)}`, json('DELETE')); }
+export function generateReport(libraryId: string, reportId: string): Promise<GeneratedReport> { return request(`${libraryPath(libraryId)}/reports/${encodeURIComponent(reportId)}/generate`, json('POST')); }
+export function listGeneratedReports(libraryId: string, reportId: string): Promise<GeneratedReport[]> { return request(`${libraryPath(libraryId)}/reports/${encodeURIComponent(reportId)}/generated`); }
+export function cancelGeneratedReport(libraryId: string, reportId: string, generatedId: string): Promise<GeneratedReport> { return request(`${libraryPath(libraryId)}/reports/${encodeURIComponent(reportId)}/generated/${encodeURIComponent(generatedId)}/cancel`, json('POST')); }
+export function retryGeneratedReport(libraryId: string, reportId: string, generatedId: string): Promise<GeneratedReport> { return request(`${libraryPath(libraryId)}/reports/${encodeURIComponent(reportId)}/generated/${encodeURIComponent(generatedId)}/retry`, json('POST')); }
+
+export function listDashboards(libraryId: string): Promise<Dashboard[]> { return request(`${libraryPath(libraryId)}/dashboards`); }
+export function createDashboard(libraryId: string, input: { name: string; description?: string | null; layout: DashboardLayoutItem[]; widgets: DashboardWidget[] }): Promise<Dashboard> { return request(`${libraryPath(libraryId)}/dashboards`, json('POST', input)); }
+export function updateDashboard(libraryId: string, dashboardId: string, input: Partial<Pick<Dashboard, 'name' | 'description' | 'layout' | 'widgets'>>): Promise<Dashboard> { return request(`${libraryPath(libraryId)}/dashboards/${encodeURIComponent(dashboardId)}`, json('PATCH', input)); }
+export function deleteDashboard(libraryId: string, dashboardId: string): Promise<void> { return request(`${libraryPath(libraryId)}/dashboards/${encodeURIComponent(dashboardId)}`, json('DELETE')); }
+
+export function listBatchJobs(input: { cursor?: string; limit?: number } = {}): Promise<CursorPage<BatchJob>> {
+  const params = new URLSearchParams({ limit: String(input.limit ?? 25) });
+  if (input.cursor) params.set('cursor', input.cursor);
+  return request(`/api/v1/batch-jobs?${params.toString()}`);
+}
+export function createBatchJob(input: { libraryId?: string | null; kind: BatchJob['kind']; name: string; input: Record<string, unknown>; contentIds?: string[] }): Promise<BatchJob> { return request('/api/v1/batch-jobs', json('POST', input)); }
+export function getBatchJob(jobId: string): Promise<BatchJob> { return request(`/api/v1/batch-jobs/${encodeURIComponent(jobId)}`); }
+export function cancelBatchJob(jobId: string): Promise<BatchJob> { return request(`/api/v1/batch-jobs/${encodeURIComponent(jobId)}/cancel`, json('POST')); }
+export function retryBatchJob(jobId: string): Promise<BatchJob> { return request(`/api/v1/batch-jobs/${encodeURIComponent(jobId)}/retry`, json('POST')); }
+
+export function listAccessTokens(): Promise<AccessToken[]> { return request('/api/v1/access-tokens'); }
+export function createAccessToken(input: { name: string; description?: string | null; libraryId?: string | null; expiresAt?: string | null; capabilities: Array<'read' | 'write'> }): Promise<MintedAccessToken> { return request('/api/v1/access-tokens', json('POST', input)); }
+export function updateAccessToken(tokenId: string, input: { name?: string; description?: string | null; expiresAt?: string | null }): Promise<AccessToken> { return request(`/api/v1/access-tokens/${encodeURIComponent(tokenId)}`, json('PATCH', input)); }
+export function revokeAccessToken(tokenId: string): Promise<{ id: string; revoked: boolean }> { return request(`/api/v1/access-tokens/${encodeURIComponent(tokenId)}`, json('DELETE')); }
+
+export function listAudit(input: { libraryId?: string; action?: string; resourceType?: string; cursor?: string; limit?: number } = {}): Promise<CursorPage<AuditEntry>> {
+  const params = new URLSearchParams({ limit: String(input.limit ?? 25) });
+  for (const key of ['libraryId', 'action', 'resourceType', 'cursor'] as const) if (input[key]) params.set(key, input[key] as string);
+  return request(`/api/v1/audit?${params.toString()}`);
+}
+
+export function getSettings(): Promise<LocalSettings> {
+  return request('/api/v1/settings');
+}
+
+export function updateSettings(input: Partial<LocalSettings>): Promise<LocalSettings> {
+  return request('/api/v1/settings', json('PATCH', input));
+}
+
+export function downloadTextFile(fileName: string, content: string, mediaType = 'text/plain;charset=utf-8'): void {
+  const blobUrl = URL.createObjectURL(new Blob([content], { type: mediaType }));
+  const anchor = document.createElement('a');
+  anchor.href = blobUrl;
+  anchor.download = fileName.replace(/[^a-zA-Z0-9._-]+/g, '-');
+  anchor.click();
+  URL.revokeObjectURL(blobUrl);
+}
+
+function csvCell(value: unknown): string {
+  const normalized = value ?? '';
+  const text = typeof normalized === 'string' ? normalized : JSON.stringify(normalized);
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+export function rowsToCsv(rows: Array<Record<string, unknown>>): string {
+  const columns = [...new Set(rows.flatMap((row) => Object.keys(row)))];
+  return [columns.map(csvCell).join(','), ...rows.map((row) => columns.map((column) => csvCell(row[column])).join(','))].join('\n');
 }
 
 export { EMPTY_META };

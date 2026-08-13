@@ -199,7 +199,13 @@ describeDatabase('neutral application real-database workflows', () => {
     expect(reports.body.data[0]).toMatchObject({ status: 'succeeded', body: 'Grounded report [1]' });
 
     const dashboard = await authenticated('post', `/api/v1/libraries/${libraryId}/dashboards`).send({
-      name: 'Local overview', widgets: [{ type: 'count' }],
+      name: 'Local overview',
+      widgets: [{
+        id: randomUUID(),
+        type: 'metric',
+        title: 'Evidence count',
+        config: { value: '1' },
+      }],
     });
     expect(dashboard.status).toBe(201);
     const dashboardId = dashboard.body.data.id as string;
@@ -217,7 +223,15 @@ describeDatabase('neutral application real-database workflows', () => {
     expect(batch.body.data.totalCount).toBe(1);
     expect(await worker.runNext()).toBe('batch');
     const batchDetail = await authenticated('get', `/api/v1/batch-jobs/${batch.body.data.id}`);
+    expect(batchDetail.status, JSON.stringify(batchDetail.body)).toBe(200);
     expect(batchDetail.body.data).toMatchObject({ status: 'succeeded', totalCount: 1, succeededCount: 1 });
+
+    const libraryBatch = await authenticated('post', '/api/v1/batch-jobs').send({
+      libraryId, kind: 'export', name: 'Library export', input: { format: 'json' },
+    });
+    expect(await worker.runNext()).toBe('batch');
+    const libraryBatchDetail = await authenticated('get', `/api/v1/batch-jobs/${libraryBatch.body.data.id}`);
+    expect(libraryBatchDetail.body.data.input.contentIds).toEqual([contentId]);
 
     const blobData = Buffer.from('preserved application evidence');
     const uploadedBlob = await authenticated('post', `/api/v1/content/${contentId}/blobs`).send({
@@ -259,6 +273,9 @@ describeDatabase('neutral application real-database workflows', () => {
       .put(`/api/v1/libraries/${libraryId}/includes/${unscopedContentId}`)
       .set('X-API-Key', scopedWriter.body.data.token);
     expect(broadenMembership.status).toBe(404);
+    const writeOnlyRead = await request(app).get('/api/v1/content')
+      .set('X-API-Key', scopedWriter.body.data.token);
+    expect(writeOnlyRead.status).toBe(403);
     await authenticated('delete', `/api/v1/access-tokens/${scopedWriter.body.data.id}`);
     const updatedToken = await authenticated('patch', `/api/v1/access-tokens/${token.body.data.id}`)
       .send({ description: 'Read-only architecture automation.' });
