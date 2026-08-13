@@ -77,6 +77,10 @@ describe('Alpha Loop repository posture', () => {
 
     expect(read('.alpha-loop/templates/skills/alpha-loop-runner/SKILL.md'))
       .toContain('Repo: `the-answerai/answer-engine`');
+    expect(read('.alpha-loop/context.md')).toContain('`packages/cli` owns the CLI entry point');
+    expect(read('.alpha-loop/context.md')).not.toContain('`src/cli.ts` is the CLI entry point');
+    expect(read('.alpha-loop/templates/instructions.md')).toContain('Track every change in a GitHub issue');
+    expect(read('.alpha-loop/templates/instructions.md')).toContain('Run\n`pnpm verify`');
   });
 
   it('keeps both harness outputs synchronized with project templates', () => {
