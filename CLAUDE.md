@@ -10,8 +10,9 @@ permissions belong exclusively in the enterprise layer.
 ## Tech Stack
 
 Use pnpm, Node.js 22, strict TypeScript, Express, React, PostgreSQL/pgvector,
-Redis, and Vitest. Use `agent-browser` for live UI verification. Do not
-substitute `playwright-cli`; Playwright is only the automated E2E test framework.
+Redis, and Vitest. Use the pinned `pnpm exec agent-browser` command for live UI
+verification. Do not substitute `playwright-cli`; Playwright is only the
+automated E2E test framework.
 
 ## Directory Structure
 

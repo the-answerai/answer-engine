@@ -41,9 +41,9 @@ pnpm test
 pnpm build
 ```
 
-Any UI change must also be verified with `agent-browser` at desktop and 375px
-mobile width. Exercise the changed interaction, capture a screenshot, and
-check focus and reduced-motion behavior. Use the repository's
+Any UI change must also be verified with `pnpm exec agent-browser` at desktop
+and 375px mobile width. Exercise the changed interaction, capture a screenshot,
+and check focus and reduced-motion behavior. Use the repository's
 `agent-browser.json`; its profile is intentionally repository-local so linked
 worktree agents can write browser state inside their sandbox. Do not substitute
 `playwright-cli` for this live verification. Playwright remains valid only for

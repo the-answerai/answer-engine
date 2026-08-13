@@ -85,11 +85,15 @@ describe('Alpha Loop repository posture', () => {
       session?: string;
       profile?: string;
     };
+    const packageManifest = JSON.parse(read('package.json')) as {
+      devDependencies?: Record<string, string>;
+    };
 
     expect(existsSync(join(root, '.alpha-loop/templates/skills/agent-browser/SKILL.md'))).toBe(true);
     expect(existsSync(join(root, '.alpha-loop/templates/skills/playwright-cli'))).toBe(false);
     expect(read('.alpha-loop/templates/skills/agent-browser/SKILL.md'))
-      .toContain('agent-browser set viewport 375 812');
+      .toContain('pnpm exec agent-browser set viewport 375 812');
+    expect(packageManifest.devDependencies?.['agent-browser']).toBe('0.34.0');
     expect(read('AGENTS.md')).toMatch(requiredInstruction);
     expect(read('.alpha-loop/templates/instructions.md')).toMatch(requiredInstruction);
     expect(browserConfig).toEqual({
