@@ -160,6 +160,21 @@ contract.
 pnpm verify
 ```
 
+The final real-history acceptance check is read-only. Capture one JSON result
+from `ae sync once --source <source>` for each configured transcript source,
+then run:
+
+```bash
+pnpm acceptance:real-history -- \
+  --sync-summary claude-code-sync.json \
+  --sync-summary codex-sync.json \
+  --sync-summary cowork-sync.json
+```
+
+The verifier requires the production inventory (848 Claude Code, 4105 Codex,
+and 112 Cowork files), zero sync/import failures, tenant-scoped stored summaries
+and manifests, and matching SHA-256 values for a deterministic archive sample.
+
 The immutable fresh database baseline lives in
 [`database/migrations/001_local_core.sql`](./database/migrations/001_local_core.sql),
 with the neutral application foundation in the paired `002` up/down migrations.
