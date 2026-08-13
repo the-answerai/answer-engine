@@ -12,5 +12,9 @@ mkdir -p "$browser_runtime_dir/socket" "$browser_runtime_dir/profile"
 export AGENT_BROWSER_SOCKET_DIR="$browser_runtime_dir/socket"
 export AGENT_BROWSER_PROFILE="$browser_runtime_dir/profile"
 export AGENT_BROWSER_IDLE_TIMEOUT_MS="7200000"
+# The long-lived daemon resolves relative output paths against the worktree that
+# launched it. Pin screenshots to the current caller so issue artifacts never
+# leak into a different worktree.
+export AGENT_BROWSER_SCREENSHOT_DIR="$PWD"
 
 exec pnpm exec agent-browser "$@"

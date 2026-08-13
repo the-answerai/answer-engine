@@ -105,6 +105,7 @@ describe('Alpha Loop repository posture', () => {
     expect(browserConfig).toEqual({ session: 'answer-engine-oss' });
     expect(browserWrapper).toContain('AGENT_BROWSER_SOCKET_DIR');
     expect(browserWrapper).toContain('AGENT_BROWSER_PROFILE');
+    expect(browserWrapper).toContain('AGENT_BROWSER_SCREENSHOT_DIR="$PWD"');
     expect(browserWrapper).toContain('/tmp/answer-engine-oss-browser');
     expect(browserWrapper).not.toContain('$HOME');
     expect(read('.gitignore')).toContain('.agent-browser/');
