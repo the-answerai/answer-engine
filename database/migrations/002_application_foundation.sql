@@ -333,7 +333,8 @@ CREATE INDEX batch_job_results_job_idx ON batch_job_results (tenant_id, job_id, 
 ALTER TABLE api_keys
   ADD COLUMN description TEXT,
   ADD COLUMN capabilities JSONB NOT NULL DEFAULT '["read","write"]'::jsonb,
-  ADD CONSTRAINT api_keys_capabilities_array_check CHECK (jsonb_typeof(capabilities) = 'array');
+  ADD CONSTRAINT api_keys_capabilities_array_check CHECK (jsonb_typeof(capabilities) = 'array'),
+  ADD CONSTRAINT api_keys_tenant_id_id_unique UNIQUE (tenant_id, id);
 
 CREATE TABLE audit_log (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -349,7 +350,8 @@ CREATE TABLE audit_log (
   UNIQUE (tenant_id, id),
   FOREIGN KEY (tenant_id, library_id)
     REFERENCES libraries(tenant_id, id) ON DELETE CASCADE,
-  FOREIGN KEY (api_key_id) REFERENCES api_keys(id) ON DELETE SET NULL
+  FOREIGN KEY (tenant_id, api_key_id)
+    REFERENCES api_keys(tenant_id, id) ON DELETE SET NULL (api_key_id)
 );
 CREATE INDEX audit_log_tenant_cursor_idx ON audit_log (tenant_id, created_at DESC, id DESC);
 CREATE INDEX audit_log_library_cursor_idx ON audit_log (tenant_id, library_id, created_at DESC, id DESC);

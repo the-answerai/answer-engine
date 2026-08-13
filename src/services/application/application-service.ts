@@ -5,6 +5,7 @@ import type { Principal } from '../../types/api.js';
 import { hashApiKey } from '../../middleware/api-key-auth.js';
 import { ConflictError, NotFoundError } from '../../utils/errors.js';
 import type { LanguageProvider } from '../ai/openai-compatible.js';
+import { logger } from '../../utils/logger.js';
 import {
   AccessTokenCreateSchema,
   AccessTokenUpdateSchema,
@@ -26,6 +27,8 @@ import {
   TagAssignmentSchema,
   TagCreateSchema,
   TagUpdateSchema,
+  parseRecipeOutput,
+  recipeResponseFormat,
 } from './application-schemas.js';
 import {
   LibraryFilterSchema,
@@ -225,8 +228,8 @@ export class ApplicationService {
   async updateTag(principal: Principal, id: string, raw: TagUpdate) {
     this.assertTenantAccess(principal);
     const input = TagUpdateSchema.parse(raw);
-    const current = await this.database.query<TagCreate & { id: string }>(
-      `SELECT id, slug, label, description, category, parent_id AS "parentId",
+    const current = await this.database.query<TagCreate>(
+      `SELECT slug, label, description, category, parent_id AS "parentId",
               color, metadata FROM tags
         WHERE tenant_id = $1 AND id = $2 AND is_active = true`,
       [principal.tenantId, id],
@@ -328,7 +331,7 @@ export class ApplicationService {
   }
 
   async updateLibrary(principal: Principal, id: string, raw: LibraryUpdate) {
-    this.assertLibraryAccess(principal, id);
+    this.assertTenantAccess(principal);
     const input = LibraryUpdateSchema.parse(raw);
     const current = await this.libraryRecord(principal, id);
     if (current.kind === 'system_all_content'
@@ -422,6 +425,7 @@ export class ApplicationService {
     mode: 'include' | 'exclude',
     remove: boolean,
   ) {
+    this.assertTenantAccess(principal);
     await this.libraryRecord(principal, libraryId);
     const table = mode === 'include' ? 'library_manual_includes' : 'library_manual_excludes';
     if (remove) {
@@ -533,7 +537,19 @@ export class ApplicationService {
   async updateRecipe(principal: Principal, libraryId: string, recipeId: string, raw: RecipeUpdate) {
     const input = RecipeUpdateSchema.parse(raw);
     const current = await this.recipe(principal, libraryId, recipeId);
-    const merged = RecipeCreateSchema.parse({ ...current, ...input });
+    const merged = RecipeCreateSchema.parse({
+      name: current.name,
+      description: current.description,
+      contentTypes: current.contentTypes,
+      systemPrompt: current.systemPrompt,
+      userPromptTemplate: current.userPromptTemplate,
+      outputType: current.outputType,
+      outputSchema: current.outputSchema,
+      modelId: current.modelId,
+      maxTokens: current.maxTokens,
+      isActive: current.isActive,
+      ...input,
+    });
     const version = current.currentVersion + 1;
     const hash = promptHash(merged);
     const client = await this.database.connect();
@@ -614,9 +630,12 @@ export class ApplicationService {
       const completion = await this.language.complete({
         system: recipe.systemPrompt,
         prompt: recipe.userPromptTemplate.replace('{{content}}', row.content ?? row.summary ?? ''),
+        model: recipe.modelId ?? undefined,
         maxTokens: recipe.maxTokens ?? undefined,
+        responseFormat: recipeResponseFormat(recipe.outputSchema),
       });
       previews.push({ contentId: row.id, title: row.title, output: completion.text,
+        outputData: parseRecipeOutput(completion.text, recipe.outputSchema),
         modelId: completion.model, provider: completion.provider });
     }
     await this.audit(principal, 'recipe.preview', 'recipe', recipeId, libraryId, { count: previews.length });
@@ -797,7 +816,15 @@ export class ApplicationService {
   async updateReport(principal: Principal, libraryId: string, reportId: string, raw: ReportUpdate) {
     const input = ReportUpdateSchema.parse(raw);
     const current = await this.report(principal, libraryId, reportId);
-    const merged = ReportCreateSchema.parse({ ...current, ...input });
+    const merged = ReportCreateSchema.parse({
+      title: current.title,
+      slug: current.slug,
+      description: current.description,
+      prompt: current.prompt,
+      schedule: current.schedule,
+      isActive: current.isActive,
+      ...input,
+    });
     const result = await this.database.query(
       `UPDATE library_reports SET title=$4,slug=$5,description=$6,prompt=$7,
               schedule=$8,is_active=$9
@@ -1043,11 +1070,15 @@ export class ApplicationService {
     if (!['failed', 'partial_success', 'canceled'].includes(String(job.status))) {
       throw new ConflictError('Only failed, partial, or canceled jobs can be retried');
     }
+    const input = z.record(z.unknown()).parse(job.input);
+    const contentIds = z.array(z.string().uuid()).max(10_000).optional()
+      .parse(input.contentIds);
     return this.createBatchJob(principal, {
       libraryId: (job.libraryId as string | null) ?? undefined,
       kind: z.enum(['prompt', 'export', 'import']).parse(job.kind),
       name: `${String(job.name)} retry`,
-      input: z.record(z.unknown()).parse(job.input),
+      input,
+      contentIds,
     });
   }
 
@@ -1176,16 +1207,30 @@ export class ApplicationService {
     const data = Buffer.from(input.dataBase64, 'base64');
     if (data.byteLength === 0) throw new ConflictError('Blob data is empty');
     const stored = await this.storage.write({ tenantId: principal.tenantId, contentId, data });
-    const result = await this.database.query(
-      `INSERT INTO content_blobs (
-         tenant_id,content_id,storage_key,file_name,media_type,byte_size,sha256,source_metadata
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-       RETURNING id,content_id AS "contentId",file_name AS "fileName",media_type AS "mediaType",
-                 byte_size AS "byteSize",sha256,source_metadata AS "sourceMetadata",
-                 created_at AS "createdAt"`,
-      [principal.tenantId, contentId, stored.storageKey, input.fileName, input.mediaType,
-        stored.byteSize, stored.sha256, input.sourceMetadata],
-    );
+    const result = await (async () => {
+      try {
+        return await this.database.query(
+          `INSERT INTO content_blobs (
+             tenant_id,content_id,storage_key,file_name,media_type,byte_size,sha256,source_metadata
+           ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+           RETURNING id,content_id AS "contentId",file_name AS "fileName",media_type AS "mediaType",
+                     byte_size::integer AS "byteSize",sha256,source_metadata AS "sourceMetadata",
+                     created_at AS "createdAt"`,
+          [principal.tenantId, contentId, stored.storageKey, input.fileName, input.mediaType,
+            stored.byteSize, stored.sha256, input.sourceMetadata],
+        );
+      } catch (error) {
+        try {
+          await this.storage.remove(stored.storageKey);
+        } catch (cleanupError) {
+          logger.warn('Failed to remove an uncommitted local blob', {
+            storageKey: stored.storageKey,
+            error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
+          });
+        }
+        throw error;
+      }
+    })();
     const blob = result.rows[0] as { id: string };
     await this.audit(principal, 'blob.upload', 'content_blob', blob.id,
       principal.libraryId ?? null, { contentId, byteSize: stored.byteSize });
@@ -1197,7 +1242,7 @@ export class ApplicationService {
     const contentParameter = scope.parameters.push(contentId);
     const result = await this.database.query(
       `SELECT b.id,b.content_id AS "contentId",b.file_name AS "fileName",
-              b.media_type AS "mediaType",b.byte_size AS "byteSize",b.sha256,
+              b.media_type AS "mediaType",b.byte_size::integer AS "byteSize",b.sha256,
               b.source_metadata AS "sourceMetadata",b.created_at AS "createdAt"
          FROM content_blobs b
          JOIN content_items c ON c.tenant_id=b.tenant_id AND c.id=b.content_id

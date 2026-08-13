@@ -110,3 +110,24 @@ export const BlobUploadSchema = z.object({
   dataBase64: z.string().min(1).max(30 * 1024 * 1024).base64(),
   sourceMetadata: z.record(z.unknown()).default({}),
 }).strict();
+
+export function recipeResponseFormat(outputSchema: Record<string, unknown> | null | undefined) {
+  if (!outputSchema) return undefined;
+  return {
+    type: 'json_schema',
+    json_schema: {
+      name: 'recipe_output',
+      strict: true,
+      schema: outputSchema,
+    },
+  };
+}
+
+export function parseRecipeOutput(
+  text: string,
+  outputSchema: Record<string, unknown> | null | undefined,
+): unknown {
+  if (!outputSchema) return undefined;
+  const withoutFences = text.replace(/```(?:json)?/gi, '').trim();
+  return JSON.parse(withoutFences) as unknown;
+}

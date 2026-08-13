@@ -39,7 +39,7 @@ export function createApp<TConfig = Record<string, never>>(options: CreateAppOpt
   const applicationService = new ApplicationService(
     database,
     language,
-    new LocalBlobStorage(env.AE_HOME),
+    options.dependencies?.blobStorage ?? new LocalBlobStorage(env.AE_HOME),
   );
   const extensions = options.extensions;
   const localUiApiKey = !extensions?.authentication && env.LOCAL_UI_AUTO_AUTH

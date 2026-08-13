@@ -5,7 +5,9 @@ import YAML from 'yaml';
 describe('OpenAPI neutral application boundary', () => {
   it('documents every neutral capability family and no paid-only concepts', async () => {
     const source = await readFile('openapi/answer-engine.yaml', 'utf8');
-    const document = YAML.parse(source) as { paths: Record<string, unknown> };
+    const document = YAML.parse(source) as {
+      paths: Record<string, Record<string, { requestBody?: unknown }>>;
+    };
 
     expect(Object.keys(document.paths)).toEqual(expect.arrayContaining([
       '/api/v1/tags',
@@ -20,5 +22,23 @@ describe('OpenAPI neutral application boundary', () => {
       '/api/v1/content/{id}/blobs',
     ]));
     expect(source).not.toMatch(/auth0|stripe|rbac|billing|permissions|teams|user roles/i);
+
+    const bodyOperations = [
+      ['patch', '/api/v1/tags/{tagId}'],
+      ['post', '/api/v1/tags/{tagId}/content'],
+      ['patch', '/api/v1/libraries/{libraryId}'],
+      ['post', '/api/v1/libraries/{libraryId}/preview'],
+      ['patch', '/api/v1/libraries/{libraryId}/recipes/{recipeId}'],
+      ['post', '/api/v1/libraries/{libraryId}/recipes/{recipeId}/preview'],
+      ['post', '/api/v1/libraries/{libraryId}/reports'],
+      ['post', '/api/v1/libraries/{libraryId}/dashboards'],
+      ['post', '/api/v1/batch-jobs'],
+      ['post', '/api/v1/access-tokens'],
+      ['post', '/api/v1/content/{id}/blobs'],
+    ] as const;
+    for (const [method, path] of bodyOperations) {
+      expect(document.paths[path]?.[method]?.requestBody, `${method.toUpperCase()} ${path}`)
+        .toBeDefined();
+    }
   });
 });

@@ -6,6 +6,7 @@ export interface LanguageProvider {
   complete(input: {
     system: string;
     prompt: string;
+    model?: string;
     maxTokens?: number;
     responseFormat?: Record<string, unknown>;
   }): Promise<{ text: string; model: string; provider: string }>;
@@ -48,10 +49,11 @@ export class OpenAiCompatibleProvider implements LanguageProvider {
   async complete(input: {
     system: string;
     prompt: string;
+    model?: string;
     maxTokens?: number;
     responseFormat?: Record<string, unknown>;
   }): Promise<{ text: string; model: string; provider: string }> {
-    const model = env.MODELS_QA ?? env.MODELS_CHAT;
+    const model = input.model ?? env.MODELS_QA ?? env.MODELS_CHAT;
     if (!model) throw new ConfigurationError('MODELS_CHAT is required for summaries and answers');
     if (env.LLM_PROVIDER === 'anthropic') {
       if (!env.ANTHROPIC_API_KEY) throw new ConfigurationError('ANTHROPIC_API_KEY is required when LLM_PROVIDER=anthropic');

@@ -1,6 +1,7 @@
 import type { Express, RequestHandler } from 'express';
 import type { Database } from '../config/database.js';
 import type { LanguageProvider } from '../services/ai/openai-compatible.js';
+import type { LocalBlobStorage } from '../services/storage/local-blob-storage.js';
 
 export interface LocalRequestContext {
   readonly tenantId: string;
@@ -31,5 +32,6 @@ export interface CreateAppOptions<TConfig = Record<string, never>> {
   readonly dependencies?: {
     readonly database?: Database;
     readonly languageProvider?: LanguageProvider;
+    readonly blobStorage?: LocalBlobStorage;
   };
 }

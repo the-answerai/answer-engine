@@ -3,6 +3,7 @@ import type { Database } from '../../config/database.js';
 import type { LanguageProvider } from '../ai/openai-compatible.js';
 import { LibraryFilterSchema, buildEffectiveMembership } from '../library/library-membership.js';
 import { logger } from '../../utils/logger.js';
+import { parseRecipeOutput, recipeResponseFormat } from './application-schemas.js';
 
 interface RecipeClaim {
   id: string;
@@ -33,6 +34,7 @@ interface RecipeDetails {
   system_prompt: string;
   user_prompt_template: string;
   output_type: string;
+  output_schema: Record<string, unknown> | null;
   model_id: string | null;
   max_tokens: number | null;
   prompt_hash: string;
@@ -83,15 +85,18 @@ export class LocalApplicationWorker {
   private async processRecipe(run: RecipeClaim): Promise<void> {
     try {
       const details = await this.database.query<RecipeDetails>(
-        `SELECT r.name,r.content_types,r.system_prompt,r.user_prompt_template,
-                r.output_type,r.model_id,r.max_tokens,r.prompt_hash,l.filter_predicate
+        `SELECT r.name,v.content_types,v.system_prompt,v.user_prompt_template,
+                v.output_type,v.output_schema,v.model_id,v.max_tokens,v.prompt_hash,
+                l.filter_predicate
            FROM library_recipes r
+           JOIN library_recipe_versions v
+             ON v.tenant_id=r.tenant_id AND v.recipe_id=r.id AND v.version=$4
            JOIN libraries l ON l.tenant_id=r.tenant_id AND l.id=r.library_id
-          WHERE r.tenant_id=$1 AND r.id=$2 AND r.library_id=$3 AND r.is_active=true`,
-        [run.tenant_id, run.recipe_id, run.library_id],
+          WHERE r.tenant_id=$1 AND r.id=$2 AND r.library_id=$3`,
+        [run.tenant_id, run.recipe_id, run.library_id, run.recipe_version],
       );
       const recipe = details.rows[0];
-      if (!recipe) throw new Error('Recipe is missing or inactive');
+      if (!recipe) throw new Error('Recipe or requested recipe version is missing');
       const parameters: unknown[] = [run.tenant_id, run.library_id];
       const membership = buildEffectiveMembership({
         contentAlias: 'c', tenantParameter: 1, libraryParameter: 2,
@@ -121,7 +126,9 @@ export class LocalApplicationWorker {
           const completion = await this.language.complete({
             system: recipe.system_prompt,
             prompt: recipe.user_prompt_template.replace('{{content}}', item.content ?? item.summary ?? ''),
+            model: recipe.model_id ?? undefined,
             maxTokens: recipe.max_tokens ?? undefined,
+            responseFormat: recipeResponseFormat(recipe.output_schema),
           });
           const afterCompletion = await this.database.query<{ status: string }>(
             `SELECT status FROM library_recipe_runs WHERE tenant_id=$1 AND id=$2`,
@@ -162,6 +169,7 @@ export class LocalApplicationWorker {
     item: { id: string; title: string },
     completion: { text: string; model: string; provider: string },
   ): Promise<void> {
+    const outputData = parseRecipeOutput(completion.text, recipe.output_schema);
     const client = await this.database.connect();
     try {
       await client.query('BEGIN');
@@ -180,24 +188,26 @@ export class LocalApplicationWorker {
       }
       const artifact = await client.query<{ id: string }>(
         `INSERT INTO content_artifacts (
-           tenant_id,content_id,artifact_type,text_content,source_content_ids,
+           tenant_id,content_id,artifact_type,text_content,data_json,source_content_ids,
            recipe_id,recipe_run_id,recipe_version,prompt_hash,model_id,status,
            supersedes_id,version,is_current,metadata,started_at,completed_at
-         ) VALUES ($1,$2,$3,$4,ARRAY[$2]::uuid[],$5,$6,$7,$8,$9,'success',
-                   $10,$11,true,$12,NOW(),NOW()) RETURNING id`,
-        [run.tenant_id, item.id, recipe.output_type, completion.text, run.recipe_id,
-          run.id, String(run.recipe_version), recipe.prompt_hash, completion.model,
+         ) VALUES ($1,$2,$3,$4,$5,ARRAY[$2]::uuid[],$6,$7,$8,$9,$10,'success',
+                   $11,$12,true,$13,NOW(),NOW()) RETURNING id`,
+        [run.tenant_id, item.id, recipe.output_type, completion.text, outputData ?? null,
+          run.recipe_id, run.id, String(run.recipe_version), recipe.prompt_hash, completion.model,
           current.rows[0]?.id ?? null, (current.rows[0]?.version ?? 0) + 1,
           { provider: completion.provider, recipeName: recipe.name }],
       );
       await client.query(
         `INSERT INTO library_recipe_run_items (
-           tenant_id,run_id,content_id,artifact_id,status,output_preview,started_at,completed_at
-         ) VALUES ($1,$2,$3,$4,'success',$5,NOW(),NOW())
+           tenant_id,run_id,content_id,artifact_id,status,output_preview,output_data,
+           started_at,completed_at
+         ) VALUES ($1,$2,$3,$4,'success',$5,$6,NOW(),NOW())
          ON CONFLICT (tenant_id,run_id,content_id) DO UPDATE SET
            artifact_id=EXCLUDED.artifact_id,status='success',output_preview=EXCLUDED.output_preview,
-           error_message=NULL,completed_at=NOW()`,
-        [run.tenant_id, run.id, item.id, artifact.rows[0]!.id, completion.text.slice(0, 1_000)],
+           output_data=EXCLUDED.output_data,error_message=NULL,completed_at=NOW()`,
+        [run.tenant_id, run.id, item.id, artifact.rows[0]!.id,
+          completion.text.slice(0, 1_000), outputData ?? null],
       );
       await client.query('COMMIT');
     } catch (error) {

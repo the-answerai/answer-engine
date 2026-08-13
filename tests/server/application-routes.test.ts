@@ -66,6 +66,18 @@ describe('neutral application routes', () => {
     expect(response.body.data.token).toBe(rawToken);
   });
 
+  it('returns a conflict response for database integrity violations', async () => {
+    const conflict = Object.assign(new Error('duplicate key value'), { code: '23505' });
+    const createTag = vi.fn().mockRejectedValue(conflict);
+    const response = await request(routeApp({ createTag }))
+      .post('/api/v1/tags')
+      .send({ slug: 'duplicate', label: 'Duplicate' });
+
+    expect(response.status).toBe(409);
+    expect(response.body.error).toMatchObject({ code: 'CONFLICT', statusCode: 409 });
+    expect(response.body.error.message).not.toContain('duplicate key');
+  });
+
   it('advertises all neutral endpoint families without paid-only concepts', async () => {
     const database = { query: vi.fn(), connect: vi.fn() } as unknown as Database;
     const languageProvider: LanguageProvider = { embed: vi.fn(), complete: vi.fn() };

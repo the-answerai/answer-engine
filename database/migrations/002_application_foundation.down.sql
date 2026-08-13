@@ -4,6 +4,7 @@ DROP TABLE IF EXISTS audit_log;
 
 ALTER TABLE api_keys
   DROP CONSTRAINT IF EXISTS api_keys_capabilities_array_check,
+  DROP CONSTRAINT IF EXISTS api_keys_tenant_id_id_unique,
   DROP COLUMN IF EXISTS capabilities,
   DROP COLUMN IF EXISTS description;
 
@@ -16,6 +17,19 @@ DROP TABLE IF EXISTS library_reports;
 DROP INDEX IF EXISTS content_artifacts_recipe_idx;
 DROP INDEX IF EXISTS content_artifacts_current_recipe_idx;
 DROP INDEX IF EXISTS content_artifacts_current_base_idx;
+
+-- The 001 vocabulary cannot represent recipe-defined artifact types. Preserve
+-- those generated values as the closest 001-compatible type and retain their
+-- original type in metadata before restoring the old check constraint.
+UPDATE content_artifacts
+SET metadata = metadata || jsonb_build_object(
+      'rolled_back_artifact_type', artifact_type
+    ),
+    artifact_type = 'generated_field'
+WHERE artifact_type NOT IN (
+  'raw_text', 'cleaned_text', 'domain_report', 'extraction_json',
+  'generated_field', 'analysis_variant'
+);
 
 WITH ranked AS (
   SELECT id,

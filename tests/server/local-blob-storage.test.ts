@@ -21,5 +21,7 @@ describe('local blob storage', () => {
 
     await expect(storage.read(stored.storageKey)).resolves.toEqual(data);
     await expect(storage.read('../outside')).rejects.toThrow('Invalid blob storage key');
+    await storage.remove(stored.storageKey);
+    await expect(storage.read(stored.storageKey)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 });

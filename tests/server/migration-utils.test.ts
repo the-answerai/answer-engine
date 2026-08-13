@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   downMigrationName,
@@ -21,5 +22,18 @@ describe('migration file discovery', () => {
     expect(isUpMigration('2_application.sql')).toBe(false);
     expect(isDownMigration('002-application.down.sql')).toBe(false);
     expect(() => downMigrationName('README.md')).toThrow();
+  });
+
+  it('preserves recipe-defined artifacts before restoring the 001 type constraint', () => {
+    const rollback = readFileSync(
+      'database/migrations/002_application_foundation.down.sql',
+      'utf8',
+    );
+    const remap = rollback.indexOf("artifact_type = 'generated_field'");
+    const constraint = rollback.indexOf('ADD CONSTRAINT content_artifacts_artifact_type_check');
+
+    expect(remap).toBeGreaterThan(-1);
+    expect(rollback).toContain("'rolled_back_artifact_type', artifact_type");
+    expect(remap).toBeLessThan(constraint);
   });
 });

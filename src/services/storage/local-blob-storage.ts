@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 
 export interface StoredBlob {
@@ -43,5 +43,9 @@ export class LocalBlobStorage {
 
   async read(storageKey: string): Promise<Buffer> {
     return readFile(this.resolveKey(storageKey));
+  }
+
+  async remove(storageKey: string): Promise<void> {
+    await unlink(this.resolveKey(storageKey));
   }
 }
