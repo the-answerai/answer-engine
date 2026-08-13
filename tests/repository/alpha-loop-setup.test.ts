@@ -187,6 +187,87 @@ describe('Alpha Loop repository posture', () => {
     }
   });
 
+  it('recognizes its daemon when the OSS checkout is a submodule', async () => {
+    const fixtureRoot = mkdtempSync(join(root, '.agent-browser-submodule-test-'));
+    const sourceRepository = join(fixtureRoot, 'source');
+    const consumerRepository = join(fixtureRoot, 'consumer');
+    const runtimeDirectory = join(fixtureRoot, 'runtime');
+    const fakeBinDirectory = join(fixtureRoot, 'fake-bin');
+    const invocationFile = join(runtimeDirectory, 'pnpm-invocation');
+    let daemon: ReturnType<typeof spawn> | undefined;
+
+    const git = (cwd: string, args: readonly string[]) => {
+      const result = spawnSync('git', args, { cwd, encoding: 'utf8' });
+      expect(result.status, result.stderr).toBe(0);
+    };
+
+    try {
+      mkdirSync(join(sourceRepository, 'scripts'), { recursive: true });
+      copyFileSync(join(root, 'scripts/agent-browser.sh'), join(sourceRepository, 'scripts/agent-browser.sh'));
+      chmodSync(join(sourceRepository, 'scripts/agent-browser.sh'), 0o755);
+      git(sourceRepository, ['init', '--initial-branch=master']);
+      git(sourceRepository, ['config', 'user.name', 'Answer Engine Test']);
+      git(sourceRepository, ['config', 'user.email', 'test@example.invalid']);
+      git(sourceRepository, ['add', 'scripts/agent-browser.sh']);
+      git(sourceRepository, ['commit', '-m', 'test fixture']);
+
+      mkdirSync(consumerRepository, { recursive: true });
+      git(consumerRepository, ['init', '--initial-branch=master']);
+      git(consumerRepository, ['config', 'user.name', 'Answer Engine Test']);
+      git(consumerRepository, ['config', 'user.email', 'test@example.invalid']);
+      git(consumerRepository, ['commit', '--allow-empty', '-m', 'consumer fixture']);
+      git(consumerRepository, [
+        '-c', 'protocol.file.allow=always', 'submodule', 'add', sourceRepository, 'vendor/answer-engine',
+      ]);
+
+      const checkout = join(consumerRepository, 'vendor/answer-engine');
+      const fakeDaemonDirectory = join(
+        checkout,
+        'old-worktree/node_modules/agent-browser/bin',
+      );
+      const fakeDaemon = join(fakeDaemonDirectory, 'agent-browser-test');
+      mkdirSync(fakeDaemonDirectory, { recursive: true });
+      mkdirSync(join(runtimeDirectory, 'socket'), { recursive: true });
+      mkdirSync(fakeBinDirectory, { recursive: true });
+      copyFileSync('/bin/sleep', fakeDaemon);
+      chmodSync(fakeDaemon, 0o755);
+      writeFileSync(
+        join(fakeBinDirectory, 'pnpm'),
+        `#!/usr/bin/env bash\nprintf '%s\\n' "$*" > "${invocationFile}"\n`,
+      );
+      chmodSync(join(fakeBinDirectory, 'pnpm'), 0o755);
+
+      daemon = spawn(fakeDaemon, ['120'], { stdio: 'ignore' });
+      if (daemon.pid === undefined) throw new Error('Fake submodule daemon did not start');
+      writeFileSync(join(runtimeDirectory, 'socket/answer-engine-oss.pid'), String(daemon.pid));
+
+      const result = spawnSync('bash', ['scripts/agent-browser.sh', 'prepare'], {
+        cwd: checkout,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          AE_AGENT_BROWSER_RUNTIME_DIR: runtimeDirectory,
+          PATH: `${fakeBinDirectory}:${process.env.PATH ?? ''}`,
+        },
+      });
+
+      expect(result.status, result.stderr).toBe(0);
+      expect(readFileSync(invocationFile, 'utf8').trim())
+        .toBe('exec agent-browser open about:blank');
+      await once(daemon, 'exit');
+      expect(daemon.signalCode).not.toBeNull();
+    } finally {
+      if (daemon?.pid !== undefined) {
+        try {
+          process.kill(daemon.pid, 'SIGTERM');
+        } catch {
+          // The preparation command is expected to stop it.
+        }
+      }
+      rmSync(fixtureRoot, { recursive: true, force: true });
+    }
+  });
+
   it('defines only the five paid capability families as private', () => {
     const agentGuide = read('AGENTS.md');
     const readme = read('README.md');

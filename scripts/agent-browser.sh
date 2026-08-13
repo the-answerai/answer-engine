@@ -22,7 +22,11 @@ stop_project_daemon() {
   local pid_file="$browser_runtime_dir/socket/$browser_session.pid"
   local daemon_pid
   local daemon_command
-  local repository_root
+  local checkout_root
+  local common_dir
+  local common_repository_root=""
+  local trusted_root
+  local project_daemon=false
 
   [[ -f "$pid_file" ]] || return 0
 
@@ -34,15 +38,35 @@ stop_project_daemon() {
 
   kill -0 "$daemon_pid" 2>/dev/null || return 0
 
-  repository_root="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
-  daemon_command="$(ps -p "$daemon_pid" -o command=)"
-  case "$daemon_command" in
-    "$repository_root"/*/node_modules/agent-browser/bin/agent-browser-*) ;;
-    *)
-      echo "Refusing to stop PID $daemon_pid because it is not this repository's agent-browser daemon: $daemon_command" >&2
-      return 1
+  checkout_root="$(git rev-parse --show-toplevel)"
+  common_dir="$(git rev-parse --path-format=absolute --git-common-dir)"
+  case "$common_dir" in
+    */.git)
+      common_repository_root="${common_dir%/.git}"
+      ;;
+    */.git/worktrees/*)
+      # A submodule inside a superproject worktree stores its Git metadata
+      # below .../.git/worktrees/<name>/modules/. That path belongs to the
+      # consumer, not this OSS checkout, so only trust the checkout root.
+      if [[ "$common_dir" != */modules/* ]]; then
+        common_repository_root="${common_dir%%/.git/worktrees/*}"
+      fi
       ;;
   esac
+  daemon_command="$(ps -p "$daemon_pid" -o command=)"
+  for trusted_root in "$checkout_root" "$common_repository_root"; do
+    [[ -n "$trusted_root" ]] || continue
+    case "$daemon_command" in
+      "$trusted_root"/*/node_modules/agent-browser/bin/agent-browser-*)
+        project_daemon=true
+        break
+        ;;
+    esac
+  done
+  if [[ "$project_daemon" != true ]]; then
+    echo "Refusing to stop PID $daemon_pid because it is not this repository's agent-browser daemon: $daemon_command" >&2
+    return 1
+  fi
 
   kill -TERM "$daemon_pid"
   for _ in {1..50}; do
