@@ -57,6 +57,39 @@ export const ImportRequestSchema = z.object({
   options: z.record(z.unknown()).optional(),
 });
 
+const csvList = <T extends z.ZodTypeAny>(item: T) => z.preprocess(
+  (value) => typeof value === 'string'
+    ? value.split(',').map((entry) => entry.trim()).filter(Boolean)
+    : value,
+  z.array(item).min(1).max(100),
+);
+
+export const ContentListSchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  cursor: z.string().max(2_000).optional(),
+  libraryId: z.string().max(120).optional(),
+  librarySlug: z.string().max(120).optional(),
+  search: z.string().trim().max(500).optional(),
+  contentType: ContentTypeSchema.optional(),
+  contentTypes: csvList(ContentTypeSchema).optional(),
+  source: z.string().trim().min(1).max(120).optional(),
+  sources: csvList(z.string().trim().min(1).max(120)).optional(),
+  tag: z.string().trim().min(1).max(120).optional(),
+  tags: csvList(z.string().trim().min(1).max(120)).optional(),
+  status: z.enum(['active', 'archived']).optional(),
+  dateFrom: z.string().datetime().optional(),
+  dateTo: z.string().datetime().optional(),
+  sortBy: z.enum(['createdAt', 'title', 'contentType', 'source', 'status']).default('createdAt'),
+  sortDirection: z.enum(['asc', 'desc']).default('desc'),
+}).strict().transform(({ contentType, source, tag, ...input }) => ({
+  ...input,
+  contentTypes: input.contentTypes ?? (contentType ? [contentType] : undefined),
+  sources: input.sources ?? (source ? [source] : undefined),
+  tags: input.tags ?? (tag ? [tag] : undefined),
+}));
+
+export type ContentListInput = z.input<typeof ContentListSchema>;
+
 export const QuerySchema = z.object({
   query: z.string().trim().min(1).max(2000),
   libraryId: z.string().optional(),
@@ -170,13 +203,13 @@ function vectorLiteral(embedding: number[]): string {
   return `[${embedding.join(',')}]`;
 }
 
-function cursorEncode(row: ContentRow): string {
-  return Buffer.from(JSON.stringify([row.created_at.toISOString(), row.id])).toString('base64url');
+function cursorEncode(value: string, id: string): string {
+  return Buffer.from(JSON.stringify([value, id])).toString('base64url');
 }
 
 function cursorDecode(value: string): [string, string] {
   const parsed: unknown = JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
-  return z.tuple([z.string().datetime(), z.string().uuid()]).parse(parsed);
+  return z.tuple([z.string().min(1), z.string().uuid()]).parse(parsed);
 }
 
 function normalizeImportItem(item: ImportItem, index: number) {
@@ -316,6 +349,10 @@ export class ContentService {
       contentAlias: 'c', tenantParameter: 1, libraryParameter: 2,
       filter: scope.filterPredicate, parameters,
     });
+  }
+
+  private scopeParameters(principal: Principal, scope: LibraryScope | undefined): unknown[] {
+    return scope ? [principal.tenantId, scope.libraryId] : [principal.tenantId];
   }
 
   async importContent(principal: Principal, input: z.infer<typeof ImportRequestSchema>) {
@@ -459,44 +496,110 @@ export class ContentService {
     );
   }
 
-  async list(principal: Principal, input: { limit: number; cursor?: string; libraryId?: string; librarySlug?: string }) {
+  async list(principal: Principal, raw: ContentListInput) {
+    const input = ContentListSchema.parse(raw);
     const scope = await this.resolveLibrary(principal, input.libraryId, input.librarySlug);
-    const params: unknown[] = [principal.tenantId, scope?.libraryId ?? null];
+    const params = this.scopeParameters(principal, scope);
     const membership = this.effectiveMembership(scope, params);
-    let cursorSql = '';
+    const conditions = [`c.tenant_id = $1`, membership];
+    if (input.status) {
+      conditions.push(`c.status = $${params.push(input.status)}`);
+    } else {
+      conditions.push(`c.status <> 'deleted'`);
+    }
+    if (input.search) {
+      conditions.push(`c.search_vector @@ websearch_to_tsquery('english', $${params.push(input.search)})`);
+    }
+    if (input.contentTypes?.length) {
+      conditions.push(`c.content_type = ANY($${params.push(input.contentTypes)}::text[])`);
+    }
+    if (input.sources?.length) {
+      conditions.push(`c.source = ANY($${params.push(input.sources)}::text[])`);
+    }
+    if (input.tags?.length) {
+      conditions.push(`EXISTS (
+        SELECT 1 FROM content_tags filter_ct
+        JOIN tags t ON t.tenant_id = filter_ct.tenant_id AND t.id = filter_ct.tag_id
+        WHERE filter_ct.tenant_id = c.tenant_id AND filter_ct.content_id = c.id
+          AND t.is_active = true AND t.slug = ANY($${params.push(input.tags)}::text[])
+      )`);
+    }
+    if (input.dateFrom) conditions.push(`c.created_at >= $${params.push(input.dateFrom)}::timestamptz`);
+    if (input.dateTo) conditions.push(`c.created_at <= $${params.push(input.dateTo)}::timestamptz`);
+
+    const sortColumns = {
+      createdAt: 'c.created_at',
+      title: 'c.title',
+      contentType: 'c.content_type',
+      source: 'c.source',
+      status: 'c.status',
+    } as const;
+    const sortColumn = sortColumns[input.sortBy];
+    const direction = input.sortDirection === 'asc' ? 'ASC' : 'DESC';
     if (input.cursor) {
-      const [createdAt, id] = cursorDecode(input.cursor);
-      const dateIndex = params.push(createdAt);
+      const [sortValue, id] = cursorDecode(input.cursor);
+      const valueIndex = params.push(sortValue);
       const idIndex = params.push(id);
-      cursorSql = `AND (c.created_at, c.id) < ($${dateIndex}::timestamptz, $${idIndex}::uuid)`;
+      const valueCast = input.sortBy === 'createdAt' ? '::timestamptz' : '::text';
+      const comparator = input.sortDirection === 'asc' ? '>' : '<';
+      conditions.push(`(${sortColumn}, c.id) ${comparator} ($${valueIndex}${valueCast}, $${idIndex}::uuid)`);
     }
     params.push(input.limit + 1);
     const result = await this.database.query<ContentRow>(
-      `SELECT c.id, c.content_type, c.title, c.summary, c.primary_text_kind,
-              c.external_url, c.source_agent_id, c.conversation_id,
+      `SELECT c.id, c.content_type, c.source, c.source_identifier, c.title, c.summary,
+              c.status, c.primary_text_kind, c.external_url, c.source_agent_id, c.conversation_id,
               c.turn_index, c.turn_role, c.turn_timestamp, c.turn_metadata,
-              c.created_at, c.updated_at
+              c.created_at, c.updated_at, COUNT(*) OVER()::text AS total_count,
+              COALESCE((
+                SELECT jsonb_agg(jsonb_build_object(
+                  'id', t.id, 'slug', t.slug, 'label', t.label, 'category', t.category,
+                  'color', t.color, 'confidence', ct.confidence
+                ) ORDER BY t.label, t.id)
+                FROM content_tags ct
+                JOIN tags t ON t.tenant_id = ct.tenant_id AND t.id = ct.tag_id
+                WHERE ct.tenant_id = c.tenant_id AND ct.content_id = c.id AND t.is_active = true
+              ), '[]'::jsonb) AS tags
         FROM content_items c
-        WHERE c.tenant_id = $1 AND c.status <> 'deleted'
-          AND ${membership}
-          ${cursorSql}
-        ORDER BY c.created_at DESC, c.id DESC
+        WHERE ${conditions.join(' AND ')}
+        ORDER BY ${sortColumn} ${direction}, c.id ${direction}
         LIMIT $${params.length}`,
       params,
     );
     const hasMore = result.rows.length > input.limit;
     const rows = result.rows.slice(0, input.limit);
     await this.audit(principal, 'content.list', 'content', null, scope?.libraryId ?? null, { count: rows.length });
-    return { items: rows.map((row) => this.present(row, ['summary'])), meta: { hasMore, nextCursor: hasMore && rows.length ? cursorEncode(rows[rows.length - 1] as ContentRow) : null }, scope };
+    const last = rows[rows.length - 1];
+    const sortValue = last
+      ? input.sortBy === 'createdAt'
+        ? (last.created_at instanceof Date ? last.created_at.toISOString() : String(last.created_at))
+        : String({ title: last.title, contentType: last.content_type, source: last.source, status: last.status }[input.sortBy])
+      : null;
+    return {
+      items: rows.map((row) => this.present(row, ['summary'])),
+      meta: {
+        hasMore,
+        nextCursor: hasMore && last && sortValue ? cursorEncode(sortValue, last.id) : null,
+        total: Number(rows[0]?.total_count ?? rows.length),
+      },
+      scope,
+    };
   }
 
   async get(principal: Principal, id: string) {
     const scope = await this.resolveLibrary(principal);
-    const parameters: unknown[] = [principal.tenantId, scope?.libraryId ?? null];
+    const parameters = this.scopeParameters(principal, scope);
     const membership = this.effectiveMembership(scope, parameters);
     const idIndex = parameters.push(id);
     const result = await this.database.query<ContentRow>(
-      `SELECT c.* FROM content_items c WHERE c.tenant_id = $1
+      `SELECT c.*, COALESCE((
+          SELECT jsonb_agg(jsonb_build_object(
+            'id', t.id, 'slug', t.slug, 'label', t.label, 'category', t.category,
+            'color', t.color, 'confidence', ct.confidence
+          ) ORDER BY t.label, t.id)
+          FROM content_tags ct
+          JOIN tags t ON t.tenant_id = ct.tenant_id AND t.id = ct.tag_id
+          WHERE ct.tenant_id = c.tenant_id AND ct.content_id = c.id AND t.is_active = true
+        ), '[]'::jsonb) AS tags FROM content_items c WHERE c.tenant_id = $1
         AND c.id = $${idIndex} AND c.status <> 'deleted' AND ${membership}`,
       parameters,
     );
@@ -508,7 +611,7 @@ export class ContentService {
 
   async remove(principal: Principal, id: string): Promise<void> {
     const scope = await this.resolveLibrary(principal);
-    const parameters: unknown[] = [principal.tenantId, scope?.libraryId ?? null];
+    const parameters = this.scopeParameters(principal, scope);
     const membership = this.effectiveMembership(scope, parameters);
     const idIndex = parameters.push(id);
     const result = await this.database.query(
@@ -523,7 +626,7 @@ export class ContentService {
 
   async lineage(principal: Principal, id: string) {
     const scope = await this.resolveLibrary(principal);
-    const parameters: unknown[] = [principal.tenantId, scope?.libraryId ?? null];
+    const parameters = this.scopeParameters(principal, scope);
     const membership = this.effectiveMembership(scope, parameters);
     const idIndex = parameters.push(id);
     const item = await this.database.query<{ source: string; external_url: string | null; source_identifier: string; raw_archive_manifest: Record<string, unknown> | null }>(
@@ -564,13 +667,13 @@ export class ContentService {
   async schema(principal: Principal, libraryId?: string, librarySlug?: string) {
     const scope = await this.resolveLibrary(principal, libraryId, librarySlug);
     const scopedQuery = (select: string, suffix = '') => {
-      const parameters: unknown[] = [principal.tenantId, scope?.libraryId ?? null];
+      const parameters = this.scopeParameters(principal, scope);
       const membership = this.effectiveMembership(scope, parameters);
       return { sql: `${select} WHERE c.tenant_id = $1 AND c.status <> 'deleted' AND ${membership} ${suffix}`,
         parameters };
     };
     const typesQuery = scopedQuery('SELECT c.content_type, COUNT(*)::text AS count FROM content_items c', 'GROUP BY c.content_type');
-    const tagsParameters: unknown[] = [principal.tenantId, scope?.libraryId ?? null];
+    const tagsParameters = this.scopeParameters(principal, scope);
     const tagsMembership = this.effectiveMembership(scope, tagsParameters);
     const datesQuery = scopedQuery('SELECT MIN(c.created_at) AS earliest, MAX(c.created_at) AS latest FROM content_items c');
     const [types, tags, dates] = await Promise.all([
@@ -611,7 +714,8 @@ export class ContentService {
   }
 
   private async searchRows(principal: Principal, input: QueryInput, scope: LibraryScope | undefined): Promise<ContentRow[]> {
-    const params: unknown[] = [principal.tenantId, scope?.libraryId ?? null, input.query];
+    const params = this.scopeParameters(principal, scope);
+    const queryIndex = params.push(input.query);
     const membership = this.effectiveMembership(scope, params);
     const conditions = [`c.tenant_id = $1`, `c.status = $${params.push(input.filters?.status ?? 'active')}`, membership];
     if (input.filters?.contentTypes?.length) conditions.push(`c.content_type = ANY($${params.push(input.filters.contentTypes)}::text[])`);
@@ -626,8 +730,8 @@ export class ContentService {
     let score: string;
     let candidate: string;
     if (input.searchType === 'fulltext') {
-      score = `ts_rank_cd(c.search_vector, websearch_to_tsquery('english', $3))`;
-      candidate = `c.search_vector @@ websearch_to_tsquery('english', $3)`;
+      score = `ts_rank_cd(c.search_vector, websearch_to_tsquery('english', $${queryIndex}))`;
+      candidate = `c.search_vector @@ websearch_to_tsquery('english', $${queryIndex})`;
     } else {
       const embedding = await this.language.embed(input.query);
       const vectorIndex = params.push(vectorLiteral(embedding));
@@ -636,8 +740,8 @@ export class ContentService {
         score = semantic;
         candidate = `c.embedding IS NOT NULL`;
       } else {
-        score = `(COALESCE(ts_rank_cd(c.search_vector, websearch_to_tsquery('english', $3)), 0) * 0.45 + COALESCE(${semantic}, 0) * 0.55)`;
-        candidate = `(c.search_vector @@ websearch_to_tsquery('english', $3) OR c.embedding IS NOT NULL)`;
+        score = `(COALESCE(ts_rank_cd(c.search_vector, websearch_to_tsquery('english', $${queryIndex})), 0) * 0.45 + COALESCE(${semantic}, 0) * 0.55)`;
+        candidate = `(c.search_vector @@ websearch_to_tsquery('english', $${queryIndex}) OR c.embedding IS NOT NULL)`;
       }
     }
     const limitIndex = params.push(input.limit);
@@ -654,7 +758,7 @@ export class ContentService {
 
   async retrieve(principal: Principal, input: z.infer<typeof RetrieveSchema>) {
     const scope = await this.resolveLibrary(principal, input.libraryId, input.librarySlug);
-    const params: unknown[] = [principal.tenantId, scope?.libraryId ?? null];
+    const params = this.scopeParameters(principal, scope);
     const membership = this.effectiveMembership(scope, params);
     const selector = input.ids?.length
       ? `c.id = ANY($${params.push(input.ids)}::uuid[])`
@@ -718,9 +822,16 @@ export class ContentService {
     const selected = new Set(include);
     return {
       id: row.id, contentType: row.content_type, title: row.title,
+      source: row.source, sourceIdentifier: row.source_identifier, status: row.status,
+      tags: row.tags ?? [],
       ...(selected.has('summary') || !include.length ? { summary: row.summary } : {}),
       ...(selected.has('content') || !include.length ? { content: row.content } : {}),
       ...(selected.has('metadata') || !include.length ? { metadata: row.metadata } : {}),
+      ...(selected.has('metadata') || !include.length ? {
+        sourceData: row.source_data,
+        analysisData: row.analysis_data,
+        rawArchiveManifest: row.raw_archive_manifest,
+      } : {}),
       textKind: row.primary_text_kind ?? 'compatibility', sourceUrl: row.external_url,
       sourceAgentId: row.source_agent_id, conversationId: row.conversation_id,
       turnIndex: row.turn_index, turnRole: row.turn_role,

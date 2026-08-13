@@ -21,7 +21,8 @@ describe('ContentService tenant boundaries', () => {
     expect(sql).toContain('c.tenant_id = $1');
     expect(sql).not.toContain(searchText);
     expect(params[0]).toBe(tenantId);
-    expect(params[2]).toBe(searchText);
+    expect(params).not.toContain(null);
+    expect(params[1]).toBe(searchText);
   });
 
   it('does not call the embedding provider for deterministic full-text search', async () => {
@@ -236,11 +237,141 @@ describe('ContentService tenant boundaries', () => {
       { limit: 50 },
     );
 
-    const [sql] = query.mock.calls[0] as [string];
+    const [sql, parameters] = query.mock.calls[0] as [string, unknown[]];
     expect(sql).not.toContain('SELECT c.*');
     expect(sql).not.toContain('raw_archive_manifest');
+    expect(parameters).not.toContain(null);
     expect(result.items[0]).toMatchObject({ id: contentId, summary: 'A bounded summary.' });
     expect(result.items[0]).not.toHaveProperty('content');
     expect(result.items[0]).not.toHaveProperty('metadata');
+  });
+
+  it('parameterizes workspace list filters and projects source status and tags', async () => {
+    const tenantId = randomUUID();
+    const contentId = randomUUID();
+    const createdAt = new Date('2026-08-12T15:00:00.000Z');
+    const query = vi.fn()
+      .mockResolvedValueOnce({
+        rows: [{
+          id: contentId,
+          content_type: 'chat',
+          source: 'codex',
+          source_identifier: `codex:${randomUUID()}`,
+          title: 'Filtered history',
+          summary: 'A matching session.',
+          status: 'active',
+          tags: [{ id: randomUUID(), slug: 'shipping', label: 'Shipping', color: '#123456' }],
+          primary_text_kind: 'raw_text',
+          external_url: null,
+          source_agent_id: 'codex',
+          conversation_id: 'session-filtered',
+          turn_index: null,
+          turn_role: null,
+          turn_timestamp: null,
+          turn_metadata: null,
+          created_at: createdAt,
+          updated_at: createdAt,
+        }],
+      })
+      .mockResolvedValue({ rows: [] });
+    const service = new ContentService(
+      { query } as unknown as Database,
+      { embed: vi.fn(), complete: vi.fn() },
+    );
+    const search = "workspace'); DROP TABLE tags; --";
+
+    const result = await service.list(
+      { tenantId, apiKeyId: randomUUID() },
+      {
+        limit: 25,
+        search,
+        contentTypes: ['chat'],
+        sources: ['claude-code', 'codex', 'cowork'],
+        tags: ['shipping'],
+        status: 'active',
+        dateFrom: '2026-08-01T00:00:00.000Z',
+        dateTo: '2026-08-31T23:59:59.000Z',
+        sortBy: 'title',
+        sortDirection: 'asc',
+      },
+    );
+
+    const [sql, params] = query.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain('c.tenant_id = $1');
+    expect(sql).toContain("websearch_to_tsquery('english'");
+    expect(sql).toContain('c.content_type = ANY');
+    expect(sql).toContain('t.slug = ANY');
+    expect(sql).toContain('ORDER BY c.title ASC, c.id ASC');
+    expect(sql).not.toContain(search);
+    expect(params).toEqual(expect.arrayContaining([
+      tenantId,
+      search,
+      ['chat'],
+      ['claude-code', 'codex', 'cowork'],
+      ['shipping'],
+      'active',
+    ]));
+    expect(result.items[0]).toMatchObject({
+      id: contentId,
+      source: 'codex',
+      status: 'active',
+      tags: [expect.objectContaining({ slug: 'shipping' })],
+    });
+  });
+
+  it('returns complete raw metadata and assigned tags from content detail', async () => {
+    const contentId = randomUUID();
+    const createdAt = new Date('2026-08-12T16:00:00.000Z');
+    const rawArchiveManifest = { manifest_path: '/archive/codex/manifest.json' };
+    const query = vi.fn()
+      .mockResolvedValueOnce({
+        rows: [{
+          id: contentId,
+          tenant_id: randomUUID(),
+          library_id: randomUUID(),
+          content_type: 'chat',
+          source: 'codex',
+          source_identifier: `codex:${randomUUID()}`,
+          title: 'Raw detail',
+          content: 'Full conversation transcript',
+          summary: 'Conversation summary',
+          source_data: { sessionPath: '/local/codex/session.jsonl' },
+          metadata: { project: 'answer-engine' },
+          analysis_data: { keywords: ['local'] },
+          raw_archive_manifest: rawArchiveManifest,
+          external_url: null,
+          primary_text_kind: 'raw_text',
+          source_agent_id: 'codex',
+          conversation_id: 'session-detail',
+          turn_index: null,
+          turn_role: null,
+          turn_timestamp: null,
+          turn_metadata: null,
+          status: 'active',
+          tags: [{ id: randomUUID(), slug: 'local', label: 'Local', color: null }],
+          created_at: createdAt,
+          updated_at: createdAt,
+        }],
+      })
+      .mockResolvedValue({ rows: [] });
+    const service = new ContentService(
+      { query } as unknown as Database,
+      { embed: vi.fn(), complete: vi.fn() },
+    );
+
+    const detail = await service.get(
+      { tenantId: randomUUID(), apiKeyId: randomUUID() },
+      contentId,
+    );
+
+    expect(detail).toMatchObject({
+      source: 'codex',
+      sourceIdentifier: expect.stringMatching(/^codex:/),
+      status: 'active',
+      sourceData: { sessionPath: '/local/codex/session.jsonl' },
+      analysisData: { keywords: ['local'] },
+      rawArchiveManifest,
+      tags: [expect.objectContaining({ slug: 'local' })],
+    });
   });
 });

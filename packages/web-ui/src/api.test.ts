@@ -3,6 +3,9 @@ import {
   askMemory,
   clearLegacyBrowserApiKey,
   initializeLocalUiSession,
+  listContent,
+  askAnswer,
+  setLibraryMembership,
   listMemories,
   searchMemories,
 } from './api';
@@ -86,6 +89,66 @@ describe('local API client', () => {
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/v1/agent/ask',
       expect.objectContaining({ body: JSON.stringify({ question: 'What changed?', retrievalMode: 'fulltext', responseStyle: 'cited' }) }),
+    );
+  });
+
+  it('preserves page metadata and encodes workspace filters', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      success: true,
+      data: [{ id: 'content-1', title: 'Decision log' }],
+      meta: { hasMore: true, nextCursor: 'next-page', total: 42 },
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+
+    await expect(listContent({
+      search: 'decision log',
+      contentTypes: ['chat', 'document'],
+      sources: ['codex', 'cowork'],
+      tags: ['shipping'],
+      status: 'active',
+      sortBy: 'title',
+      sortDirection: 'asc',
+      limit: 25,
+    })).resolves.toEqual({
+      items: [{ id: 'content-1', title: 'Decision log' }],
+      meta: { hasMore: true, nextCursor: 'next-page', total: 42 },
+    });
+
+    const requestedUrl = String(fetchMock.mock.calls[0]?.[0]);
+    expect(requestedUrl).toContain('/api/v1/content?');
+    expect(requestedUrl).toContain('search=decision+log');
+    expect(requestedUrl).toContain('contentTypes=chat%2Cdocument');
+    expect(requestedUrl).toContain('sources=codex%2Ccowork');
+    expect(requestedUrl).toContain('tags=shipping');
+  });
+
+  it('sends library scope for grounded answers and membership overrides', async () => {
+    const libraryId = crypto.randomUUID();
+    const contentId = crypto.randomUUID();
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        success: true,
+        data: { answer: 'Grounded.', citations: [{ contentId, title: 'Source' }] },
+      }), { status: 200, headers: { 'content-type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        success: true,
+        data: { libraryId, contentId, mode: 'include', active: true },
+      }), { status: 200, headers: { 'content-type': 'application/json' } }));
+
+    await askAnswer({ question: 'What shipped?', libraryId });
+    await setLibraryMembership(libraryId, contentId, 'include', true);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/v1/agent/ask', expect.objectContaining({
+      body: JSON.stringify({
+        question: 'What shipped?',
+        libraryId,
+        retrievalMode: 'fulltext',
+        responseStyle: 'cited',
+      }),
+    }));
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      `/api/v1/libraries/${libraryId}/includes/${contentId}`,
+      expect.objectContaining({ method: 'PUT' }),
     );
   });
 });
