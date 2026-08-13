@@ -1,6 +1,20 @@
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import {
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawn, spawnSync } from 'node:child_process';
+import { once } from 'node:events';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 
@@ -98,7 +112,7 @@ describe('Alpha Loop repository posture', () => {
     expect(packageManifest.devDependencies?.['agent-browser']).toBe('0.34.0');
     expect(packageManifest.scripts).toMatchObject({
       'browser:ui': 'bash scripts/agent-browser.sh',
-      'browser:prepare': 'CI=true pnpm install --frozen-lockfile && pnpm browser:ui open about:blank',
+      'browser:prepare': 'CI=true pnpm install --frozen-lockfile && pnpm browser:ui prepare',
     });
     expect(read('AGENTS.md')).toMatch(requiredInstruction);
     expect(read('.alpha-loop/templates/instructions.md')).toMatch(requiredInstruction);
@@ -107,8 +121,70 @@ describe('Alpha Loop repository posture', () => {
     expect(browserWrapper).toContain('AGENT_BROWSER_PROFILE');
     expect(browserWrapper).toContain('AGENT_BROWSER_SCREENSHOT_DIR="$PWD"');
     expect(browserWrapper).toContain('/tmp/answer-engine-oss-browser');
+    expect(browserWrapper).toContain('stop_project_daemon');
     expect(browserWrapper).not.toContain('$HOME');
     expect(read('.gitignore')).toContain('.agent-browser/');
+  });
+
+  it('replaces a daemon rooted in a prior worktree before browser preflight', async () => {
+    const fixtureRoot = mkdtempSync(join(root, '.agent-browser-daemon-test-'));
+    const runtimeDirectory = mkdtempSync(join(tmpdir(), 'answer-engine-browser-test-'));
+    const fakeBinDirectory = join(fixtureRoot, 'fake-bin');
+    const fakeDaemonDirectory = join(
+      fixtureRoot,
+      'old-worktree/node_modules/agent-browser/bin',
+    );
+    const fakeDaemon = join(fakeDaemonDirectory, 'agent-browser-test');
+    const invocationFile = join(runtimeDirectory, 'pnpm-invocation');
+    let daemon: ReturnType<typeof spawn> | undefined;
+
+    try {
+      mkdirSync(fakeBinDirectory, { recursive: true });
+      mkdirSync(fakeDaemonDirectory, { recursive: true });
+      mkdirSync(join(runtimeDirectory, 'socket'), { recursive: true });
+      copyFileSync('/bin/sleep', fakeDaemon);
+      chmodSync(fakeDaemon, 0o755);
+      writeFileSync(
+        join(fakeBinDirectory, 'pnpm'),
+        `#!/usr/bin/env bash\nprintf '%s\\n' "$*" > "${invocationFile}"\n`,
+      );
+      chmodSync(join(fakeBinDirectory, 'pnpm'), 0o755);
+
+      daemon = spawn(fakeDaemon, ['120'], { stdio: 'ignore' });
+      if (daemon.pid === undefined) {
+        throw new Error('Fake agent-browser daemon did not start');
+      }
+      writeFileSync(
+        join(runtimeDirectory, 'socket/answer-engine-oss.pid'),
+        String(daemon.pid),
+      );
+
+      const result = spawnSync('bash', ['scripts/agent-browser.sh', 'prepare'], {
+        cwd: root,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          AE_AGENT_BROWSER_RUNTIME_DIR: runtimeDirectory,
+          PATH: `${fakeBinDirectory}:${process.env.PATH ?? ''}`,
+        },
+      });
+
+      expect(result.status, result.stderr).toBe(0);
+      expect(readFileSync(invocationFile, 'utf8').trim())
+        .toBe('exec agent-browser open about:blank');
+      await once(daemon, 'exit');
+      expect(daemon.signalCode).not.toBeNull();
+    } finally {
+      if (daemon?.pid !== undefined) {
+        try {
+          process.kill(daemon.pid, 'SIGTERM');
+        } catch {
+          // The preparation command is expected to stop it.
+        }
+      }
+      rmSync(fixtureRoot, { recursive: true, force: true });
+      rmSync(runtimeDirectory, { recursive: true, force: true });
+    }
   });
 
   it('defines only the five paid capability families as private', () => {
