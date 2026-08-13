@@ -1,17 +1,17 @@
 {
   "name": "session/epic-6-epic-open-source-the-complete-single-user-answer-engine-application",
   "branch": "session/epic-6-epic-open-source-the-complete-single-user-answer-engine-application",
-  "completed": "2026-08-13T01:37:17.893Z",
+  "completed": "2026-08-13T02:55:49.754Z",
   "results": [
     {
-      "issueNum": 8,
-      "title": "feat: port the neutral application data model and API foundation",
+      "issueNum": 9,
+      "title": "feat: restore the shared application shell and primary workflows",
       "status": "success",
-      "prUrl": "https://github.com/the-answerai/answer-engine/pull/18",
+      "prUrl": "https://github.com/the-answerai/answer-engine/pull/25",
       "testsPassing": true,
       "verifyPassing": true,
-      "duration": 3690,
-      "filesChanged": 8
+      "duration": 2210,
+      "filesChanged": 5
     }
   ],
   "stages": [
@@ -97,6 +97,48 @@
       "tool_errors": 0,
       "stage_success": true,
       "started_at": "2026-08-13T01:07:49.503Z",
+      "issue_num": 9
+    },
+    {
+      "stage": "batch-plan",
+      "model": "",
+      "endpoint": "default",
+      "tokens_in": 82845,
+      "tokens_out": 63727,
+      "cost_usd": 0,
+      "wall_time_s": 188.855,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "stage_success": true,
+      "started_at": "2026-08-13T02:17:43.674Z",
+      "issue_num": 9
+    },
+    {
+      "stage": "batch-implement",
+      "model": "",
+      "endpoint": "default",
+      "tokens_in": 1226043,
+      "tokens_out": 943110,
+      "cost_usd": 0,
+      "wall_time_s": 1171.845,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "stage_success": true,
+      "started_at": "2026-08-13T02:20:52.569Z",
+      "issue_num": 9
+    },
+    {
+      "stage": "batch-review",
+      "model": "",
+      "endpoint": "default",
+      "tokens_in": 1146406,
+      "tokens_out": 881851,
+      "cost_usd": 0,
+      "wall_time_s": 821.096,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "stage_success": true,
+      "started_at": "2026-08-13T02:40:45.957Z",
       "issue_num": 9
     }
   ]
