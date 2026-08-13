@@ -6,12 +6,13 @@ import { createContentRoutes } from '../../src/routes/content-routes.js';
 import type { ContentService } from '../../src/services/content/content-service.js';
 import { errorHandler } from '../../src/middleware/error-handler.js';
 
-function routeApp(service: Partial<ContentService>) {
+function routeApp(service: Partial<ContentService>, capabilities?: readonly ('read' | 'write')[]) {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
     req.tenantId = randomUUID();
     req.apiKeyId = randomUUID();
+    req.apiCapabilities = capabilities;
     next();
   });
   app.use('/api/v1/content', createContentRoutes(service as ContentService));
@@ -20,6 +21,16 @@ function routeApp(service: Partial<ContentService>) {
 }
 
 describe('content workspace list route', () => {
+  it('requires read capability before listing content', async () => {
+    const list = vi.fn();
+    const response = await request(routeApp({ list }, ['write']))
+      .get('/api/v1/content');
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe('FORBIDDEN');
+    expect(list).not.toHaveBeenCalled();
+  });
+
   it('normalizes filters and sort options before calling the service', async () => {
     const list = vi.fn().mockResolvedValue({
       items: [],

@@ -586,7 +586,8 @@ paths:
   /api/v1/batch-jobs/{jobId}/retry:
     post:
       tags: [Operations]
-      summary: Retry failed, partial, or canceled batch work
+      summary: Retry unfinished failed, partial, or canceled batch work
+      description: Creates a new job that excludes records already completed successfully by the source job.
       parameters:
         - { $ref: '#/components/parameters/JobId' }
       responses:
@@ -595,6 +596,7 @@ paths:
     get:
       tags: [Operations]
       summary: List access-token metadata without secrets
+      description: Marks the current and protected installer credentials so clients can omit unsafe mutation controls.
       responses:
         '200': { $ref: '#/components/responses/Success' }
     post:
@@ -612,6 +614,7 @@ paths:
     patch:
       tags: [Operations]
       summary: Update access-token metadata or expiry
+      description: The protected local installer credential and the credential authenticating the request cannot be changed.
       requestBody:
         required: true
         content:
@@ -621,13 +624,16 @@ paths:
         - { $ref: '#/components/parameters/TokenId' }
       responses:
         '200': { $ref: '#/components/responses/Success' }
+        '409': { $ref: '#/components/responses/Conflict' }
     delete:
       tags: [Operations]
       summary: Revoke an access token
+      description: The protected local installer credential and the credential authenticating the request cannot be revoked.
       parameters:
         - { $ref: '#/components/parameters/TokenId' }
       responses:
         '200': { $ref: '#/components/responses/Success' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /api/v1/audit:
     get:
       tags: [Operations]
@@ -771,6 +777,11 @@ components:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
     NotFound:
       description: The requested content was not found.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+    Conflict:
+      description: The requested mutation conflicts with protected or current resource state.
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
@@ -1018,6 +1029,7 @@ components:
         expiresAt: { type: [string, 'null'], format: date-time }
         capabilities:
           type: array
+          description: Read authorizes retrieval endpoints; write authorizes mutations and does not implicitly grant read access.
           minItems: 1
           items: { enum: [read, write] }
           default: [read, write]

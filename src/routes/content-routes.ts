@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { ContentService } from '../services/content/content-service.js';
 import { ContentListSchema, ImportRequestSchema } from '../services/content/content-service.js';
 import type { Principal } from '../types/api.js';
-import { AccessDeniedError } from '../utils/errors.js';
+import { requireApiCapability } from '../middleware/api-capability.js';
 
 const IdSchema = z.string().uuid();
 
@@ -18,14 +18,10 @@ function envelope<T>(data: T, meta?: Record<string, unknown>) {
 export function createContentRoutes(service: ContentService): Router {
   const router = Router();
 
-  router.use((req, _res, next) => {
+  router.use(requireApiCapability((req) => {
     const isRead = req.method === 'GET' || req.path === '/import/preview';
-    if (!isRead && req.apiCapabilities && !req.apiCapabilities.includes('write')) {
-      next(new AccessDeniedError());
-      return;
-    }
-    next();
-  });
+    return isRead ? 'read' : 'write';
+  }));
 
   router.post('/import/preview', (req, res, next) => {
     try {

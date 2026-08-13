@@ -1,4 +1,4 @@
-import { type FormEvent, useMemo, useState } from 'react';
+import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { downloadTextFile } from '../api';
@@ -25,6 +25,7 @@ import {
   useDeleteContent,
   useLibraries,
   useSetLibraryMembership,
+  useSettings,
   useTags,
 } from '../hooks';
 import type { Artifact, ContentFilters, ContentItem, ContentSort, ContentType } from '../types';
@@ -42,9 +43,25 @@ export function ContentPage() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const tags = useTags();
+  const libraries = useLibraries();
+  const settings = useSettings();
+  const defaultsApplied = useRef(false);
   const query = useContent({ ...filters, cursor: cursorHistory[cursorHistory.length - 1] });
   const items = query.data?.items ?? [];
   const allSelected = items.length > 0 && items.every((item) => selected.has(item.id));
+  useEffect(() => {
+    if (defaultsApplied.current || !settings.data || !libraries.data
+      || typeof settings.data.defaultPageSize !== 'number') return;
+    defaultsApplied.current = true;
+    const defaultLibraryId = libraries.data.some(
+      (library) => library.id === settings.data?.defaultLibraryId,
+    ) ? settings.data.defaultLibraryId : null;
+    setFilters((current) => ({
+      ...current,
+      limit: settings.data.defaultPageSize,
+      libraryId: defaultLibraryId ?? undefined,
+    }));
+  }, [libraries.data, settings.data]);
 
   function search(event: FormEvent) {
     event.preventDefault();
@@ -78,6 +95,7 @@ export function ContentPage() {
           <Button type="submit">Search</Button>
         </form>
         <div className="filter-row">
+          <Field label="Library"><select value={filters.libraryId ?? ''} onChange={(event) => updateFilter('libraryId', event.target.value || undefined)}><option value="">All content</option>{libraries.data?.map((library) => <option key={library.id} value={library.id}>{library.name}</option>)}</select></Field>
           <Field label="Type"><select value={filters.contentTypes?.[0] ?? ''} onChange={(event) => updateFilter('contentTypes', event.target.value ? [event.target.value as ContentType] : undefined)}><option value="">All types</option>{CONTENT_TYPES.map((type) => <option key={type} value={type}>{type}</option>)}</select></Field>
           <Field label="Source"><select value={filters.sources?.[0] ?? ''} onChange={(event) => updateFilter('sources', event.target.value ? [event.target.value] : undefined)}><option value="">All sources</option><option value="claude-code">Claude</option><option value="codex">Codex</option><option value="cowork">Cowork</option><option value="local-ui">Manual import</option></select></Field>
           <Field label="Tag"><select value={filters.tags?.[0] ?? ''} onChange={(event) => updateFilter('tags', event.target.value ? [event.target.value] : undefined)}><option value="">All tags</option>{tags.data?.map((tag) => <option key={tag.id} value={tag.slug}>{tag.label}</option>)}</select></Field>

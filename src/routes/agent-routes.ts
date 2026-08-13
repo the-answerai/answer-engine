@@ -3,6 +3,7 @@ import { z } from 'zod';
 import type { ContentService } from '../services/content/content-service.js';
 import { AskSchema, QuerySchema, RetrieveSchema, SummarizeSchema } from '../services/content/content-service.js';
 import type { Principal } from '../types/api.js';
+import { requireApiCapability } from '../middleware/api-capability.js';
 
 const SchemaQuery = z.object({ libraryId: z.string().optional(), librarySlug: z.string().optional() });
 
@@ -14,6 +15,8 @@ function envelope<T>(data: T) { return { success: true, data }; }
 
 export function createAgentRoutes(service: ContentService): Router {
   const router = Router();
+
+  router.use(requireApiCapability('read'));
 
   router.get('/schema', async (req, res, next) => {
     try {

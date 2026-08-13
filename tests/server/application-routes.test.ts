@@ -9,12 +9,13 @@ import type { ApplicationService } from '../../src/services/application/applicat
 import type { Database } from '../../src/config/database.js';
 import type { LanguageProvider } from '../../src/services/ai/openai-compatible.js';
 
-function routeApp(service: Partial<ApplicationService>) {
+function routeApp(service: Partial<ApplicationService>, capabilities?: readonly ('read' | 'write')[]) {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
     req.tenantId = randomUUID();
     req.apiKeyId = randomUUID();
+    req.apiCapabilities = capabilities;
     next();
   });
   app.use('/api/v1', createApplicationRoutes(service as ApplicationService));
@@ -23,6 +24,16 @@ function routeApp(service: Partial<ApplicationService>) {
 }
 
 describe('neutral application routes', () => {
+  it('requires read capability for application reads', async () => {
+    const listTags = vi.fn();
+    const response = await request(routeApp({ listTags }, ['write']))
+      .get('/api/v1/tags');
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe('FORBIDDEN');
+    expect(listTags).not.toHaveBeenCalled();
+  });
+
   it('validates and creates a tenant-scoped tag', async () => {
     const createTag = vi.fn().mockResolvedValue({ id: randomUUID(), slug: 'local-history' });
     const response = await request(routeApp({ createTag }))

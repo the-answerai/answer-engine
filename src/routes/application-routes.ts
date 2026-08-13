@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import type { Principal } from '../types/api.js';
 import type { ApplicationService } from '../services/application/application-service.js';
-import { AccessDeniedError } from '../utils/errors.js';
+import { requireApiCapability } from '../middleware/api-capability.js';
 import {
   AccessTokenCreateSchema,
   AccessTokenUpdateSchema,
@@ -42,15 +42,11 @@ function envelope<T>(data: T, meta?: Record<string, unknown>) {
 export function createApplicationRoutes(service: ApplicationService): Router {
   const router = Router();
 
-  router.use((req, _res, next) => {
+  router.use(requireApiCapability((req) => {
     const isRead = req.method === 'GET'
       || (req.method === 'POST' && req.path.endsWith('/preview'));
-    if (!isRead && req.apiCapabilities && !req.apiCapabilities.includes('write')) {
-      next(new AccessDeniedError());
-      return;
-    }
-    next();
-  });
+    return isRead ? 'read' : 'write';
+  }));
 
   router.get('/tags', async (req, res, next) => {
     try { res.json(envelope(await service.listTags(principal(req)))); } catch (error) { next(error); }

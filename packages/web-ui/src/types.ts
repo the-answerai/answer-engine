@@ -276,6 +276,8 @@ export interface AccessToken {
   lastUsedAt: string | null;
   expiresAt: string | null;
   revokedAt: string | null;
+  isCurrent?: boolean;
+  isProtected?: boolean;
   createdAt: string;
   updatedAt?: string;
 }

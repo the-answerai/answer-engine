@@ -140,4 +140,44 @@ describe('primary local workflows', () => {
         && url.includes('dateTo=2026-08-31T23%3A59%3A59.999Z'))).toBe(true);
     });
   });
+
+  it('queues bulk work only for the content selected in the workspace', async () => {
+    window.history.replaceState({}, '', '/content');
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === '/local-ui/session') return new Response(null, { status: 204 });
+      if (url === '/health') return new Response(null, { status: 200 });
+      if (url === '/api/v1/tags' || url === '/api/v1/libraries') return json([]);
+      if (url.startsWith('/api/v1/content?')) return json([{
+        id: contentId,
+        title: 'Selected decision',
+        contentType: 'document',
+        source: 'codex',
+        status: 'active',
+        tags: [],
+        createdAt: '2026-08-12T00:00:00.000Z',
+        updatedAt: '2026-08-12T00:00:00.000Z',
+      }], { hasMore: false, nextCursor: null, total: 1 });
+      if (url === '/api/v1/batch-jobs' && init?.method === 'POST') {
+        return json({ id: crypto.randomUUID(), status: 'queued' }, undefined, 202);
+      }
+      return json([]);
+    });
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByLabelText('Select Selected decision'));
+    await user.click(screen.getByRole('button', { name: 'Batch' }));
+    await user.type(screen.getByLabelText('Name'), 'Selected decision batch');
+    await user.type(screen.getByLabelText('Prompt'), 'Summarize the decision.');
+    await user.click(screen.getByRole('button', { name: 'Queue job' }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/batch-jobs',
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining(`"contentIds":["${contentId}"]`),
+      }),
+    ));
+  });
 });

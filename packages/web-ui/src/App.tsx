@@ -10,6 +10,7 @@ import { LibrariesPage, LibraryPage } from './pages/LibrariesPage';
 import { TagsPage } from './pages/TagsPage';
 import { BatchJobsPage } from './pages/BatchJobsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { useSettings } from './hooks';
 
 const navigation = [
   { to: '/content', label: 'Content', mark: '01' },
@@ -44,6 +45,7 @@ function LocalSessionGate() {
 
 function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const settings = useSettings();
   const navigationRef = useRef<HTMLElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -62,7 +64,7 @@ function AppShell() {
     return () => { document.removeEventListener('keydown', keydown); menuButtonRef.current?.focus(); };
   }, [menuOpen]);
   return (
-    <div className="shell">
+    <div className={`shell density-${settings.data?.density ?? 'comfortable'}`}>
       <a href="#workspace" className="skip-link">Skip to workspace</a>
       {menuOpen ? <button className="sidebar-scrim" aria-label="Close navigation" onClick={() => setMenuOpen(false)} /> : null}
       <aside className={`sidebar ${menuOpen ? 'open' : ''}`}>

@@ -71,4 +71,39 @@ describe('local application shell', () => {
     expect(screen.queryByRole('button', { name: 'Close navigation' })).toBeNull();
     expect(document.activeElement).toBe(menuButton);
   });
+
+  it('applies saved density, page size, and library defaults to the workspace', async () => {
+    const libraryId = crypto.randomUUID();
+    window.history.replaceState({}, '', '/content');
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === '/local-ui/session') return new Response(null, { status: 204 });
+      if (url === '/health') return new Response(null, { status: 200 });
+      if (url === '/api/v1/settings') return json({
+        defaultPageSize: 50,
+        defaultLibraryId: libraryId,
+        density: 'compact',
+        defaultExportFormat: 'markdown',
+      });
+      if (url === '/api/v1/libraries') return json([{
+        id: libraryId,
+        name: 'Default decisions',
+        kind: 'user_defined',
+      }]);
+      if (url.startsWith('/api/v1/content?')) return json([]);
+      if (url === '/api/v1/tags') return json([]);
+      return json({});
+    });
+
+    render(<App />);
+
+    await waitFor(() => expect(document.querySelector('.shell')?.classList.contains('density-compact')).toBe(true));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => {
+      const url = String(input);
+      return url.startsWith('/api/v1/content?')
+        && url.includes('libraryId=')
+        && url.includes('limit=50');
+    })).toBe(true));
+    expect((await screen.findByLabelText('Library') as HTMLSelectElement).value).toBe(libraryId);
+  });
 });
