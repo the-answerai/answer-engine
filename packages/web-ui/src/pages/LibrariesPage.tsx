@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from 'react';
-import { Link, NavLink, useParams } from 'react-router-dom';
+import { Link, NavLink, useLocation, useParams } from 'react-router-dom';
 import { Button, ConfirmDialog, Dialog, EmptyState, Field, LoadingState, Notice, PageHeader, SubmitForm, errorMessage, formatDate } from '../components';
 import { useContent, useCreateLibrary, useDeleteLibrary, useLibraries, useLibrary, useLibraryMembers, usePreviewLibrary, useSetLibraryMembership, useTags, useUpdateLibrary } from '../hooks';
 import type { FilterCondition, Library, LibraryFilter } from '../types';
@@ -19,10 +19,11 @@ export function LibrariesPage() {
 }
 
 export function LibraryPage() {
-  const { libraryId, section = 'members' } = useParams(); const library = useLibrary(libraryId);
+  const { libraryId, section: routeSection } = useParams(); const location = useLocation(); const library = useLibrary(libraryId);
   if (library.isLoading) return <section className="workspace-page"><LoadingState label="Loading library" /></section>;
   if (library.error || !library.data) return <section className="workspace-page"><Notice kind="error">{errorMessage(library.error, 'Library not found.')}</Notice></section>;
   const base = `/libraries/${library.data.id}`;
+  const section = routeSection ?? (location.pathname === base ? 'members' : location.pathname.slice(base.length + 1));
   return <section className="workspace-page"><PageHeader eyebrow="FIG. 04A / LIBRARY" title={library.data.name} description={library.data.description || 'A focused workspace over local content.'} actions={<Link className="button primary" to={`${base}/answers`}>Ask this library</Link>} /><div className="subnav library-subnav"><NavLink end to={base}>Members</NavLink><NavLink to={`${base}/overview`}>Overview & filter</NavLink><NavLink to={`${base}/recipes`}>Recipes</NavLink><NavLink to={`${base}/reports`}>Reports</NavLink><NavLink to={`${base}/dashboards`}>Dashboards</NavLink><NavLink to={`${base}/audit`}>Audit</NavLink><NavLink to="/settings">Tokens & settings</NavLink><NavLink to="/libraries">All libraries</NavLink></div>{section === 'members' ? <LibraryMembers library={library.data} /> : section === 'overview' ? <LibraryOverview library={library.data} /> : section === 'recipes' ? <RecipesPanel libraryId={library.data.id} /> : section === 'reports' ? <ReportsPanel libraryId={library.data.id} /> : section === 'dashboards' ? <DashboardsPanel libraryId={library.data.id} /> : section === 'audit' ? <AuditPanel libraryId={library.data.id} /> : <Notice kind="error">Unknown library section.</Notice>}</section>;
 }
 

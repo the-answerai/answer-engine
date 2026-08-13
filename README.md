@@ -9,6 +9,13 @@ non-paid application UI and API. Only roles, RBAC, teams, billing, and
 permissions live in the private enterprise layer, which composes this package
 through the exported `createApp()` extension API.
 
+The machine-checked inventory lives in
+[`product-boundary.json`](./product-boundary.json). See
+[`docs/enterprise-composition.md`](./docs/enterprise-composition.md) for the
+typed server/web entry points and the required exact-commit pin and update
+workflow. Enterprise consumers compose additions through those contracts and
+never copy or replace core pages.
+
 ## What is included
 
 - Local ingestion for Claude Code, Codex, Cowork, and document directories
@@ -141,11 +148,11 @@ contract.
 
 | Package | Purpose |
 |---|---|
-| `@answer-engine/server` | Core API and `createApp()` composition surface |
+| `@answer-engine/server` | Core API, `createApp()`, and stable `./composition` contracts |
 | `@answer-engine/cli` | Configuration, import, sync, and verification commands |
 | `@answer-engine/mcp-server` | MCP tools backed by the local API |
 | `@answer-engine/create` | Local installer and client wiring |
-| `@answer-engine/web-ui` | Local Blueprint memory interface |
+| `@answer-engine/web-ui` | Standalone local interface plus non-published composition library |
 
 ## Development
 

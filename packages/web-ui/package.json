@@ -3,9 +3,17 @@
   "private": true,
   "version": "1.1.0",
   "type": "module",
+  "main": "./dist/lib/answer-engine-web.js",
+  "types": "./dist/types/public.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/public.d.ts",
+      "import": "./dist/lib/answer-engine-web.js"
+    }
+  },
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 3200",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && tsc -p tsconfig.lib.json && vite build --config vite.config.lib.ts",
     "preview": "vite preview --host 127.0.0.1 --port 3200",
     "type-check": "tsc -b --noEmit",
     "test": "vitest run"

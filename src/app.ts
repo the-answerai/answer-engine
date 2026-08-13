@@ -17,11 +17,17 @@ import { ApplicationService } from './services/application/application-service.j
 import { ContentService } from './services/content/content-service.js';
 import { LocalBlobStorage } from './services/storage/local-blob-storage.js';
 import { logger } from './utils/logger.js';
-import type { ApplicationCompositionContext, CreateAppOptions } from './runtime/application-composition.js';
+import {
+  createApplicationRequestContextMiddleware,
+  validateApplicationExtensions,
+  type ApplicationCompositionContext,
+  type CreateAppOptions,
+} from './runtime/application-composition.js';
 
 export type {
-  ApplicationCompositionContext, ApplicationExtensions, ApplicationRegistrar, CreateAppOptions,
-  LocalRequestContext,
+  ApplicationAuthenticationExtension, ApplicationCapabilityExtension,
+  ApplicationCompositionContext, ApplicationExtensions, ApplicationRegistrar,
+  ApplicationRouteExtension, CreateAppOptions, LocalRequestContext, PaidExtensionFamily,
 } from './runtime/application-composition.js';
 export type { LanguageProvider } from './services/ai/openai-compatible.js';
 
@@ -32,6 +38,7 @@ export type { LanguageProvider } from './services/ai/openai-compatible.js';
 const MAX_JSON_BODY_SIZE = '64mb';
 
 export function createApp<TConfig = Record<string, never>>(options: CreateAppOptions<TConfig> = {}): Express {
+  validateApplicationExtensions(options.extensions);
   const app = express();
   const database = options.dependencies?.database ?? pool;
   const language = options.dependencies?.languageProvider ?? new OpenAiCompatibleProvider();
@@ -67,7 +74,12 @@ export function createApp<TConfig = Record<string, never>>(options: CreateAppOpt
   }
   extensions?.registerPublicRoutes?.(app, context);
 
-  app.use('/api/v1', extensions?.authentication ?? createApiKeyAuth(database, { localUiApiKey }));
+  if (extensions?.authentication) {
+    app.use('/api/v1', extensions.authentication.middleware);
+    app.use('/api/v1', createApplicationRequestContextMiddleware(extensions.authentication));
+  } else {
+    app.use('/api/v1', createApiKeyAuth(database, { localUiApiKey }));
+  }
   extensions?.registerAuthenticatedRoutes?.(app, context);
   app.get('/api/v1', (_req, res) => res.json({
     message: 'Answer Engine API v1',
@@ -78,6 +90,10 @@ export function createApp<TConfig = Record<string, never>>(options: CreateAppOpt
       audit: '/api/v1/audit',
       settings: '/api/v1/settings',
       ...(extensions?.endpointMetadata ?? {}),
+    },
+    extensions: {
+      capabilities: extensions?.capabilities ?? [],
+      routes: extensions?.routes ?? [],
     },
   }));
   app.use('/api/v1', createApplicationRoutes(applicationService));

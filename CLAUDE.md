@@ -7,6 +7,10 @@ Build and verify the complete local-first, single-user Answer Engine product.
 All non-paid UI and APIs belong here. Only roles, RBAC, teams, billing, and
 permissions belong exclusively in the enterprise layer.
 
+Keep `packages/web-ui/src/core-manifest.json` aligned with
+`product-boundary.json`; private consumers pin an exact OSS commit and compose
+only through the exported server and web contracts.
+
 ## Tech Stack
 
 Use pnpm, Node.js 22, strict TypeScript, Express, React, PostgreSQL/pgvector,
@@ -22,6 +26,7 @@ substitute `playwright-cli`; Playwright is only the automated E2E test framework
 - `packages/mcp-server/` — MCP tools and resources.
 - `packages/create/` — clean installer-managed setup.
 - `packages/web-ui/` — complete single-user web application.
+- `product-boundary.json` — canonical paid-family and required OSS surface inventory.
 - `.alpha-loop/templates/` — canonical harness skills, agents, and instructions.
 
 ## Code Style
