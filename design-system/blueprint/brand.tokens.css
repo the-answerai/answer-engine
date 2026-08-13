@@ -29,7 +29,7 @@
   --bp-paper-2:      #F1EEE6;   /* raised panels, cards */
   --bp-ink:          #16181C;   /* primary line & text */
   --bp-ink-soft:     #3A3D44;   /* body text */
-  --bp-ink-faint:    #6B6E76;   /* captions, metadata */
+  --bp-ink-faint:    #666970;   /* captions, metadata; WCAG AA on paper surfaces */
 
   /* Accent (the "active / query / link" colour — blueprint blue) */
   --bp-accent:       #1B3A8F;
