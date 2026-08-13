@@ -163,14 +163,24 @@ async function verifyInventory(
     'sync cursor inventory',
   );
   const counts = emptySourceCounts();
-  for (const key of Object.keys(inventory.files)) {
+  const skipped = emptySourceCounts();
+  for (const [key, cursor] of Object.entries(inventory.files)) {
     const source = inventorySource(key);
-    if (source) counts[source] += 1;
+    if (source) {
+      counts[source] += 1;
+      skipped[source] += cursor.skippedCount;
+    }
   }
   for (const source of TRANSCRIPT_SOURCES) {
     if (counts[source] !== expected[source]) {
       throw new RealHistoryVerificationError(
         `${source} inventory: expected ${expected[source]}, found ${counts[source]}`,
+      );
+    }
+    if (skipped[source] > 0) {
+      throw new RealHistoryVerificationError(
+        `${source} cursor inventory reports ${skipped[source]} skipped item`
+        + `${skipped[source] === 1 ? '' : 's'}`,
       );
     }
   }
@@ -365,6 +375,11 @@ export async function verifyRealHistory(
       throw new RealHistoryVerificationError(`${source} has no stored history rows`);
     }
     const samples = selectSamples(rows, source, options.sampleSize);
+    if (samples.length !== options.sampleSize) {
+      throw new RealHistoryVerificationError(
+        `${source} archive sample: expected ${options.sampleSize}, found ${samples.length}`,
+      );
+    }
     for (const sample of samples) {
       sampledFiles[source] += await verifySampledManifest(sample);
       sampledArchives[source] += 1;

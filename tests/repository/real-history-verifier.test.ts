@@ -165,6 +165,26 @@ describe('real history acceptance verifier', () => {
     })).rejects.toThrow('cowork inventory: expected 1, found 0');
   });
 
+  it('rejects cursor inventory entries with accumulated parse skips', async () => {
+    const fixture = await createFixture();
+    const cursor = JSON.parse(await readFile(fixture.cursorFile, 'utf8')) as {
+      files: Record<string, Record<string, unknown>>;
+    };
+    const codexKey = Object.keys(cursor.files).find((key) => key.startsWith('codex:'));
+    if (codexKey) cursor.files[codexKey] = { ...cursor.files[codexKey], skippedCount: 1 };
+    await writeFile(fixture.cursorFile, JSON.stringify(cursor));
+
+    await expect(verifyRealHistory({
+      cursorFile: fixture.cursorFile,
+      sampleSize: 1,
+      syncSummaryFiles: fixture.syncSummaryFiles,
+      tenantId: TENANT_ID,
+    }, {
+      database: fixture.database,
+      expectedInventory: EXPECTED_INVENTORY,
+    })).rejects.toThrow('codex cursor inventory reports 1 skipped item');
+  });
+
   it('rejects history rows without summaries', async () => {
     const fixture = await createFixture();
     const first = fixture.rows[0] as RealHistoryRow;
@@ -229,6 +249,20 @@ describe('real history acceptance verifier', () => {
       database: fixture.database,
       expectedInventory: EXPECTED_INVENTORY,
     })).rejects.toThrow('codex sampled archive SHA-256 mismatch');
+  });
+
+  it('rejects a source with fewer unique archives than the requested sample size', async () => {
+    const fixture = await createFixture();
+
+    await expect(verifyRealHistory({
+      cursorFile: fixture.cursorFile,
+      sampleSize: 2,
+      syncSummaryFiles: fixture.syncSummaryFiles,
+      tenantId: TENANT_ID,
+    }, {
+      database: fixture.database,
+      expectedInventory: EXPECTED_INVENTORY,
+    })).rejects.toThrow('claude-code archive sample: expected 2, found 1');
   });
 
   it.each(['failedItems', 'parseErrors'] as const)(
