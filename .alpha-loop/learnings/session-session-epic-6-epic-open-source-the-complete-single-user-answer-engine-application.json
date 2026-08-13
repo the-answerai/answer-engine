@@ -1,17 +1,27 @@
 {
   "name": "session/epic-6-epic-open-source-the-complete-single-user-answer-engine-application",
   "branch": "session/epic-6-epic-open-source-the-complete-single-user-answer-engine-application",
-  "completed": "2026-08-13T02:55:49.754Z",
+  "completed": "2026-08-13T04:45:33.868Z",
   "results": [
     {
-      "issueNum": 9,
-      "title": "feat: restore the shared application shell and primary workflows",
+      "issueNum": 10,
+      "title": "feat: restore advanced non-paid product workflows",
       "status": "success",
-      "prUrl": "https://github.com/the-answerai/answer-engine/pull/25",
+      "prUrl": "https://github.com/the-answerai/answer-engine/pull/28",
       "testsPassing": true,
       "verifyPassing": true,
-      "duration": 2210,
-      "filesChanged": 5
+      "duration": 3289,
+      "filesChanged": 6
+    },
+    {
+      "issueNum": 11,
+      "title": "feat: add enterprise extension contracts and product-parity guards",
+      "status": "success",
+      "prUrl": "https://github.com/the-answerai/answer-engine/pull/29",
+      "testsPassing": true,
+      "verifyPassing": true,
+      "duration": 1750,
+      "filesChanged": 6
     }
   ],
   "stages": [
@@ -140,6 +150,90 @@
       "stage_success": true,
       "started_at": "2026-08-13T02:40:45.957Z",
       "issue_num": 9
+    },
+    {
+      "stage": "batch-plan",
+      "model": "",
+      "endpoint": "default",
+      "tokens_in": 154099,
+      "tokens_out": 118538,
+      "cost_usd": 0,
+      "wall_time_s": 461.469,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "stage_success": true,
+      "started_at": "2026-08-13T03:19:35.418Z",
+      "issue_num": 10
+    },
+    {
+      "stage": "batch-implement",
+      "model": "",
+      "endpoint": "default",
+      "tokens_in": 4294810,
+      "tokens_out": 3303700,
+      "cost_usd": 0,
+      "wall_time_s": 1597.687,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "stage_success": true,
+      "started_at": "2026-08-13T03:27:16.940Z",
+      "issue_num": 10
+    },
+    {
+      "stage": "batch-review",
+      "model": "",
+      "endpoint": "default",
+      "tokens_in": 2284842,
+      "tokens_out": 1757571,
+      "cost_usd": 0,
+      "wall_time_s": 1204.974,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "stage_success": true,
+      "started_at": "2026-08-13T03:54:12.038Z",
+      "issue_num": 10
+    },
+    {
+      "stage": "batch-plan",
+      "model": "",
+      "endpoint": "default",
+      "tokens_in": 66443,
+      "tokens_out": 51110,
+      "cost_usd": 0,
+      "wall_time_s": 210.466,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "stage_success": true,
+      "started_at": "2026-08-13T04:15:01.725Z",
+      "issue_num": 11
+    },
+    {
+      "stage": "batch-implement",
+      "model": "",
+      "endpoint": "default",
+      "tokens_in": 1331935,
+      "tokens_out": 1024565,
+      "cost_usd": 0,
+      "wall_time_s": 941.776,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "stage_success": true,
+      "started_at": "2026-08-13T04:18:32.229Z",
+      "issue_num": 11
+    },
+    {
+      "stage": "batch-review",
+      "model": "",
+      "endpoint": "default",
+      "tokens_in": 276285,
+      "tokens_out": 212527,
+      "cost_usd": 0,
+      "wall_time_s": 560.322,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "stage_success": true,
+      "started_at": "2026-08-13T04:34:38.949Z",
+      "issue_num": 11
     }
   ]
 }
