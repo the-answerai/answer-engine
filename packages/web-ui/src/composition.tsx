@@ -1,6 +1,10 @@
 import type { ReactNode } from 'react';
 import { clearLegacyBrowserApiKey, health, initializeLocalUiSession } from './api';
-import { coreNavigationManifest, coreRouteManifest } from './core-manifest';
+import {
+  coreCapabilityManifest,
+  coreNavigationManifest,
+  coreRouteManifest,
+} from './core-manifest';
 
 export type PaidExtensionFamily = 'roles' | 'rbac' | 'teams' | 'billing' | 'permissions';
 
@@ -124,19 +128,34 @@ function validateExtensions(extensions: WebAppExtensions): void {
   assertUnique('extension settings section', settings.map((section) => section.id));
 
   const capabilityIds = new Set(capabilities.map((capability) => capability.id));
+  const coreCapabilityIds = new Set(coreCapabilityManifest.map((capability) => capability.id));
   const coreRoutePaths = new Set(coreRouteManifest.map((route) => route.path));
+  const coreRouteNamespaces = new Set(coreRouteManifest.map((route) => `/${route.path.split('/')[1]}`));
   const extensionRoutePaths = new Set<string>();
   for (const capability of capabilities) {
     if (!capability.id.trim() || !capability.label.trim()) throw new Error('Extension capabilities require an id and label');
+    if (coreCapabilityIds.has(capability.id)) {
+      throw new Error(`Extension capability ${capability.id} conflicts with an OSS core capability`);
+    }
     if (!paidExtensionFamilies.has(capability.family)) {
       throw new Error(`Unsupported paid extension family ${capability.family}`);
     }
   }
   for (const route of routes) {
+    if (!route.id.trim()) throw new Error('Extension routes require an id');
     if (!route.path.startsWith('/')) throw new Error(`Extension route ${route.id} must use an absolute path`);
     if (coreRoutePaths.has(route.path)) throw new Error(`Extension route ${route.id} conflicts with an OSS core route`);
+    if ([...coreRouteNamespaces].some((namespace) => route.path.startsWith(`${namespace}/`))) {
+      throw new Error(`Extension route ${route.id} conflicts with an OSS core route namespace`);
+    }
     if (extensionRoutePaths.has(route.path)) throw new Error(`Duplicate extension route path ${route.path}`);
     extensionRoutePaths.add(route.path);
+  }
+  for (const item of navigation) {
+    if (!item.id.trim() || !item.label.trim()) throw new Error('Extension navigation requires an id and label');
+  }
+  for (const section of settings) {
+    if (!section.id.trim() || !section.title.trim()) throw new Error('Extension settings require an id and title');
   }
   for (const contribution of [...routes, ...navigation, ...settings]) {
     if (!capabilityIds.has(contribution.capabilityId)) {

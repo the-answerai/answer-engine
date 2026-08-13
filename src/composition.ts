@@ -1,5 +1,6 @@
 export {
   validateApplicationExtensions,
+  type ApplicationAuthenticationExtension,
   type ApplicationCapabilityExtension,
   type ApplicationCompositionContext,
   type ApplicationExtensions,

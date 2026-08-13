@@ -135,10 +135,13 @@ describe('neutral application routes', () => {
     const response = await request(createApp({
       dependencies: { database, languageProvider },
       extensions: {
-        authentication: (req, _res, next) => {
-          req.tenantId = randomUUID();
-          req.apiKeyId = randomUUID();
-          next();
+        authentication: {
+          middleware: (_req, _res, next) => next(),
+          resolveRequestContext: () => ({
+            tenantId: randomUUID(),
+            apiKeyId: randomUUID(),
+            apiCapabilities: ['read', 'write'],
+          }),
         },
       },
     })).get('/api/v1');

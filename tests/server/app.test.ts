@@ -51,9 +51,13 @@ describe('createApp local defaults', () => {
           { id: 'example.status', method: 'GET', path: '/example/status', access: 'public' },
           { id: 'example.manage', method: 'GET', path: '/api/v1/example', access: 'authenticated', capabilityId: 'example.manage' },
         ],
-        authentication: (req, _res, next) => {
-          req.auth = { tenantId: crypto.randomUUID(), apiKeyId: crypto.randomUUID() };
-          next();
+        authentication: {
+          middleware: (_req, _res, next) => next(),
+          resolveRequestContext: () => ({
+            tenantId: crypto.randomUUID(),
+            apiKeyId: crypto.randomUUID(),
+            apiCapabilities: ['read', 'write'],
+          }),
         },
         registerPublicRoutes: (router) => {
           router.get('/example/status', (_req, res) => res.json({ status: 'fixture-ready' }));
@@ -68,11 +72,78 @@ describe('createApp local defaults', () => {
     expect((await request(app).get('/api/v1/example')).body.allowed).toBe(true);
   });
 
+  it('passes the authenticated extension context through OSS core routes', async () => {
+    const tenantId = crypto.randomUUID();
+    const apiKeyId = crypto.randomUUID();
+    const query = vi.fn().mockResolvedValue({ rows: [] });
+    const app = createApp({
+      dependencies: {
+        database: { query, connect: vi.fn() } as unknown as Database,
+        languageProvider,
+      },
+      extensions: {
+        authentication: {
+          middleware: (_req, _res, next) => next(),
+          resolveRequestContext: () => ({
+            tenantId,
+            apiKeyId,
+            apiCapabilities: ['read'],
+          }),
+        },
+      },
+    });
+
+    const response = await request(app).get('/api/v1/tags');
+
+    expect(response.status).toBe(200);
+    expect(query).toHaveBeenCalledWith(expect.stringContaining('FROM tags'), [tenantId]);
+  });
+
+  it('rejects an incomplete authenticated context before a core route runs', async () => {
+    const query = vi.fn();
+    const app = createApp({
+      dependencies: {
+        database: { query, connect: vi.fn() } as unknown as Database,
+        languageProvider,
+      },
+      extensions: {
+        authentication: {
+          middleware: (_req, _res, next) => next(),
+          resolveRequestContext: () => ({
+            tenantId: crypto.randomUUID(),
+            apiKeyId: crypto.randomUUID(),
+            apiCapabilities: [],
+          }),
+        },
+      },
+    });
+
+    const response = await request(app).get('/api/v1/tags');
+
+    expect(response.status).toBe(500);
+    expect(response.body.error.code).toBe('INTERNAL_ERROR');
+    expect(query).not.toHaveBeenCalled();
+  });
+
   it('rejects extension metadata that shadows an OSS-owned route', () => {
     expect(() => createApp({
       dependencies: { database, languageProvider },
       extensions: {
         routes: [{ id: 'fixture.shadow', method: 'GET', path: '/api/v1/content', access: 'authenticated' }],
+      },
+    })).toThrow('conflicts with an OSS core route');
+  });
+
+  it('rejects extension metadata under every core application route namespace', () => {
+    expect(() => createApp({
+      dependencies: { database, languageProvider },
+      extensions: {
+        routes: [{
+          id: 'fixture.shadow-blob',
+          method: 'GET',
+          path: '/api/v1/blobs/:blobId/download',
+          access: 'authenticated',
+        }],
       },
     })).toThrow('conflicts with an OSS core route');
   });

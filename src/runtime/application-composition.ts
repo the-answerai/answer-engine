@@ -1,4 +1,4 @@
-import type { Express, RequestHandler } from 'express';
+import type { Express, Request, RequestHandler } from 'express';
 import type { Database } from '../config/database.js';
 import type { LanguageProvider } from '../services/ai/openai-compatible.js';
 import type { LocalBlobStorage } from '../services/storage/local-blob-storage.js';
@@ -24,6 +24,14 @@ export interface LocalRequestContext {
   readonly tenantId: string;
   readonly apiKeyId: string;
   readonly libraryId?: string;
+  readonly apiCapabilities: readonly ('read' | 'write')[];
+}
+
+export interface ApplicationAuthenticationExtension {
+  readonly middleware: RequestHandler;
+  readonly resolveRequestContext: (
+    request: Request,
+  ) => LocalRequestContext | Promise<LocalRequestContext>;
 }
 
 export interface ApplicationCompositionContext<TConfig = Record<string, never>> {
@@ -41,7 +49,7 @@ export interface ApplicationExtensions<TConfig = Record<string, never>> {
   readonly capabilities?: readonly ApplicationCapabilityExtension[];
   readonly routes?: readonly ApplicationRouteExtension[];
   readonly registerPublicRoutes?: ApplicationRegistrar<TConfig>;
-  readonly authentication?: RequestHandler;
+  readonly authentication?: ApplicationAuthenticationExtension;
   readonly registerAuthenticatedRoutes?: ApplicationRegistrar<TConfig>;
   readonly endpointMetadata?: Readonly<Record<string, string>>;
 }
@@ -59,24 +67,42 @@ const routeSchema = z.object({
   access: z.enum(['public', 'authenticated']),
   capabilityId: z.string().min(1).optional(),
 }).strict();
+const authenticationSchema = z.object({
+  middleware: z.custom<RequestHandler>((value) => typeof value === 'function'),
+  resolveRequestContext: z.custom<ApplicationAuthenticationExtension['resolveRequestContext']>(
+    (value) => typeof value === 'function',
+  ),
+}).strict();
+const localRequestContextSchema = z.object({
+  tenantId: z.string().uuid(),
+  apiKeyId: z.string().uuid(),
+  libraryId: z.string().uuid().optional(),
+  apiCapabilities: z.array(z.enum(['read', 'write'])).min(1),
+}).strict();
 
 export function validateApplicationExtensions<TConfig>(extensions?: ApplicationExtensions<TConfig>): void {
   if (!extensions) return;
   const capabilities = z.array(capabilitySchema).parse(extensions.capabilities ?? []);
   const routes = z.array(routeSchema).parse(extensions.routes ?? []);
+  if (extensions.authentication) authenticationSchema.parse(extensions.authentication);
   const capabilityIds = new Set<string>();
   for (const capability of capabilities) {
     if (capabilityIds.has(capability.id)) throw new Error(`Duplicate extension capability ${capability.id}`);
     capabilityIds.add(capability.id);
   }
   const routeIds = new Set<string>();
+  const routeSignatures = new Set<string>();
   const reservedCoreRoutePrefixes = [
     '/api/v1/content', '/api/v1/agent', '/api/v1/tags', '/api/v1/libraries',
-    '/api/v1/batch-jobs', '/api/v1/access-tokens', '/api/v1/audit', '/api/v1/settings',
+    '/api/v1/artifacts', '/api/v1/blobs', '/api/v1/batch-jobs',
+    '/api/v1/access-tokens', '/api/v1/audit', '/api/v1/settings',
   ];
   for (const route of routes) {
     if (routeIds.has(route.id)) throw new Error(`Duplicate extension route ${route.id}`);
     routeIds.add(route.id);
+    const signature = `${route.method} ${route.path}`;
+    if (routeSignatures.has(signature)) throw new Error(`Duplicate extension route ${signature}`);
+    routeSignatures.add(signature);
     if (route.capabilityId && !capabilityIds.has(route.capabilityId)) {
       throw new Error(`Extension route ${route.id} references unknown capability ${route.capabilityId}`);
     }
@@ -89,6 +115,27 @@ export function validateApplicationExtensions<TConfig>(extensions?: ApplicationE
       throw new Error(`Extension route ${route.id} conflicts with an OSS core route`);
     }
   }
+}
+
+export function createApplicationRequestContextMiddleware(
+  authentication: ApplicationAuthenticationExtension,
+): RequestHandler {
+  return async (request, _response, next) => {
+    try {
+      const context = localRequestContextSchema.parse(
+        await authentication.resolveRequestContext(request),
+      );
+      request.tenantId = context.tenantId;
+      request.apiKeyId = context.apiKeyId;
+      request.libraryId = context.libraryId;
+      request.apiCapabilities = context.apiCapabilities;
+      next();
+    } catch (error) {
+      next(new Error('Application authentication returned an invalid OSS request context', {
+        cause: error,
+      }));
+    }
+  };
 }
 
 export interface CreateAppOptions<TConfig = Record<string, never>> {

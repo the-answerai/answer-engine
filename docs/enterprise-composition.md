@@ -24,10 +24,15 @@ runtime dependencies from its own application bundle.
 Server route registrars receive the configured Express app and a typed
 composition context. The route metadata beside each registrar is required so
 contract tests can identify the capability and access boundary without
-inspecting private code. Web contributions declare a paid capability and are
-validated before rendering. Navigation and settings contributions denied by
-the injected authorization adapter are hidden; denied extension routes are not
-registered. Core routes are never passed through the extension policy.
+inspecting private code. A custom authentication extension supplies both its
+middleware and a request-context resolver. The resolver must return the OSS
+`tenantId`, `apiKeyId`, optional `libraryId`, and explicit `read`/`write`
+capabilities; `createApp()` validates and installs that context before any
+authenticated extension or core route runs. Web contributions declare a paid
+capability and are validated before rendering. Navigation and settings
+contributions denied by the injected authorization adapter are hidden; denied
+extension routes are not registered. Core routes are never passed through the
+extension policy.
 
 With no extensions, `createApp()` retains local API-key authentication and
 `App` uses the no-login local identity bootstrap. That standalone path is the

@@ -18,15 +18,16 @@ import { ContentService } from './services/content/content-service.js';
 import { LocalBlobStorage } from './services/storage/local-blob-storage.js';
 import { logger } from './utils/logger.js';
 import {
+  createApplicationRequestContextMiddleware,
   validateApplicationExtensions,
   type ApplicationCompositionContext,
   type CreateAppOptions,
 } from './runtime/application-composition.js';
 
 export type {
-  ApplicationCapabilityExtension, ApplicationCompositionContext, ApplicationExtensions,
-  ApplicationRegistrar, ApplicationRouteExtension, CreateAppOptions, LocalRequestContext,
-  PaidExtensionFamily,
+  ApplicationAuthenticationExtension, ApplicationCapabilityExtension,
+  ApplicationCompositionContext, ApplicationExtensions, ApplicationRegistrar,
+  ApplicationRouteExtension, CreateAppOptions, LocalRequestContext, PaidExtensionFamily,
 } from './runtime/application-composition.js';
 export type { LanguageProvider } from './services/ai/openai-compatible.js';
 
@@ -73,7 +74,12 @@ export function createApp<TConfig = Record<string, never>>(options: CreateAppOpt
   }
   extensions?.registerPublicRoutes?.(app, context);
 
-  app.use('/api/v1', extensions?.authentication ?? createApiKeyAuth(database, { localUiApiKey }));
+  if (extensions?.authentication) {
+    app.use('/api/v1', extensions.authentication.middleware);
+    app.use('/api/v1', createApplicationRequestContextMiddleware(extensions.authentication));
+  } else {
+    app.use('/api/v1', createApiKeyAuth(database, { localUiApiKey }));
+  }
   extensions?.registerAuthenticatedRoutes?.(app, context);
   app.get('/api/v1', (_req, res) => res.json({
     message: 'Answer Engine API v1',

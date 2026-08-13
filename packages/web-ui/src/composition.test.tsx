@@ -19,6 +19,25 @@ describe('web composition contract', () => {
     })).toThrow('conflicts with an OSS core route');
   });
 
+  it('rejects extension routes that overlap a parameterized OSS route', () => {
+    expect(() => createWebComposition({
+      capabilities: [{ id: 'fixture.manage', label: 'Fixture management', family: 'teams' }],
+      authorization: { decide: () => ({ allowed: true }) },
+      routes: [{
+        id: 'fixture.route',
+        path: '/libraries/:id/overview',
+        capabilityId: 'fixture.manage',
+        element: <div />,
+      }],
+    })).toThrow('conflicts with an OSS core route namespace');
+  });
+
+  it('rejects extension capabilities that reuse an OSS capability id', () => {
+    expect(() => createWebComposition({
+      capabilities: [{ id: 'content', label: 'Fixture content policy', family: 'permissions' }],
+    })).toThrow('conflicts with an OSS core capability');
+  });
+
   it('uses a fixture policy to hide unauthorized navigation and settings contributions', async () => {
     const composition = createWebComposition({
       capabilities: [
