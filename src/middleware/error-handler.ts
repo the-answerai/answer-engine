@@ -25,6 +25,20 @@ export const errorHandler: ErrorRequestHandler = (error: unknown, _req, res, _ne
     });
     return;
   }
+  const databaseCode = typeof error === 'object' && error !== null && 'code' in error
+    ? String(error.code)
+    : undefined;
+  if (databaseCode === '23505' || databaseCode === '23503' || databaseCode === '23514') {
+    res.status(409).json({
+      success: false,
+      error: {
+        code: 'CONFLICT',
+        message: 'The request conflicts with an existing resource or data constraint',
+        statusCode: 409,
+      },
+    });
+    return;
+  }
   logger.error('Unhandled request error', {
     error: error instanceof Error ? error.message : String(error),
   });

@@ -13,6 +13,7 @@ export interface LibraryScope {
   librarySlug: string;
   libraryName: string;
   itemCount: number;
+  filterPredicate: import('../services/library/library-membership.js').LibraryFilter | null;
 }
 
 export interface ContentRow {

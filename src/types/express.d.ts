@@ -4,6 +4,7 @@ declare global {
       tenantId?: string;
       apiKeyId?: string;
       libraryId?: string;
+      apiCapabilities?: readonly ('read' | 'write')[];
     }
   }
 }

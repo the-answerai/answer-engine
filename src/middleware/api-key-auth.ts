@@ -3,12 +3,14 @@ import type { RequestHandler } from 'express';
 import type { Database } from '../config/database.js';
 import { AuthenticationError } from '../utils/errors.js';
 import { hasValidLocalUiSession } from './local-ui-session.js';
+import { z } from 'zod';
 
 interface ApiKeyRow {
   id: string;
   tenant_id: string;
   library_id: string | null;
   key_hash: string;
+  capabilities?: unknown;
 }
 
 export interface ApiKeyAuthOptions {
@@ -43,7 +45,7 @@ export function createApiKeyAuth(database: Database, options: ApiKeyAuthOptions 
       }
       const hash = hashApiKey(apiKey);
       const result = await database.query<ApiKeyRow>(
-        `SELECT id, tenant_id, library_id, key_hash
+        `SELECT id, tenant_id, library_id, key_hash, capabilities
            FROM api_keys
           WHERE key_hash = $1
             AND revoked_at IS NULL
@@ -60,6 +62,8 @@ export function createApiKeyAuth(database: Database, options: ApiKeyAuthOptions 
       req.tenantId = key.tenant_id;
       req.apiKeyId = key.id;
       req.libraryId = key.library_id ?? undefined;
+      req.apiCapabilities = z.array(z.enum(['read', 'write'])).min(1)
+        .default(['read', 'write']).parse(key.capabilities);
       await database.query(
         'UPDATE api_keys SET last_used_at = NOW() WHERE tenant_id = $1 AND id = $2',
         [key.tenant_id, key.id],

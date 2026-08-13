@@ -1,0 +1,103 @@
+{
+  "name": "session/epic-6-epic-open-source-the-complete-single-user-answer-engine-application",
+  "branch": "session/epic-6-epic-open-source-the-complete-single-user-answer-engine-application",
+  "completed": "2026-08-13T01:37:17.893Z",
+  "results": [
+    {
+      "issueNum": 8,
+      "title": "feat: port the neutral application data model and API foundation",
+      "status": "success",
+      "prUrl": "https://github.com/the-answerai/answer-engine/pull/18",
+      "testsPassing": true,
+      "verifyPassing": true,
+      "duration": 3690,
+      "filesChanged": 8
+    }
+  ],
+  "stages": [
+    {
+      "stage": "batch-plan",
+      "model": "",
+      "endpoint": "default",
+      "tokens_in": 23810,
+      "tokens_out": 18315,
+      "cost_usd": 0,
+      "wall_time_s": 38.144,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "stage_success": false,
+      "started_at": "2026-08-12T23:42:00.440Z",
+      "issue_num": 8
+    },
+    {
+      "stage": "batch-implement",
+      "model": "",
+      "endpoint": "default",
+      "tokens_in": 51812,
+      "tokens_out": 39855,
+      "cost_usd": 0,
+      "wall_time_s": 37.815,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "stage_success": false,
+      "started_at": "2026-08-12T23:42:38.610Z",
+      "issue_num": 8
+    },
+    {
+      "stage": "batch-plan",
+      "model": "",
+      "endpoint": "default",
+      "tokens_in": 167101,
+      "tokens_out": 128539,
+      "cost_usd": 0,
+      "wall_time_s": 423.554,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "stage_success": true,
+      "started_at": "2026-08-13T00:05:43.665Z",
+      "issue_num": 8
+    },
+    {
+      "stage": "batch-implement",
+      "model": "",
+      "endpoint": "default",
+      "tokens_in": 8530947,
+      "tokens_out": 6562267,
+      "cost_usd": 0,
+      "wall_time_s": 1973.915,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "stage_success": true,
+      "started_at": "2026-08-13T00:12:47.276Z",
+      "issue_num": 8
+    },
+    {
+      "stage": "batch-review",
+      "model": "",
+      "endpoint": "default",
+      "tokens_in": 1218714,
+      "tokens_out": 937472,
+      "cost_usd": 0,
+      "wall_time_s": 1272.788,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "stage_success": true,
+      "started_at": "2026-08-13T00:45:52.730Z",
+      "issue_num": 8
+    },
+    {
+      "stage": "batch-plan",
+      "model": "",
+      "endpoint": "default",
+      "tokens_in": 171417,
+      "tokens_out": 131859,
+      "cost_usd": 0,
+      "wall_time_s": 271.888,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "stage_success": true,
+      "started_at": "2026-08-13T01:07:49.503Z",
+      "issue_num": 9
+    }
+  ]
+}

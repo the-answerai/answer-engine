@@ -10,9 +10,12 @@ import { createApiKeyAuth } from './middleware/api-key-auth.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 import { createLocalUiSessionCookie } from './middleware/local-ui-session.js';
 import { createAgentRoutes } from './routes/agent-routes.js';
+import { createApplicationRoutes } from './routes/application-routes.js';
 import { createContentRoutes } from './routes/content-routes.js';
 import { OpenAiCompatibleProvider } from './services/ai/openai-compatible.js';
+import { ApplicationService } from './services/application/application-service.js';
 import { ContentService } from './services/content/content-service.js';
+import { LocalBlobStorage } from './services/storage/local-blob-storage.js';
 import { logger } from './utils/logger.js';
 import type { ApplicationCompositionContext, CreateAppOptions } from './runtime/application-composition.js';
 
@@ -33,6 +36,11 @@ export function createApp<TConfig = Record<string, never>>(options: CreateAppOpt
   const database = options.dependencies?.database ?? pool;
   const language = options.dependencies?.languageProvider ?? new OpenAiCompatibleProvider();
   const service = new ContentService(database, language);
+  const applicationService = new ApplicationService(
+    database,
+    language,
+    options.dependencies?.blobStorage ?? new LocalBlobStorage(env.AE_HOME),
+  );
   const extensions = options.extensions;
   const localUiApiKey = !extensions?.authentication && env.LOCAL_UI_AUTO_AUTH
     ? env.ANSWER_ENGINE_API_KEY
@@ -65,9 +73,13 @@ export function createApp<TConfig = Record<string, never>>(options: CreateAppOpt
     message: 'Answer Engine API v1',
     endpoints: {
       content: '/api/v1/content', agent: '/api/v1/agent',
+      tags: '/api/v1/tags', libraries: '/api/v1/libraries',
+      batchJobs: '/api/v1/batch-jobs', accessTokens: '/api/v1/access-tokens',
+      audit: '/api/v1/audit',
       ...(extensions?.endpointMetadata ?? {}),
     },
   }));
+  app.use('/api/v1', createApplicationRoutes(applicationService));
   app.use('/api/v1/content', createContentRoutes(service));
   app.use('/api/v1/agent', createAgentRoutes(service));
 
