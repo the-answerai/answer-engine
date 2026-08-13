@@ -29,6 +29,7 @@ describe('Alpha Loop repository posture', () => {
       label: 'ready',
       auto_merge: true,
       test_command: 'pnpm verify',
+      setup_command: 'pnpm browser:prepare',
       batch: true,
       batch_size: 1,
       max_issues: 6,
@@ -77,6 +78,37 @@ describe('Alpha Loop repository posture', () => {
     for (const target of ['.codex/agents', '.claude/agents']) {
       expect(files(target).map((path) => path.replace(`${target}/`, ''))).toEqual(canonicalAgents);
     }
+  });
+
+  it('pins sandbox-safe agent-browser verification for UI workers', () => {
+    const requiredInstruction = /Do not\s+substitute\s+`playwright-cli`/;
+    const browserConfig = JSON.parse(read('agent-browser.json')) as {
+      session?: string;
+    };
+    const packageManifest = JSON.parse(read('package.json')) as {
+      devDependencies?: Record<string, string>;
+      scripts?: Record<string, string>;
+    };
+    const browserWrapper = read('scripts/agent-browser.sh');
+
+    expect(existsSync(join(root, '.alpha-loop/templates/skills/agent-browser/SKILL.md'))).toBe(true);
+    expect(existsSync(join(root, '.alpha-loop/templates/skills/playwright-cli'))).toBe(false);
+    expect(read('.alpha-loop/templates/skills/agent-browser/SKILL.md'))
+      .toContain('pnpm browser:ui set viewport 375 812');
+    expect(packageManifest.devDependencies?.['agent-browser']).toBe('0.34.0');
+    expect(packageManifest.scripts).toMatchObject({
+      'browser:ui': 'bash scripts/agent-browser.sh',
+      'browser:prepare': 'pnpm browser:ui open about:blank',
+    });
+    expect(read('AGENTS.md')).toMatch(requiredInstruction);
+    expect(read('.alpha-loop/templates/instructions.md')).toMatch(requiredInstruction);
+    expect(browserConfig).toEqual({ session: 'answer-engine-oss' });
+    expect(browserWrapper).toContain('AGENT_BROWSER_SOCKET_DIR');
+    expect(browserWrapper).toContain('AGENT_BROWSER_PROFILE');
+    expect(browserWrapper).toContain('AGENT_BROWSER_SCREENSHOT_DIR="$PWD"');
+    expect(browserWrapper).toContain('/tmp/answer-engine-oss-browser');
+    expect(browserWrapper).not.toContain('$HOME');
+    expect(read('.gitignore')).toContain('.agent-browser/');
   });
 
   it('defines only the five paid capability families as private', () => {

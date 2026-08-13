@@ -17,7 +17,12 @@
     },
     "./server": "./dist/server.js"
   },
-  "files": ["dist", "LICENSE", "NOTICE", "README.md"],
+  "files": [
+    "dist",
+    "LICENSE",
+    "NOTICE",
+    "README.md"
+  ],
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "dev:api": "tsx watch src/server.ts",
@@ -35,6 +40,8 @@
     "db:reset": "tsx scripts/reset.ts",
     "init:local": "tsx scripts/init.ts",
     "boot-check:local": "tsx scripts/boot-check-local.ts",
+    "browser:ui": "bash scripts/agent-browser.sh",
+    "browser:prepare": "pnpm browser:ui open about:blank",
     "setup": "docker compose up -d postgres redis && ./scripts/wait-for-postgres.sh && pnpm db:migrate && pnpm init:local",
     "cli": "node packages/cli/dist/index.js",
     "cli:build": "pnpm --filter @answer-engine/cli build",
@@ -65,6 +72,7 @@
     "@typescript-eslint/eslint-plugin": "^6.15.0",
     "@typescript-eslint/parser": "^6.15.0",
     "@vitest/coverage-v8": "^1.0.4",
+    "agent-browser": "0.34.0",
     "eslint": "^8.56.0",
     "supertest": "^7.0.0",
     "tsc-alias": "^1.8.8",

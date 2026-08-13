@@ -43,7 +43,7 @@ test_command: pnpm verify
 # For changed scope, {files} expands to the issue-relative changed paths.
 # changed_test_command: pnpm jest --findRelatedTests --passWithNoTests {files}
 dev_command: pnpm dev
-# setup_command: ""           # Run once before the session (e.g., "pnpm install")
+setup_command: pnpm browser:prepare  # Prelaunch Chrome outside the Codex worker sandbox.
 # smoke_test: ""              # Final smoke command after review (e.g., "curl localhost:3000/health")
 # max_test_retries: 3         # How many times to let the agent fix failing tests
 skip_tests: false
