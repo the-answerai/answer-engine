@@ -29,6 +29,7 @@ describe('Alpha Loop repository posture', () => {
       label: 'ready',
       auto_merge: true,
       test_command: 'pnpm verify',
+      setup_command: 'pnpm browser:prepare',
       batch: true,
       batch_size: 1,
       max_issues: 6,
@@ -83,24 +84,29 @@ describe('Alpha Loop repository posture', () => {
     const requiredInstruction = /Do not\s+substitute\s+`playwright-cli`/;
     const browserConfig = JSON.parse(read('agent-browser.json')) as {
       session?: string;
-      profile?: string;
     };
     const packageManifest = JSON.parse(read('package.json')) as {
       devDependencies?: Record<string, string>;
+      scripts?: Record<string, string>;
     };
+    const browserWrapper = read('scripts/agent-browser.sh');
 
     expect(existsSync(join(root, '.alpha-loop/templates/skills/agent-browser/SKILL.md'))).toBe(true);
     expect(existsSync(join(root, '.alpha-loop/templates/skills/playwright-cli'))).toBe(false);
     expect(read('.alpha-loop/templates/skills/agent-browser/SKILL.md'))
-      .toContain('pnpm exec agent-browser set viewport 375 812');
+      .toContain('pnpm browser:ui set viewport 375 812');
     expect(packageManifest.devDependencies?.['agent-browser']).toBe('0.34.0');
+    expect(packageManifest.scripts).toMatchObject({
+      'browser:ui': 'bash scripts/agent-browser.sh',
+      'browser:prepare': 'pnpm browser:ui open about:blank',
+    });
     expect(read('AGENTS.md')).toMatch(requiredInstruction);
     expect(read('.alpha-loop/templates/instructions.md')).toMatch(requiredInstruction);
-    expect(browserConfig).toEqual({
-      session: 'answer-engine-oss',
-      profile: './.agent-browser/profile',
-    });
-    expect(browserConfig.profile).not.toMatch(/^~|^\//);
+    expect(browserConfig).toEqual({ session: 'answer-engine-oss' });
+    expect(browserWrapper).toContain('AGENT_BROWSER_SOCKET_DIR');
+    expect(browserWrapper).toContain('AGENT_BROWSER_PROFILE');
+    expect(browserWrapper).toContain('/tmp/answer-engine-oss-browser');
+    expect(browserWrapper).not.toContain('$HOME');
     expect(read('.gitignore')).toContain('.agent-browser/');
   });
 
