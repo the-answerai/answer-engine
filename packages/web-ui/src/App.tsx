@@ -1,53 +1,51 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { BrowserRouter, NavLink, Navigate, Outlet, Route, Routes } from 'react-router-dom';
-import { clearLegacyBrowserApiKey, health, initializeLocalUiSession } from './api';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { BrowserRouter, NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import { LoadingState, Notice } from './components';
+import {
+  createWebComposition,
+  type VisibleWebComposition,
+  type WebAppExtensions,
+  type WebComposition,
+  type WebIdentity,
+} from './composition';
+import { coreRouteManifest, type CoreSurfaceManifest } from './core-manifest';
+import { useSettings } from './hooks';
 import { AnswersPage } from './pages/AnswersPage';
+import { BatchJobsPage } from './pages/BatchJobsPage';
 import { ContentPage } from './pages/ContentPage';
 import { ImportPage } from './pages/ImportPage';
 import { LibrariesPage, LibraryPage } from './pages/LibrariesPage';
-import { TagsPage } from './pages/TagsPage';
-import { BatchJobsPage } from './pages/BatchJobsPage';
 import { SettingsPage } from './pages/SettingsPage';
-import { useSettings } from './hooks';
+import { TagsPage } from './pages/TagsPage';
 
-const navigation = [
-  { to: '/content', label: 'Content', mark: '01' },
-  { to: '/import', label: 'Import', mark: '02' },
-  { to: '/tags', label: 'Tags', mark: '03' },
-  { to: '/libraries', label: 'Libraries', mark: '04' },
-  { to: '/answers', label: 'Answers', mark: '05' },
-  { to: '/batch-jobs', label: 'Batch Jobs', mark: '06' },
-  { to: '/settings', label: 'Settings', mark: '07' },
-];
-
-function LocalSessionGate() {
+function LocalSessionGate({ composition }: { composition: WebComposition }) {
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [identity, setIdentity] = useState<WebIdentity>();
   const [message, setMessage] = useState('');
   const bootstrap = useCallback(async () => {
     setState('loading');
-    clearLegacyBrowserApiKey();
     try {
-      await initializeLocalUiSession();
-      if (!await health()) throw new Error('The local API health check failed.');
+      setIdentity(await composition.identity.bootstrap());
       setState('ready');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Unable to connect to the local Answer Engine.');
       setState('error');
     }
-  }, []);
+  }, [composition]);
   useEffect(() => { void bootstrap(); }, [bootstrap]);
   if (state === 'loading') return <div className="session-screen"><LoadingState label="Opening local workspace" /></div>;
   if (state === 'error') return <div className="session-screen"><Notice kind="error">{message} <button onClick={() => void bootstrap()}>Retry</button></Notice></div>;
-  return <AppShell />;
+  if (!identity) return null;
+  return <AppShell composition={composition} identity={identity} />;
 }
 
-function AppShell() {
+function AppShell({ composition, identity }: { composition: WebComposition; identity: WebIdentity }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const settings = useSettings();
   const navigationRef = useRef<HTMLElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const visible = composition.forIdentity(identity);
   useEffect(() => {
     if (!menuOpen) return;
     const navigation = navigationRef.current;
@@ -68,47 +66,70 @@ function AppShell() {
       <a href="#workspace" className="skip-link">Skip to workspace</a>
       {menuOpen ? <button className="sidebar-scrim" aria-label="Close navigation" onClick={() => setMenuOpen(false)} /> : null}
       <aside className={`sidebar ${menuOpen ? 'open' : ''}`}>
-        <div className="brand-block"><span className="brand-mark">AE</span><div><strong>Answer Engine</strong><small>LOCAL WORKSPACE</small></div></div>
+        <div className="brand-block"><span className="brand-mark">AE</span><div><strong>Answer Engine</strong><small>{identity.workspaceLabel ?? 'WORKSPACE'}</small></div></div>
         <nav ref={navigationRef} aria-label="Primary">
-          {navigation.map((item) => (
-            <NavLink key={item.to} to={item.to} onClick={() => setMenuOpen(false)} className={({ isActive }) => isActive ? 'active' : ''}>
+          {visible.navigation.map((item) => (
+            <NavLink key={item.id} to={item.to} onClick={() => setMenuOpen(false)} className={({ isActive }) => isActive ? 'active' : ''}>
               <span>{item.mark}</span>{item.label}
             </NavLink>
           ))}
         </nav>
-        <div className="local-badge"><span className="status-mark online" />LOCAL SESSION<small>No login or API key required</small></div>
+        <div className="local-badge">
+          {composition.identity.render
+            ? composition.identity.render(identity)
+            : <><span className="status-mark online" />{identity.label}<small>{identity.detail}</small></>}
+        </div>
       </aside>
       <div className="shell-body">
-        <header className="mobile-header"><button ref={menuButtonRef} aria-label="Open navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen(true)}>☰</button><strong>Answer Engine</strong><span>LOCAL</span></header>
-        <main id="workspace" tabIndex={-1}><Outlet /></main>
+        <header className="mobile-header"><button ref={menuButtonRef} aria-label="Open navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen(true)}>☰</button><strong>Answer Engine</strong><span>{identity.shortLabel ?? identity.label}</span></header>
+        <main id="workspace" tabIndex={-1}><ComposedRoutes visible={visible} /></main>
       </div>
     </div>
   );
 }
 
-export function App() {
+function coreRouteElement(surface: CoreSurfaceManifest, visible: VisibleWebComposition) {
+  switch (surface.id) {
+    case 'content': return <ContentPage />;
+    case 'import': return <ImportPage />;
+    case 'tags': return <TagsPage />;
+    case 'libraries': return <LibrariesPage />;
+    case 'library-answers': return <AnswersPage />;
+    case 'library-members':
+    case 'library-overview':
+    case 'library-recipes':
+    case 'library-reports':
+    case 'library-dashboards':
+    case 'library-audit': return <LibraryPage />;
+    case 'answers': return <AnswersPage />;
+    case 'batch-jobs': return <BatchJobsPage />;
+    case 'settings': return <SettingsPage extensionSections={visible.settings} />;
+    default: throw new Error(`Core route ${surface.id} has no OSS page implementation`);
+  }
+}
+
+function ComposedRoutes({ visible }: { visible: VisibleWebComposition }) {
+  return (
+    <Routes>
+      <Route path="/" element={<Navigate to="/content" replace />} />
+      {coreRouteManifest.map((surface) => (
+        <Route key={surface.id} path={surface.path} element={coreRouteElement(surface, visible)} />
+      ))}
+      {visible.routes.map((route) => <Route key={route.id} path={route.path} element={route.element} />)}
+      <Route path="*" element={<Navigate to="/content" replace />} />
+    </Routes>
+  );
+}
+
+export function App({ extensions }: { readonly extensions?: WebAppExtensions } = {}) {
+  const composition = useMemo(() => createWebComposition(extensions), [extensions]);
   const [queryClient] = useState(() => new QueryClient({
     defaultOptions: { queries: { retry: 1, staleTime: 15_000 } },
   }));
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <Routes>
-          <Route element={<LocalSessionGate />}>
-            <Route path="/" element={<Navigate to="/content" replace />} />
-            <Route path="/content" element={<ContentPage />} />
-            <Route path="/import" element={<ImportPage />} />
-            <Route path="/tags" element={<TagsPage />} />
-            <Route path="/libraries" element={<LibrariesPage />} />
-            <Route path="/libraries/:libraryId" element={<LibraryPage />} />
-            <Route path="/libraries/:libraryId/answers" element={<AnswersPage />} />
-            <Route path="/libraries/:libraryId/:section" element={<LibraryPage />} />
-            <Route path="/answers" element={<AnswersPage />} />
-            <Route path="/batch-jobs" element={<BatchJobsPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-          </Route>
-          <Route path="*" element={<Navigate to="/content" replace />} />
-        </Routes>
+        <LocalSessionGate composition={composition} />
       </BrowserRouter>
     </QueryClientProvider>
   );

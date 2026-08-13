@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
+import type { WebAppExtensions } from './composition';
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify({ success: true, data }), {
@@ -18,6 +19,14 @@ function installApiMock() {
     if (url.startsWith('/api/v1/content')) return json([]);
     if (url.startsWith('/api/v1/tags')) return json([]);
     if (url.startsWith('/api/v1/libraries')) return json([]);
+    if (url === '/api/v1/access-tokens') return json([]);
+    if (url.startsWith('/api/v1/audit')) return json({ items: [], nextCursor: null, hasMore: false });
+    if (url === '/api/v1/settings') return json({
+      defaultPageSize: 25,
+      defaultLibraryId: null,
+      density: 'comfortable',
+      defaultExportFormat: 'json',
+    });
     return json({});
   });
 }
@@ -105,5 +114,51 @@ describe('local application shell', () => {
         && url.includes('limit=50');
     })).toBe(true));
     expect((await screen.findByLabelText('Library') as HTMLSelectElement).value).toBe(libraryId);
+  });
+
+  it('composes a fixture identity, navigation route, policy, and settings panel without replacing core pages', async () => {
+    installApiMock();
+    window.history.replaceState({}, '', '/fixture-members');
+    const extension = {
+      capabilities: [{ id: 'fixture.members', label: 'Fixture members', family: 'teams' as const }],
+      routes: [{
+        id: 'fixture.members-route',
+        path: '/fixture-members',
+        capabilityId: 'fixture.members',
+        element: <h1>Fixture members</h1>,
+      }],
+      navigation: [{
+        id: 'fixture.members-nav',
+        to: '/fixture-members',
+        label: 'Members',
+        mark: '08',
+        capabilityId: 'fixture.members',
+      }],
+      settings: [{
+        id: 'fixture.members-settings',
+        title: 'Member settings',
+        capabilityId: 'fixture.members',
+        element: <p>Fixture member settings</p>,
+      }],
+      identity: {
+        bootstrap: async () => ({ subject: 'fixture-user', label: 'Fixture owner', detail: 'Composed identity', workspaceLabel: 'COMPOSED WORKSPACE', shortLabel: 'SIGNED IN' }),
+        render: (identity: { label: string; detail?: string }) => <div data-testid="fixture-identity">{identity.label}<small>{identity.detail}</small></div>,
+      },
+      authorization: { decide: () => ({ allowed: true }) },
+    } satisfies WebAppExtensions;
+
+    const { unmount } = render(<App extensions={extension} />);
+
+    expect(await screen.findByRole('heading', { name: 'Fixture members' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: /Members/ })).toBeTruthy();
+    expect(screen.getByTestId('fixture-identity').textContent).toBe('Fixture ownerComposed identity');
+    expect(screen.getByText('COMPOSED WORKSPACE')).toBeTruthy();
+    expect(screen.getByText('SIGNED IN')).toBeTruthy();
+
+    unmount();
+    window.history.replaceState({}, '', '/settings');
+    render(<App extensions={extension} />);
+    expect(await screen.findByText('Fixture member settings')).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Settings' })).toBeTruthy();
   });
 });
