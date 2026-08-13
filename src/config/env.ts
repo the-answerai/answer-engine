@@ -30,6 +30,8 @@ const EnvSchema = z.object({
   MODELS_EMBEDDING: z.string().optional(),
   EMBEDDING_DIMENSION: z.coerce.number().int().positive().default(768),
   WEB_UI_DIR: z.string().trim().min(1).optional(),
+  AE_HOME: z.string().trim().min(1).default('/data'),
+  LOCAL_WORKER_POLL_MS: z.coerce.number().int().min(250).max(60_000).default(1_000),
   LOG_LEVEL: z.string().default('info'),
 });
 

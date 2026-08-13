@@ -16,6 +16,9 @@ tags:
   - name: System
   - name: Content
   - name: Memory
+  - name: Organization
+  - name: Workflows
+  - name: Operations
 paths:
   /health:
     get:
@@ -161,6 +164,489 @@ paths:
         '200': { $ref: '#/components/responses/Success' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/tags:
+    get:
+      tags: [Organization]
+      summary: List active tags
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Organization]
+      summary: Create a tag
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TagInput' }
+      responses:
+        '201': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/tags/{tagId}:
+    parameters:
+      - { $ref: '#/components/parameters/TagId' }
+    patch:
+      tags: [Organization]
+      summary: Update a tag
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TagUpdate' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Organization]
+      summary: Archive a tag
+      responses:
+        '204': { description: Tag archived. }
+  /api/v1/tags/{tagId}/content:
+    parameters:
+      - { $ref: '#/components/parameters/TagId' }
+    post:
+      tags: [Organization]
+      summary: Assign a tag to content in bulk
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TagAssignment' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    delete:
+      tags: [Organization]
+      summary: Remove a tag from content in bulk
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TagAssignment' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/v1/libraries:
+    get:
+      tags: [Organization]
+      summary: List libraries with effective member counts
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Organization]
+      summary: Create a saved content library
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LibraryInput' }
+      responses:
+        '201': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/libraries/{libraryId}:
+    parameters:
+      - { $ref: '#/components/parameters/LibraryId' }
+    get:
+      tags: [Organization]
+      summary: Get a library
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Organization]
+      summary: Update a user-defined library
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LibraryUpdate' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '409': { description: A system-library invariant was violated. }
+    delete:
+      tags: [Organization]
+      summary: Archive a user-defined library
+      responses:
+        '204': { description: Library archived. }
+        '409': { description: The system library cannot be archived. }
+  /api/v1/libraries/{libraryId}/members:
+    parameters:
+      - { $ref: '#/components/parameters/LibraryId' }
+    get:
+      tags: [Organization]
+      summary: Page through effective library membership
+      description: Membership is `(saved filter OR manual include) AND NOT manual exclude`.
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/v1/libraries/{libraryId}/preview:
+    parameters:
+      - { $ref: '#/components/parameters/LibraryId' }
+    post:
+      tags: [Organization]
+      summary: Preview a strict saved filter without changing the library
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LibraryPreview' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/libraries/{libraryId}/includes/{contentId}:
+    parameters:
+      - { $ref: '#/components/parameters/LibraryId' }
+      - { $ref: '#/components/parameters/MemberContentId' }
+    put:
+      tags: [Organization]
+      summary: Add a manual library include
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    delete:
+      tags: [Organization]
+      summary: Remove a manual library include
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/v1/libraries/{libraryId}/excludes/{contentId}:
+    parameters:
+      - { $ref: '#/components/parameters/LibraryId' }
+      - { $ref: '#/components/parameters/MemberContentId' }
+    put:
+      tags: [Organization]
+      summary: Add a manual library exclusion
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    delete:
+      tags: [Organization]
+      summary: Remove a manual library exclusion
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/v1/libraries/{libraryId}/recipes:
+    parameters:
+      - { $ref: '#/components/parameters/LibraryId' }
+    get:
+      tags: [Workflows]
+      summary: List library recipes
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Workflows]
+      summary: Create a versioned library recipe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RecipeInput' }
+      responses:
+        '201': { $ref: '#/components/responses/Success' }
+  /api/v1/libraries/{libraryId}/recipes/{recipeId}:
+    parameters:
+      - { $ref: '#/components/parameters/LibraryId' }
+      - { $ref: '#/components/parameters/RecipeId' }
+    patch:
+      tags: [Workflows]
+      summary: Save a new immutable recipe version
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RecipeUpdate' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    delete:
+      tags: [Workflows]
+      summary: Deactivate a recipe
+      responses:
+        '204': { description: Recipe deactivated. }
+  /api/v1/libraries/{libraryId}/recipes/{recipeId}/preview:
+    parameters:
+      - { $ref: '#/components/parameters/LibraryId' }
+      - { $ref: '#/components/parameters/RecipeId' }
+    post:
+      tags: [Workflows]
+      summary: Preview recipe outputs over effective members
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RecipePreview' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/v1/libraries/{libraryId}/recipes/{recipeId}/runs:
+    parameters:
+      - { $ref: '#/components/parameters/LibraryId' }
+      - { $ref: '#/components/parameters/RecipeId' }
+    get:
+      tags: [Workflows]
+      summary: List durable recipe runs
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Workflows]
+      summary: Queue a recipe run
+      responses:
+        '202': { $ref: '#/components/responses/Success' }
+  /api/v1/libraries/{libraryId}/runs/{runId}:
+    get:
+      tags: [Workflows]
+      summary: Get recipe-run progress and per-item results
+      parameters:
+        - { $ref: '#/components/parameters/LibraryId' }
+        - { $ref: '#/components/parameters/RunId' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/v1/libraries/{libraryId}/runs/{runId}/cancel:
+    post:
+      tags: [Workflows]
+      summary: Safely cancel queued or running recipe work
+      parameters:
+        - { $ref: '#/components/parameters/LibraryId' }
+        - { $ref: '#/components/parameters/RunId' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/v1/libraries/{libraryId}/runs/{runId}/retry:
+    post:
+      tags: [Workflows]
+      summary: Retry failed, partial, or canceled recipe work
+      parameters:
+        - { $ref: '#/components/parameters/LibraryId' }
+        - { $ref: '#/components/parameters/RunId' }
+      responses:
+        '202': { $ref: '#/components/responses/Success' }
+  /api/v1/content/{id}/artifacts:
+    get:
+      tags: [Workflows]
+      summary: List artifact versions and lineage for content
+      parameters:
+        - { $ref: '#/components/parameters/ContentId' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/v1/artifacts/{artifactId}:
+    get:
+      tags: [Workflows]
+      summary: Get an artifact version
+      parameters:
+        - { $ref: '#/components/parameters/ArtifactId' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/v1/libraries/{libraryId}/reports:
+    parameters:
+      - { $ref: '#/components/parameters/LibraryId' }
+    get:
+      tags: [Workflows]
+      summary: List library report definitions
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Workflows]
+      summary: Create a library report definition
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReportInput' }
+      responses:
+        '201': { $ref: '#/components/responses/Success' }
+  /api/v1/libraries/{libraryId}/reports/{reportId}/generate:
+    post:
+      tags: [Workflows]
+      summary: Queue a grounded report generation
+      parameters:
+        - { $ref: '#/components/parameters/LibraryId' }
+        - { $ref: '#/components/parameters/ReportId' }
+      responses:
+        '202': { $ref: '#/components/responses/Success' }
+  /api/v1/libraries/{libraryId}/reports/{reportId}:
+    parameters:
+      - { $ref: '#/components/parameters/LibraryId' }
+      - { $ref: '#/components/parameters/ReportId' }
+    patch:
+      tags: [Workflows]
+      summary: Update a report definition
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReportUpdate' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    delete:
+      tags: [Workflows]
+      summary: Delete a report definition and generated history
+      responses:
+        '204': { description: Report deleted. }
+  /api/v1/libraries/{libraryId}/reports/{reportId}/generated:
+    get:
+      tags: [Workflows]
+      summary: List generated report history
+      parameters:
+        - { $ref: '#/components/parameters/LibraryId' }
+        - { $ref: '#/components/parameters/ReportId' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/v1/libraries/{libraryId}/reports/{reportId}/generated/{generatedId}/cancel:
+    post:
+      tags: [Workflows]
+      summary: Safely cancel queued or running report work
+      parameters:
+        - { $ref: '#/components/parameters/LibraryId' }
+        - { $ref: '#/components/parameters/ReportId' }
+        - { $ref: '#/components/parameters/GeneratedId' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/v1/libraries/{libraryId}/reports/{reportId}/generated/{generatedId}/retry:
+    post:
+      tags: [Workflows]
+      summary: Retry failed or canceled report work
+      parameters:
+        - { $ref: '#/components/parameters/LibraryId' }
+        - { $ref: '#/components/parameters/ReportId' }
+        - { $ref: '#/components/parameters/GeneratedId' }
+      responses:
+        '202': { $ref: '#/components/responses/Success' }
+  /api/v1/libraries/{libraryId}/dashboards:
+    parameters:
+      - { $ref: '#/components/parameters/LibraryId' }
+    get:
+      tags: [Workflows]
+      summary: List library dashboards
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Workflows]
+      summary: Create a library dashboard
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DashboardInput' }
+      responses:
+        '201': { $ref: '#/components/responses/Success' }
+  /api/v1/libraries/{libraryId}/dashboards/{dashboardId}:
+    parameters:
+      - { $ref: '#/components/parameters/LibraryId' }
+      - { $ref: '#/components/parameters/DashboardId' }
+    patch:
+      tags: [Workflows]
+      summary: Update a library dashboard
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DashboardUpdate' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    delete:
+      tags: [Workflows]
+      summary: Delete a library dashboard
+      responses:
+        '204': { description: Dashboard deleted. }
+  /api/v1/batch-jobs:
+    get:
+      tags: [Operations]
+      summary: List local batch jobs
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Operations]
+      summary: Queue a provider-neutral local batch job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BatchJobInput' }
+      responses:
+        '202': { $ref: '#/components/responses/Success' }
+  /api/v1/batch-jobs/{jobId}:
+    get:
+      tags: [Operations]
+      summary: Get batch progress and per-item results
+      parameters:
+        - { $ref: '#/components/parameters/JobId' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/v1/batch-jobs/{jobId}/cancel:
+    post:
+      tags: [Operations]
+      summary: Safely cancel queued or running batch work
+      parameters:
+        - { $ref: '#/components/parameters/JobId' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/v1/batch-jobs/{jobId}/retry:
+    post:
+      tags: [Operations]
+      summary: Retry failed, partial, or canceled batch work
+      parameters:
+        - { $ref: '#/components/parameters/JobId' }
+      responses:
+        '202': { $ref: '#/components/responses/Success' }
+  /api/v1/access-tokens:
+    get:
+      tags: [Operations]
+      summary: List access-token metadata without secrets
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Operations]
+      summary: Mint a tenant- or library-scoped access token
+      description: The raw `ae_live_` token is returned only by this operation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AccessTokenInput' }
+      responses:
+        '201': { $ref: '#/components/responses/Success' }
+  /api/v1/access-tokens/{tokenId}:
+    patch:
+      tags: [Operations]
+      summary: Update access-token metadata or expiry
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AccessTokenUpdate' }
+      parameters:
+        - { $ref: '#/components/parameters/TokenId' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    delete:
+      tags: [Operations]
+      summary: Revoke an access token
+      parameters:
+        - { $ref: '#/components/parameters/TokenId' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/v1/audit:
+    get:
+      tags: [Operations]
+      summary: Page through local tenant or library audit history
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/v1/content/{id}/blobs:
+    parameters:
+      - { $ref: '#/components/parameters/ContentId' }
+    get:
+      tags: [Content]
+      summary: List local blob metadata for content
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Content]
+      summary: Store a content blob beneath AE_HOME
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BlobUpload' }
+      responses:
+        '201': { $ref: '#/components/responses/Success' }
+  /api/v1/blobs/{blobId}/download:
+    get:
+      tags: [Content]
+      summary: Download a tenant-scoped local blob
+      parameters:
+        - { $ref: '#/components/parameters/BlobId' }
+      responses:
+        '200': { description: Blob bytes. }
 components:
   securitySchemes:
     apiKey:
@@ -174,6 +660,66 @@ components:
     ContentId:
       in: path
       name: id
+      required: true
+      schema: { type: string, format: uuid }
+    MemberContentId:
+      in: path
+      name: contentId
+      required: true
+      schema: { type: string, format: uuid }
+    LibraryId:
+      in: path
+      name: libraryId
+      required: true
+      schema: { type: string, format: uuid }
+    TagId:
+      in: path
+      name: tagId
+      required: true
+      schema: { type: string, format: uuid }
+    RecipeId:
+      in: path
+      name: recipeId
+      required: true
+      schema: { type: string, format: uuid }
+    RunId:
+      in: path
+      name: runId
+      required: true
+      schema: { type: string, format: uuid }
+    ArtifactId:
+      in: path
+      name: artifactId
+      required: true
+      schema: { type: string, format: uuid }
+    ReportId:
+      in: path
+      name: reportId
+      required: true
+      schema: { type: string, format: uuid }
+    GeneratedId:
+      in: path
+      name: generatedId
+      required: true
+      schema: { type: string, format: uuid }
+    DashboardId:
+      in: path
+      name: dashboardId
+      required: true
+      schema: { type: string, format: uuid }
+    JobId:
+      in: path
+      name: jobId
+      required: true
+      schema: { type: string, format: uuid }
+    TokenId:
+      in: path
+      name: tokenId
+      required: true
+      schema: { type: string, format: uuid }
+    BlobId:
+      in: path
+      name: blobId
       required: true
       schema: { type: string, format: uuid }
   responses:
@@ -217,6 +763,223 @@ components:
             code: { type: string }
             message: { type: string }
             details: {}
+    TagInput:
+      type: object
+      additionalProperties: false
+      required: [slug, label]
+      properties:
+        slug: { type: string, pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$' }
+        label: { type: string, minLength: 1, maxLength: 120 }
+        description: { type: [string, 'null'], maxLength: 1000 }
+        category: { type: [string, 'null'], maxLength: 120 }
+        parentId: { type: [string, 'null'], format: uuid }
+        color: { type: [string, 'null'], pattern: '^#[0-9A-Fa-f]{6}$' }
+        metadata: { type: object, additionalProperties: true }
+    TagUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        slug: { type: string, pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$' }
+        label: { type: string, minLength: 1, maxLength: 120 }
+        description: { type: [string, 'null'], maxLength: 1000 }
+        category: { type: [string, 'null'], maxLength: 120 }
+        parentId: { type: [string, 'null'], format: uuid }
+        color: { type: [string, 'null'], pattern: '^#[0-9A-Fa-f]{6}$' }
+        metadata: { type: object, additionalProperties: true }
+    TagAssignment:
+      type: object
+      additionalProperties: false
+      required: [contentIds]
+      properties:
+        contentIds:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items: { type: string, format: uuid }
+    LibraryFilter:
+      type: object
+      additionalProperties: false
+      required: [conditions]
+      properties:
+        operator: { enum: [and, or], default: and }
+        conditions:
+          type: array
+          minItems: 1
+          maxItems: 25
+          items:
+            type: object
+            additionalProperties: false
+            required: [field, operator, value]
+            properties:
+              field:
+                type: string
+                description: content_type, source, created_at, tag, metadata.<key>, or analysis.<key>.
+              operator: { enum: [eq, in, contains, gte, lte] }
+              value:
+                oneOf:
+                  - { type: [string, number, boolean] }
+                  - { type: array, minItems: 1, maxItems: 100, items: { type: [string, number, boolean] } }
+    LibraryInput:
+      type: object
+      additionalProperties: false
+      required: [name, slug]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        slug: { type: string, pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$' }
+        description: { type: [string, 'null'], maxLength: 2000 }
+        filter:
+          oneOf:
+            - { $ref: '#/components/schemas/LibraryFilter' }
+            - { type: 'null' }
+        metadata: { type: object, additionalProperties: true }
+    LibraryUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        slug: { type: string, pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$' }
+        description: { type: [string, 'null'], maxLength: 2000 }
+        filter:
+          oneOf:
+            - { $ref: '#/components/schemas/LibraryFilter' }
+            - { type: 'null' }
+        metadata: { type: object, additionalProperties: true }
+    LibraryPreview:
+      type: object
+      additionalProperties: false
+      properties:
+        filter:
+          oneOf:
+            - { $ref: '#/components/schemas/LibraryFilter' }
+            - { type: 'null' }
+        limit: { type: integer, minimum: 1, maximum: 100, default: 25 }
+    RecipeInput:
+      type: object
+      additionalProperties: false
+      required: [name, contentTypes, systemPrompt, userPromptTemplate, outputType]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: [string, 'null'], maxLength: 2000 }
+        contentTypes:
+          type: array
+          minItems: 1
+          maxItems: 6
+          items: { $ref: '#/components/schemas/ContentType' }
+        systemPrompt: { type: string, minLength: 1, maxLength: 20000 }
+        userPromptTemplate: { type: string, minLength: 1, maxLength: 20000 }
+        outputType: { type: string, pattern: '^[a-z0-9]+(?:_[a-z0-9]+)*$' }
+        outputSchema: { type: [object, 'null'], additionalProperties: true }
+        modelId: { type: [string, 'null'], maxLength: 200 }
+        maxTokens: { type: [integer, 'null'], minimum: 1, maximum: 32000 }
+        isActive: { type: boolean, default: true }
+    RecipeUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: [string, 'null'], maxLength: 2000 }
+        contentTypes:
+          type: array
+          minItems: 1
+          maxItems: 6
+          items: { $ref: '#/components/schemas/ContentType' }
+        systemPrompt: { type: string, minLength: 1, maxLength: 20000 }
+        userPromptTemplate: { type: string, minLength: 1, maxLength: 20000 }
+        outputType: { type: string, pattern: '^[a-z0-9]+(?:_[a-z0-9]+)*$' }
+        outputSchema: { type: [object, 'null'], additionalProperties: true }
+        modelId: { type: [string, 'null'], maxLength: 200 }
+        maxTokens: { type: [integer, 'null'], minimum: 1, maximum: 32000 }
+        isActive: { type: boolean }
+    RecipePreview:
+      type: object
+      additionalProperties: false
+      properties:
+        contentIds:
+          type: array
+          maxItems: 10
+          items: { type: string, format: uuid }
+        limit: { type: integer, minimum: 1, maximum: 10, default: 3 }
+    ReportInput:
+      type: object
+      additionalProperties: false
+      required: [title, slug, prompt]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 300 }
+        slug: { type: string, pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$' }
+        description: { type: [string, 'null'], maxLength: 2000 }
+        prompt: { type: string, minLength: 1, maxLength: 20000 }
+        schedule: { type: [string, 'null'], maxLength: 200 }
+        isActive: { type: boolean, default: true }
+    ReportUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        title: { type: string, minLength: 1, maxLength: 300 }
+        slug: { type: string, pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$' }
+        description: { type: [string, 'null'], maxLength: 2000 }
+        prompt: { type: string, minLength: 1, maxLength: 20000 }
+        schedule: { type: [string, 'null'], maxLength: 200 }
+        isActive: { type: boolean }
+    DashboardInput:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: [string, 'null'], maxLength: 2000 }
+        layout: { type: array, items: { type: object, additionalProperties: true }, default: [] }
+        widgets: { type: array, items: { type: object, additionalProperties: true }, default: [] }
+    DashboardUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: [string, 'null'], maxLength: 2000 }
+        layout: { type: array, items: { type: object, additionalProperties: true } }
+        widgets: { type: array, items: { type: object, additionalProperties: true } }
+    BatchJobInput:
+      type: object
+      additionalProperties: false
+      required: [kind, name]
+      properties:
+        libraryId: { type: [string, 'null'], format: uuid }
+        kind: { enum: [prompt, export, import] }
+        name: { type: string, minLength: 1, maxLength: 200 }
+        input: { type: object, additionalProperties: true, default: {} }
+        contentIds:
+          type: array
+          maxItems: 10000
+          items: { type: string, format: uuid }
+    AccessTokenInput:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: [string, 'null'], maxLength: 1000 }
+        libraryId: { type: [string, 'null'], format: uuid }
+        expiresAt: { type: [string, 'null'], format: date-time }
+        capabilities:
+          type: array
+          minItems: 1
+          items: { enum: [read, write] }
+          default: [read, write]
+    AccessTokenUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        description: { type: [string, 'null'], maxLength: 1000 }
+        expiresAt: { type: [string, 'null'], format: date-time }
+    BlobUpload:
+      type: object
+      additionalProperties: false
+      required: [fileName, mediaType, dataBase64]
+      properties:
+        fileName: { type: string, minLength: 1, maxLength: 255 }
+        mediaType: { type: string, minLength: 1, maxLength: 255 }
+        dataBase64: { type: string, format: byte, minLength: 1, maxLength: 31457280 }
+        sourceMetadata: { type: object, additionalProperties: true, default: {} }
     ImportRequest:
       type: object
       required: [items]

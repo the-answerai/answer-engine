@@ -103,6 +103,29 @@ Core routes:
 | `POST /api/v1/agent/retrieve` | Retrieve known IDs or a conversation |
 | `POST /api/v1/agent/summarize` | Summarize selected local evidence |
 | `POST /api/v1/agent/ask` | Generate a grounded answer with citations |
+| `GET/POST /api/v1/tags` | Manage the local tag taxonomy |
+| `GET/POST /api/v1/libraries` | Manage saved libraries and effective membership |
+| `GET /api/v1/libraries/:id/members` | Page `(filter OR include) AND NOT exclude` members |
+| `GET/POST /api/v1/libraries/:id/recipes` | Manage versioned recipes and durable runs |
+| `GET /api/v1/content/:id/artifacts` | Inspect recipe artifacts, versions, and lineage |
+| `GET/POST /api/v1/libraries/:id/reports` | Manage grounded library reports |
+| `GET/POST /api/v1/libraries/:id/dashboards` | Manage library dashboards |
+| `GET/POST /api/v1/batch-jobs` | Manage provider-neutral local batch work |
+| `GET/POST /api/v1/access-tokens` | Manage tenant- or library-scoped `ae_live_` tokens |
+| `GET /api/v1/audit` | Page local tenant or library audit history |
+| `GET/POST /api/v1/content/:id/blobs` | List or store local content blobs |
+
+The all-content system library is provisioned automatically. User-defined
+libraries are saved filters with manual include/exclude overrides; excludes win
+conflicts. Library-scoped tokens apply that same membership predicate to direct
+content reads, search, grounded answers, artifacts, and blobs. Raw token values
+are returned once when created and are stored only as SHA-256 hashes.
+
+Recipe, report, and batch work is claimed transactionally by the local
+PostgreSQL worker. The worker uses the configured language-provider facade and
+persists observable progress and per-item results without a hosted queue.
+`LOCAL_WORKER_POLL_MS` controls its polling interval (default `1000`, minimum
+`250`); blob bytes remain under `AE_HOME/blobs`.
 
 See [openapi/answer-engine.yaml](./openapi/answer-engine.yaml) for the exact
 contract.
@@ -123,8 +146,11 @@ contract.
 pnpm verify
 ```
 
-The fresh database schema lives in
-[`database/migrations/001_local_core.sql`](./database/migrations/001_local_core.sql).
+The immutable fresh database baseline lives in
+[`database/migrations/001_local_core.sql`](./database/migrations/001_local_core.sql),
+with the neutral application foundation in the paired `002` up/down migrations.
+Use `pnpm db:migrate` to apply pending migrations and `pnpm db:rollback` to roll
+back the latest migration.
 Set `EMBEDDING_DIMENSION` before the first migration. Changing it later requires
 a fresh vector schema and re-embedding stored content.
 
