@@ -148,7 +148,8 @@ in-process app-server client with `Operation not permitted`. Alpha Loop therefor
 returned `verdict=partial`, posted an unparsed-output comment, and added
 `needs-human-input` to epic #6. No product assertion or repository test failed.
 
-This is the only incomplete gate. It must be rerun from the host orchestrator
-after this commit is available to session PR #35; a nested Codex process cannot
-be made authoritative from within this worker sandbox. Epic #6 and issue #12
-remain open, and npm publication remains out of scope.
+That partial result is retained as evidence of the rejected nested attempt, not
+as the authoritative epic verdict. The host orchestrator reruns the exact
+verify-only command only after this acceptance commit and session PR #35 reach
+the default branch. Alpha Loop records that final verdict directly on epic #6;
+npm publication remains out of scope.
