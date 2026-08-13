@@ -122,6 +122,13 @@ Enterprise issue #964 was closed by merged PR #966. The enterprise checkout was
 at `f9e976b86965f801083f8449cfe98d986b1be567` and its OSS submodule and reviewed
 manifest both pinned `2cc52e9c53ab7641a8221df7d8b356d1ccfaab15`.
 
+That pin was authoritative for the initial enterprise composition gate. Issue
+#12 subsequently landed the shared accessibility token correction and final
+acceptance tooling. After this record reaches OSS `master`, enterprise #964 is
+reopened once to advance both pin locations to this final OSS revision; the
+resulting enterprise PR and exact pin are recorded on #12 before the final
+verify-only invocation.
+
 The enterprise verifier ran from a clean writable copy after frozen root and
 nested OSS installs. Its composition boundary check reported 17 core surfaces
 and exactly five private families; the pinned OSS verifier passed; enterprise
@@ -148,8 +155,24 @@ in-process app-server client with `Operation not permitted`. Alpha Loop therefor
 returned `verdict=partial`, posted an unparsed-output comment, and added
 `needs-human-input` to epic #6. No product assertion or repository test failed.
 
-That partial result is retained as evidence of the rejected nested attempt, not
-as the authoritative epic verdict. The host orchestrator reruns the exact
-verify-only command only after this acceptance commit and session PR #35 reach
-the default branch. Alpha Loop records that final verdict directly on epic #6;
-npm publication remains out of scope.
+That nested partial result is retained as evidence of the rejected worker
+attempt, not as the authoritative epic verdict. After session PR #35 reached
+the default branch, the host orchestrator ran the exact command from the OSS
+root. It reached 6/6 merged children but returned `partial` for two engine
+reasons: fuzzy `closes:#N` search selected unrelated later PRs for #7-#9, and
+the verifier circularly required a prior successful invocation of the command
+it was currently executing. No product assertion failed.
+
+Those defects were fixed in Alpha Loop issue #398 and merged PR #399 at
+`613d6415e7812ae41c5ac9f5b138bd80eff0d617`. Regression coverage now resolves
+exact merged timeline cross-references, supplies bounded PR checks/bodies and
+issue verification comments as untrusted evidence, and treats the current
+verify-only invocation as the evidence-producing gate. Its focused 76-test
+suite, complete 1,528-test suite, TypeScript build, and GitHub CI passed. The
+post-merge workflow explicitly skipped all npm publish/tag/release steps
+because package version `2.4.0` still matched tag `v2.4.0`.
+
+The host orchestrator performs one final exact verify-only invocation after
+this correction record reaches the default branch. Alpha Loop records that
+authoritative verdict directly on epic #6; npm publication remains out of
+scope.
