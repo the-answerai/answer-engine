@@ -160,6 +160,30 @@ contract.
 pnpm verify
 ```
 
+The final real-history acceptance check is read-only. For an installer-managed
+stack with its background service running, record the UTC start of a complete
+three-source cycle, then run:
+
+```bash
+pnpm acceptance:real-history \
+  --installer-home "$AE_HOME" \
+  --sync-log "$AE_HOME/logs/sync.out.log" \
+  --sync-after 2026-08-13T07:28:00.000Z
+```
+
+For a manually managed database, capture one JSON result from
+`ae sync once --source <source>` for each source and pass each file with a
+repeated `--sync-summary` option instead.
+
+The verifier requires at least the acceptance baseline (848 Claude Code, 4105
+Codex, and 112 Cowork files), cursor coverage of the latest append-only scans,
+zero sync/import failures, tenant-scoped stored summaries and manifests, and
+matching SHA-256 values for a deterministic archive sample.
+
+The complete clean-install, browser, API/MCP, model, background-service, and
+enterprise-composition execution record for the final product-parity run is in
+[`docs/acceptance/issue-12.md`](./docs/acceptance/issue-12.md).
+
 The immutable fresh database baseline lives in
 [`database/migrations/001_local_core.sql`](./database/migrations/001_local_core.sql),
 with the neutral application foundation in the paired `002` up/down migrations.

@@ -32,6 +32,24 @@ function files(relativeDirectory: string): string[] {
   }).sort();
 }
 
+function installFakeProcessInspector(directory: string, daemonCommand: string): void {
+  const executable = join(directory, 'ps');
+  const statProbe = join(directory, 'ps-stat-probed');
+  writeFileSync(
+    executable,
+    `#!/usr/bin/env bash
+case "$*" in
+  *"stat="*)
+    if [[ -f "${statProbe}" ]]; then printf 'Z\\n'; else touch "${statProbe}"; printf 'S\\n'; fi
+    ;;
+  *"command="*) printf '%s\\n' "${daemonCommand}" ;;
+  *) exit 2 ;;
+esac
+`,
+  );
+  chmodSync(executable, 0o755);
+}
+
 describe('Alpha Loop repository posture', () => {
   it('pins the safe epic runner configuration', () => {
     const config = parse(read('.alpha-loop.yaml')) as Record<string, unknown>;
@@ -148,6 +166,7 @@ describe('Alpha Loop repository posture', () => {
       mkdirSync(join(runtimeDirectory, 'socket'), { recursive: true });
       copyFileSync('/bin/sleep', fakeDaemon);
       chmodSync(fakeDaemon, 0o755);
+      installFakeProcessInspector(fakeBinDirectory, `${fakeDaemon} 120`);
       writeFileSync(
         join(fakeBinDirectory, 'pnpm'),
         `#!/usr/bin/env bash\nprintf '%s\\n' "$*" > "${invocationFile}"\n`,
@@ -235,6 +254,7 @@ describe('Alpha Loop repository posture', () => {
       mkdirSync(fakeBinDirectory, { recursive: true });
       copyFileSync('/bin/sleep', fakeDaemon);
       chmodSync(fakeDaemon, 0o755);
+      installFakeProcessInspector(fakeBinDirectory, `${fakeDaemon} 120`);
       writeFileSync(
         join(fakeBinDirectory, 'pnpm'),
         `#!/usr/bin/env bash\nprintf '%s\\n' "$*" > "${invocationFile}"\n`,
@@ -288,6 +308,7 @@ describe('Alpha Loop repository posture', () => {
       mkdirSync(join(runtimeDirectory, 'socket'), { recursive: true });
       copyFileSync('/bin/sleep', fakeDaemon);
       chmodSync(fakeDaemon, 0o755);
+      installFakeProcessInspector(fakeBinDirectory, `${fakeDaemon} 120`);
       writeFileSync(
         join(fakeBinDirectory, 'pnpm'),
         `#!/usr/bin/env bash\nprintf '%s\\n' "$*" >> "${invocationFile}"\nif [[ ! -f "${attemptFile}" ]]; then\n  touch "${attemptFile}"\n  exit 1\nfi\n`,
