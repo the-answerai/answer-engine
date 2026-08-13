@@ -98,7 +98,7 @@ describe('Alpha Loop repository posture', () => {
     expect(packageManifest.devDependencies?.['agent-browser']).toBe('0.34.0');
     expect(packageManifest.scripts).toMatchObject({
       'browser:ui': 'bash scripts/agent-browser.sh',
-      'browser:prepare': 'pnpm browser:ui open about:blank',
+      'browser:prepare': 'CI=true pnpm install --frozen-lockfile && pnpm browser:ui open about:blank',
     });
     expect(read('AGENTS.md')).toMatch(requiredInstruction);
     expect(read('.alpha-loop/templates/instructions.md')).toMatch(requiredInstruction);
