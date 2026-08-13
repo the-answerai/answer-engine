@@ -10,7 +10,8 @@ permissions belong exclusively in the enterprise layer.
 ## Tech Stack
 
 Use pnpm, Node.js 22, strict TypeScript, Express, React, PostgreSQL/pgvector,
-Redis, Vitest, and Playwright/agent-browser where the existing package requires it.
+Redis, and Vitest. Use `agent-browser` for live UI verification. Do not
+substitute `playwright-cli`; Playwright is only the automated E2E test framework.
 
 ## Directory Structure
 
@@ -35,4 +36,6 @@ use the required issue branch and commit formats, and merge only through a PR to
 `master`. Never publish npm, push `master`, expose secrets, run duplicate loops,
 or omit a processed issue's `.alpha-loop/learnings/issue-*.md`. Run `pnpm verify`;
 visually verify every UI change at desktop and 375px.
+Use the synced `agent-browser` skill and repository-local browser profile for
+that verification; close the browser session when verification finishes.
 Do not load, invoke, use, update, or generate Graphify, its skills, or its artifacts; it is outside epic #6.

@@ -79,6 +79,27 @@ describe('Alpha Loop repository posture', () => {
     }
   });
 
+  it('pins sandbox-safe agent-browser verification for UI workers', () => {
+    const requiredInstruction = /Do not\s+substitute\s+`playwright-cli`/;
+    const browserConfig = JSON.parse(read('agent-browser.json')) as {
+      session?: string;
+      profile?: string;
+    };
+
+    expect(existsSync(join(root, '.alpha-loop/templates/skills/agent-browser/SKILL.md'))).toBe(true);
+    expect(existsSync(join(root, '.alpha-loop/templates/skills/playwright-cli'))).toBe(false);
+    expect(read('.alpha-loop/templates/skills/agent-browser/SKILL.md'))
+      .toContain('agent-browser set viewport 375 812');
+    expect(read('AGENTS.md')).toMatch(requiredInstruction);
+    expect(read('.alpha-loop/templates/instructions.md')).toMatch(requiredInstruction);
+    expect(browserConfig).toEqual({
+      session: 'answer-engine-oss',
+      profile: './.agent-browser/profile',
+    });
+    expect(browserConfig.profile).not.toMatch(/^~|^\//);
+    expect(read('.gitignore')).toContain('.agent-browser/');
+  });
+
   it('defines only the five paid capability families as private', () => {
     const agentGuide = read('AGENTS.md');
     const readme = read('README.md');

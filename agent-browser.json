@@ -1,4 +1,4 @@
 {
   "session": "answer-engine-oss",
-  "profile": "~/.agent-browser/answer-engine-oss"
+  "profile": "./.agent-browser/profile"
 }
