@@ -3,8 +3,15 @@ import {
   askMemory,
   clearLegacyBrowserApiKey,
   initializeLocalUiSession,
+  listContent,
+  listBatchJobs,
+  askAnswer,
+  getSettings,
+  setLibraryMembership,
   listMemories,
   searchMemories,
+  updateSettings,
+  rowsToCsv,
 } from './api';
 
 describe('local API client', () => {
@@ -86,6 +93,119 @@ describe('local API client', () => {
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/v1/agent/ask',
       expect.objectContaining({ body: JSON.stringify({ question: 'What changed?', retrievalMode: 'fulltext', responseStyle: 'cited' }) }),
+    );
+  });
+
+  it('surfaces the API error message from an unsuccessful envelope', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      success: false,
+      error: { code: 'CONFLICT', message: 'A tag with this slug already exists.' },
+    }), { status: 409, headers: { 'content-type': 'application/json' } }));
+
+    await expect(listContent()).rejects.toThrow('A tag with this slug already exists.');
+  });
+
+  it('preserves page metadata and encodes workspace filters', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      success: true,
+      data: [{ id: 'content-1', title: 'Decision log' }],
+      meta: { hasMore: true, nextCursor: 'next-page', total: 42 },
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+
+    await expect(listContent({
+      search: 'decision log',
+      contentTypes: ['chat', 'document'],
+      sources: ['codex', 'cowork'],
+      tags: ['shipping'],
+      status: 'active',
+      sortBy: 'title',
+      sortDirection: 'asc',
+      limit: 25,
+    })).resolves.toEqual({
+      items: [{ id: 'content-1', title: 'Decision log' }],
+      meta: { hasMore: true, nextCursor: 'next-page', total: 42 },
+    });
+
+    const requestedUrl = String(fetchMock.mock.calls[0]?.[0]);
+    expect(requestedUrl).toContain('/api/v1/content?');
+    expect(requestedUrl).toContain('search=decision+log');
+    expect(requestedUrl).toContain('contentTypes=chat%2Cdocument');
+    expect(requestedUrl).toContain('sources=codex%2Ccowork');
+    expect(requestedUrl).toContain('tags=shipping');
+  });
+
+  it('sends library scope for grounded answers and membership overrides', async () => {
+    const libraryId = crypto.randomUUID();
+    const contentId = crypto.randomUUID();
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        success: true,
+        data: { answer: 'Grounded.', citations: [{ contentId, title: 'Source' }] },
+      }), { status: 200, headers: { 'content-type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        success: true,
+        data: { libraryId, contentId, mode: 'include', active: true },
+      }), { status: 200, headers: { 'content-type': 'application/json' } }));
+
+    await askAnswer({ question: 'What shipped?', libraryId });
+    await setLibraryMembership(libraryId, contentId, 'include', true);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/v1/agent/ask', expect.objectContaining({
+      body: JSON.stringify({
+        question: 'What shipped?',
+        libraryId,
+        retrievalMode: 'fulltext',
+        responseStyle: 'cited',
+      }),
+    }));
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      `/api/v1/libraries/${libraryId}/includes/${contentId}`,
+      expect.objectContaining({ method: 'PUT' }),
+    );
+  });
+
+  it('loads and patches safe local settings without credential fields', async () => {
+    const settings = {
+      defaultPageSize: 50,
+      defaultLibraryId: null,
+      density: 'compact' as const,
+      defaultExportFormat: 'csv' as const,
+    };
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(JSON.stringify({
+      success: true,
+      data: settings,
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+
+    await expect(getSettings()).resolves.toEqual(settings);
+    await expect(updateSettings({ defaultPageSize: 50, density: 'compact' })).resolves.toEqual(settings);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/v1/settings', expect.objectContaining({
+      method: 'PATCH',
+      body: JSON.stringify({ defaultPageSize: 50, density: 'compact' }),
+    }));
+    expect(JSON.stringify(fetchMock.mock.calls)).not.toMatch(/providerApiKey|secret/i);
+  });
+
+  it('escapes heterogeneous export rows as safe CSV', () => {
+    expect(rowsToCsv([
+      { title: 'One, two', status: 'ok' },
+      { title: 'Quoted "value"', error: 'line one\nline two' },
+    ])).toBe('"title","status","error"\n"One, two","ok",""\n"Quoted ""value""","","line one\nline two"');
+  });
+
+  it('encodes batch cursors without losing server pagination state', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      success: true,
+      data: { items: [], hasMore: true, nextCursor: 'next-batch-page' },
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+
+    await expect(listBatchJobs({ cursor: 'current page', limit: 50 })).resolves.toEqual({
+      items: [], hasMore: true, nextCursor: 'next-batch-page',
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/batch-jobs?limit=50&cursor=current+page',
+      expect.objectContaining({ credentials: 'same-origin' }),
     );
   });
 });

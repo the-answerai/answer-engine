@@ -4,6 +4,10 @@ import type { Database } from '../../config/database.js';
 import type { LanguageProvider } from '../ai/openai-compatible.js';
 import type { ContentRow, ContentType, LibraryScope, Principal } from '../../types/api.js';
 import { NotFoundError } from '../../utils/errors.js';
+import {
+  LibraryFilterSchema,
+  buildEffectiveMembership,
+} from '../library/library-membership.js';
 
 const ContentTypeSchema = z.enum(['call', 'document', 'ticket', 'domain', 'chat', 'page']);
 const TurnRoleSchema = z.enum(['user', 'assistant', 'system', 'tool', 'developer', 'other']);
@@ -52,6 +56,39 @@ export const ImportRequestSchema = z.object({
   librarySlug: z.string().optional(),
   options: z.record(z.unknown()).optional(),
 });
+
+const csvList = <T extends z.ZodTypeAny>(item: T) => z.preprocess(
+  (value) => typeof value === 'string'
+    ? value.split(',').map((entry) => entry.trim()).filter(Boolean)
+    : value,
+  z.array(item).min(1).max(100),
+);
+
+export const ContentListSchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(25),
+  cursor: z.string().max(2_000).optional(),
+  libraryId: z.string().max(120).optional(),
+  librarySlug: z.string().max(120).optional(),
+  search: z.string().trim().max(500).optional(),
+  contentType: ContentTypeSchema.optional(),
+  contentTypes: csvList(ContentTypeSchema).optional(),
+  source: z.string().trim().min(1).max(120).optional(),
+  sources: csvList(z.string().trim().min(1).max(120)).optional(),
+  tag: z.string().trim().min(1).max(120).optional(),
+  tags: csvList(z.string().trim().min(1).max(120)).optional(),
+  status: z.enum(['active', 'archived']).optional(),
+  dateFrom: z.string().datetime().optional(),
+  dateTo: z.string().datetime().optional(),
+  sortBy: z.enum(['createdAt', 'title', 'contentType', 'source', 'status']).default('createdAt'),
+  sortDirection: z.enum(['asc', 'desc']).default('desc'),
+}).strict().transform(({ contentType, source, tag, ...input }) => ({
+  ...input,
+  contentTypes: input.contentTypes ?? (contentType ? [contentType] : undefined),
+  sources: input.sources ?? (source ? [source] : undefined),
+  tags: input.tags ?? (tag ? [tag] : undefined),
+}));
+
+export type ContentListInput = z.input<typeof ContentListSchema>;
 
 export const QuerySchema = z.object({
   query: z.string().trim().min(1).max(2000),
@@ -166,13 +203,13 @@ function vectorLiteral(embedding: number[]): string {
   return `[${embedding.join(',')}]`;
 }
 
-function cursorEncode(row: ContentRow): string {
-  return Buffer.from(JSON.stringify([row.created_at.toISOString(), row.id])).toString('base64url');
+function cursorEncode(value: string, id: string): string {
+  return Buffer.from(JSON.stringify([value, id])).toString('base64url');
 }
 
 function cursorDecode(value: string): [string, string] {
   const parsed: unknown = JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
-  return z.tuple([z.string().datetime(), z.string().uuid()]).parse(parsed);
+  return z.tuple([z.string().min(1), z.string().uuid()]).parse(parsed);
 }
 
 function normalizeImportItem(item: ImportItem, index: number) {
@@ -256,26 +293,66 @@ export class ContentService {
     private readonly language: LanguageProvider,
   ) {}
 
+  private async audit(
+    principal: Principal,
+    action: string,
+    resourceType: string,
+    resourceId: string | null,
+    libraryId: string | null,
+    details: Record<string, unknown> = {},
+  ): Promise<void> {
+    await this.database.query(
+      `INSERT INTO audit_log (
+         tenant_id,library_id,api_key_id,action,resource_type,resource_id,details
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [principal.tenantId, libraryId, principal.apiKeyId, action, resourceType, resourceId, details],
+    );
+  }
+
   async resolveLibrary(principal: Principal, libraryId?: string, librarySlug?: string): Promise<LibraryScope | undefined> {
     const requested = principal.libraryId ?? libraryId ?? librarySlug;
     if (!requested) return undefined;
     const result = await this.database.query<{
-      id: string; slug: string; name: string; item_count: string;
+      id: string; slug: string; name: string; filter_predicate: unknown;
     }>(
-      `SELECT l.id, l.slug, l.name,
-              COUNT(c.id)::text AS item_count
+      `SELECT l.id, l.slug, l.name, l.filter_predicate
          FROM libraries l
-         LEFT JOIN content_items c
-           ON c.tenant_id = l.tenant_id AND c.library_id = l.id AND c.status <> 'deleted'
         WHERE l.tenant_id = $1 AND l.is_active = true
-          AND (l.id::text = $2 OR l.slug = $2)
-        GROUP BY l.id, l.slug, l.name`,
+          AND (l.id::text = $2 OR l.slug = $2)`,
       [principal.tenantId, requested],
     );
     const row = result.rows[0];
     if (!row) throw new NotFoundError('Library not found');
     if (principal.libraryId && row.id !== principal.libraryId) throw new NotFoundError('Library not found');
-    return { type: 'library', libraryId: row.id, librarySlug: row.slug, libraryName: row.name, itemCount: Number(row.item_count) };
+    const filterPredicate = row.filter_predicate == null
+      ? null
+      : LibraryFilterSchema.parse(row.filter_predicate);
+    const parameters: unknown[] = [principal.tenantId, row.id];
+    const membership = buildEffectiveMembership({
+      contentAlias: 'c', tenantParameter: 1, libraryParameter: 2,
+      filter: filterPredicate, parameters,
+    });
+    const count = await this.database.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM content_items c
+        WHERE c.tenant_id=$1 AND c.status <> 'deleted' AND ${membership}`,
+      parameters,
+    );
+    return {
+      type: 'library', libraryId: row.id, librarySlug: row.slug, libraryName: row.name,
+      itemCount: Number(count.rows[0]?.count ?? 0), filterPredicate,
+    };
+  }
+
+  private effectiveMembership(scope: LibraryScope | undefined, parameters: unknown[]): string {
+    if (!scope) return 'TRUE';
+    return buildEffectiveMembership({
+      contentAlias: 'c', tenantParameter: 1, libraryParameter: 2,
+      filter: scope.filterPredicate, parameters,
+    });
+  }
+
+  private scopeParameters(principal: Principal, scope: LibraryScope | undefined): unknown[] {
+    return scope ? [principal.tenantId, scope.libraryId] : [principal.tenantId];
   }
 
   async importContent(principal: Principal, input: z.infer<typeof ImportRequestSchema>) {
@@ -386,6 +463,8 @@ export class ContentService {
     } finally {
       client.release();
     }
+    await this.audit(principal, 'content.import', 'content', null, fallbackLibrary?.libraryId ?? null,
+      { completedItems: items.length, failedItems: failures.length });
     return {
       contentIds: items.map((item) => item.id), items, totalItems: input.items.length,
       completedItems: items.length, failedItems: failures.length, failures,
@@ -417,60 +496,154 @@ export class ContentService {
     );
   }
 
-  async list(principal: Principal, input: { limit: number; cursor?: string; libraryId?: string; librarySlug?: string }) {
+  async list(principal: Principal, raw: ContentListInput) {
+    const input = ContentListSchema.parse(raw);
     const scope = await this.resolveLibrary(principal, input.libraryId, input.librarySlug);
-    const params: unknown[] = [principal.tenantId, scope?.libraryId ?? null];
-    let cursorSql = '';
+    const params = this.scopeParameters(principal, scope);
+    const membership = this.effectiveMembership(scope, params);
+    const conditions = [`c.tenant_id = $1`, membership];
+    if (input.status) {
+      conditions.push(`c.status = $${params.push(input.status)}`);
+    } else {
+      conditions.push(`c.status <> 'deleted'`);
+    }
+    if (input.search) {
+      conditions.push(`c.search_vector @@ websearch_to_tsquery('english', $${params.push(input.search)})`);
+    }
+    if (input.contentTypes?.length) {
+      conditions.push(`c.content_type = ANY($${params.push(input.contentTypes)}::text[])`);
+    }
+    if (input.sources?.length) {
+      conditions.push(`c.source = ANY($${params.push(input.sources)}::text[])`);
+    }
+    if (input.tags?.length) {
+      conditions.push(`EXISTS (
+        SELECT 1 FROM content_tags filter_ct
+        JOIN tags t ON t.tenant_id = filter_ct.tenant_id AND t.id = filter_ct.tag_id
+        WHERE filter_ct.tenant_id = c.tenant_id AND filter_ct.content_id = c.id
+          AND t.is_active = true AND t.slug = ANY($${params.push(input.tags)}::text[])
+      )`);
+    }
+    if (input.dateFrom) conditions.push(`c.created_at >= $${params.push(input.dateFrom)}::timestamptz`);
+    if (input.dateTo) conditions.push(`c.created_at <= $${params.push(input.dateTo)}::timestamptz`);
+
+    const sortColumns = {
+      createdAt: 'c.created_at',
+      title: 'c.title',
+      contentType: 'c.content_type',
+      source: 'c.source',
+      status: 'c.status',
+    } as const;
+    const sortColumn = sortColumns[input.sortBy];
+    const direction = input.sortDirection === 'asc' ? 'ASC' : 'DESC';
+    const cursorConditions: string[] = [];
     if (input.cursor) {
-      const [createdAt, id] = cursorDecode(input.cursor);
-      params.push(createdAt, id);
-      cursorSql = `AND (c.created_at, c.id) < ($3::timestamptz, $4::uuid)`;
+      const [sortValue, id] = cursorDecode(input.cursor);
+      const valueIndex = params.push(sortValue);
+      const idIndex = params.push(id);
+      const valueCast = input.sortBy === 'createdAt' ? '::timestamptz' : '::text';
+      const comparator = input.sortDirection === 'asc' ? '>' : '<';
+      cursorConditions.push(`(${sortColumn}, c.id) ${comparator} ($${valueIndex}${valueCast}, $${idIndex}::uuid)`);
     }
     params.push(input.limit + 1);
     const result = await this.database.query<ContentRow>(
-      `SELECT c.id, c.content_type, c.title, c.summary, c.primary_text_kind,
-              c.external_url, c.source_agent_id, c.conversation_id,
-              c.turn_index, c.turn_role, c.turn_timestamp, c.turn_metadata,
-              c.created_at, c.updated_at
-         FROM content_items c
-        WHERE c.tenant_id = $1 AND c.status <> 'deleted'
-          AND ($2::uuid IS NULL OR c.library_id = $2)
-          ${cursorSql}
-        ORDER BY c.created_at DESC, c.id DESC
+      `WITH filtered_content AS (
+         SELECT c.id, c.tenant_id, c.content_type, c.source, c.source_identifier,
+                c.title, c.summary, c.status, c.primary_text_kind, c.external_url,
+                c.source_agent_id, c.conversation_id, c.turn_index, c.turn_role,
+                c.turn_timestamp, c.turn_metadata, c.created_at, c.updated_at,
+                COUNT(*) OVER()::text AS total_count
+           FROM content_items c
+          WHERE ${conditions.join(' AND ')}
+       )
+       SELECT c.id, c.content_type, c.source, c.source_identifier, c.title, c.summary,
+              c.status, c.primary_text_kind, c.external_url, c.source_agent_id,
+              c.conversation_id, c.turn_index, c.turn_role, c.turn_timestamp,
+              c.turn_metadata, c.created_at, c.updated_at, c.total_count,
+              COALESCE((
+                SELECT jsonb_agg(jsonb_build_object(
+                  'id', t.id, 'slug', t.slug, 'label', t.label, 'category', t.category,
+                  'color', t.color, 'confidence', ct.confidence
+                ) ORDER BY t.label, t.id)
+                FROM content_tags ct
+                JOIN tags t ON t.tenant_id = ct.tenant_id AND t.id = ct.tag_id
+                WHERE ct.tenant_id = c.tenant_id AND ct.content_id = c.id AND t.is_active = true
+              ), '[]'::jsonb) AS tags
+        FROM filtered_content c
+        WHERE ${cursorConditions.length ? cursorConditions.join(' AND ') : 'TRUE'}
+        ORDER BY ${sortColumn} ${direction}, c.id ${direction}
         LIMIT $${params.length}`,
       params,
     );
     const hasMore = result.rows.length > input.limit;
     const rows = result.rows.slice(0, input.limit);
-    return { items: rows.map((row) => this.present(row, ['summary'])), meta: { hasMore, nextCursor: hasMore && rows.length ? cursorEncode(rows[rows.length - 1] as ContentRow) : null }, scope };
+    await this.audit(principal, 'content.list', 'content', null, scope?.libraryId ?? null, { count: rows.length });
+    const last = rows[rows.length - 1];
+    const sortValue = last
+      ? input.sortBy === 'createdAt'
+        ? (last.created_at instanceof Date ? last.created_at.toISOString() : String(last.created_at))
+        : String({ title: last.title, contentType: last.content_type, source: last.source, status: last.status }[input.sortBy])
+      : null;
+    return {
+      items: rows.map((row) => this.present(row, ['summary'])),
+      meta: {
+        hasMore,
+        nextCursor: hasMore && last && sortValue ? cursorEncode(sortValue, last.id) : null,
+        total: Number(rows[0]?.total_count ?? rows.length),
+      },
+      scope,
+    };
   }
 
   async get(principal: Principal, id: string) {
+    const scope = await this.resolveLibrary(principal);
+    const parameters = this.scopeParameters(principal, scope);
+    const membership = this.effectiveMembership(scope, parameters);
+    const idIndex = parameters.push(id);
     const result = await this.database.query<ContentRow>(
-      `SELECT * FROM content_items WHERE tenant_id = $1 AND id = $2 AND status <> 'deleted'`,
-      [principal.tenantId, id],
+      `SELECT c.*, COALESCE((
+          SELECT jsonb_agg(jsonb_build_object(
+            'id', t.id, 'slug', t.slug, 'label', t.label, 'category', t.category,
+            'color', t.color, 'confidence', ct.confidence
+          ) ORDER BY t.label, t.id)
+          FROM content_tags ct
+          JOIN tags t ON t.tenant_id = ct.tenant_id AND t.id = ct.tag_id
+          WHERE ct.tenant_id = c.tenant_id AND ct.content_id = c.id AND t.is_active = true
+        ), '[]'::jsonb) AS tags FROM content_items c WHERE c.tenant_id = $1
+        AND c.id = $${idIndex} AND c.status <> 'deleted' AND ${membership}`,
+      parameters,
     );
     const row = result.rows[0];
-    if (!row || (principal.libraryId && row.library_id !== principal.libraryId)) throw new NotFoundError('Content not found');
+    if (!row) throw new NotFoundError('Content not found');
+    await this.audit(principal, 'content.read', 'content', id, scope?.libraryId ?? null);
     return this.present(row, ['summary', 'content', 'metadata']);
   }
 
   async remove(principal: Principal, id: string): Promise<void> {
+    const scope = await this.resolveLibrary(principal);
+    const parameters = this.scopeParameters(principal, scope);
+    const membership = this.effectiveMembership(scope, parameters);
+    const idIndex = parameters.push(id);
     const result = await this.database.query(
-      `UPDATE content_items SET status = 'deleted', updated_at = NOW()
-        WHERE tenant_id = $1 AND id = $2
-          AND ($3::uuid IS NULL OR library_id = $3) AND status <> 'deleted'`,
-      [principal.tenantId, id, principal.libraryId ?? null],
+      `UPDATE content_items c SET status = 'deleted', updated_at = NOW()
+        WHERE c.tenant_id = $1 AND c.id = $${idIndex}
+          AND ${membership} AND c.status <> 'deleted'`,
+      parameters,
     );
     if ((result.rowCount ?? 0) === 0) throw new NotFoundError('Content not found');
+    await this.audit(principal, 'content.delete', 'content', id, scope?.libraryId ?? null);
   }
 
   async lineage(principal: Principal, id: string) {
+    const scope = await this.resolveLibrary(principal);
+    const parameters = this.scopeParameters(principal, scope);
+    const membership = this.effectiveMembership(scope, parameters);
+    const idIndex = parameters.push(id);
     const item = await this.database.query<{ source: string; external_url: string | null; source_identifier: string; raw_archive_manifest: Record<string, unknown> | null }>(
-      `SELECT source, external_url, source_identifier, raw_archive_manifest FROM content_items
-        WHERE tenant_id = $1 AND id = $2 AND status <> 'deleted'
-          AND ($3::uuid IS NULL OR library_id = $3)`,
-      [principal.tenantId, id, principal.libraryId ?? null],
+      `SELECT c.source, c.external_url, c.source_identifier, c.raw_archive_manifest FROM content_items c
+        WHERE c.tenant_id = $1 AND c.id = $${idIndex} AND c.status <> 'deleted'
+          AND ${membership}`,
+      parameters,
     );
     if (!item.rows[0]) throw new NotFoundError('Content not found');
     const artifacts = await this.database.query<Record<string, unknown>>(
@@ -488,6 +661,7 @@ export class ContentService {
       const type = String(artifact.artifactType);
       groups.set(type, [...(groups.get(type) ?? []), artifact]);
     }
+    await this.audit(principal, 'content.lineage.read', 'content', id, scope?.libraryId ?? null);
     return {
       source: item.rows[0].source,
       origin: {
@@ -502,26 +676,37 @@ export class ContentService {
 
   async schema(principal: Principal, libraryId?: string, librarySlug?: string) {
     const scope = await this.resolveLibrary(principal, libraryId, librarySlug);
-    const params = [principal.tenantId, scope?.libraryId ?? null];
+    const scopedQuery = (select: string, suffix = '') => {
+      const parameters = this.scopeParameters(principal, scope);
+      const membership = this.effectiveMembership(scope, parameters);
+      return { sql: `${select} WHERE c.tenant_id = $1 AND c.status <> 'deleted' AND ${membership} ${suffix}`,
+        parameters };
+    };
+    const typesQuery = scopedQuery('SELECT c.content_type, COUNT(*)::text AS count FROM content_items c', 'GROUP BY c.content_type');
+    const tagsParameters = this.scopeParameters(principal, scope);
+    const tagsMembership = this.effectiveMembership(scope, tagsParameters);
+    const datesQuery = scopedQuery('SELECT MIN(c.created_at) AS earliest, MAX(c.created_at) AS latest FROM content_items c');
     const [types, tags, dates] = await Promise.all([
       this.database.query<{ content_type: string; count: string }>(
-        `SELECT content_type, COUNT(*)::text AS count FROM content_items
-          WHERE tenant_id = $1 AND status <> 'deleted' AND ($2::uuid IS NULL OR library_id = $2)
-          GROUP BY content_type`, params),
+        typesQuery.sql, typesQuery.parameters),
       this.database.query<{ slug: string; label: string; description: string | null; category: string | null }>(
         `SELECT DISTINCT t.slug, t.label, t.description, t.category FROM tags t
           JOIN content_tags ct ON ct.tenant_id = t.tenant_id AND ct.tag_id = t.id
           JOIN content_items c ON c.tenant_id = ct.tenant_id AND c.id = ct.content_id
           WHERE t.tenant_id = $1 AND t.is_active = true AND c.status <> 'deleted'
-            AND ($2::uuid IS NULL OR c.library_id = $2) ORDER BY t.slug`, params),
+            AND ${tagsMembership} ORDER BY t.slug`, tagsParameters),
       this.database.query<{ earliest: Date | null; latest: Date | null }>(
-        `SELECT MIN(created_at) AS earliest, MAX(created_at) AS latest FROM content_items
-          WHERE tenant_id = $1 AND status <> 'deleted' AND ($2::uuid IS NULL OR library_id = $2)`, params),
+        datesQuery.sql, datesQuery.parameters),
     ]);
     return {
       contentTypes: Object.fromEntries(types.rows.map((row) => [row.content_type, Number(row.count)])),
       tags: tags.rows,
-      capabilities: ['fulltext_search', 'semantic_search', 'hybrid_search', 'retrieve', 'summarize', 'ask', 'content_import', 'content_lineage', 'content_delete'],
+      capabilities: [
+        'fulltext_search', 'semantic_search', 'hybrid_search', 'retrieve', 'summarize',
+        'ask', 'content_import', 'content_lineage', 'content_delete', 'tags', 'libraries',
+        'library_membership', 'recipes', 'artifacts', 'reports', 'dashboards', 'batch_jobs',
+        'access_tokens', 'audit_history', 'local_blobs',
+      ],
       dateRange: { earliest: dates.rows[0]?.earliest?.toISOString() ?? null, latest: dates.rows[0]?.latest?.toISOString() ?? null },
       ...(scope ? { scope } : {}),
     };
@@ -530,6 +715,8 @@ export class ContentService {
   async query(principal: Principal, input: QueryInput) {
     const scope = await this.resolveLibrary(principal, input.libraryId, input.librarySlug);
     const rows = await this.searchRows(principal, input, scope);
+    await this.audit(principal, 'content.query', 'query', null, scope?.libraryId ?? null,
+      { query: input.query, resultCount: rows.length, searchType: input.searchType });
     return {
       results: rows.map((row) => ({ ...this.present(row, input.include), relevanceScore: Number(row.relevance_score ?? 0) })),
       total: rows.length, searchType: input.searchType, ...(scope ? { scope } : {}),
@@ -537,8 +724,10 @@ export class ContentService {
   }
 
   private async searchRows(principal: Principal, input: QueryInput, scope: LibraryScope | undefined): Promise<ContentRow[]> {
-    const params: unknown[] = [principal.tenantId, scope?.libraryId ?? null, input.query];
-    const conditions = [`c.tenant_id = $1`, `c.status = $${params.push(input.filters?.status ?? 'active')}`, `($2::uuid IS NULL OR c.library_id = $2)`];
+    const params = this.scopeParameters(principal, scope);
+    const queryIndex = params.push(input.query);
+    const membership = this.effectiveMembership(scope, params);
+    const conditions = [`c.tenant_id = $1`, `c.status = $${params.push(input.filters?.status ?? 'active')}`, membership];
     if (input.filters?.contentTypes?.length) conditions.push(`c.content_type = ANY($${params.push(input.filters.contentTypes)}::text[])`);
     if (input.filters?.dateFrom) conditions.push(`c.created_at >= $${params.push(input.filters.dateFrom)}::timestamptz`);
     if (input.filters?.dateTo) conditions.push(`c.created_at <= $${params.push(input.filters.dateTo)}::timestamptz`);
@@ -551,8 +740,8 @@ export class ContentService {
     let score: string;
     let candidate: string;
     if (input.searchType === 'fulltext') {
-      score = `ts_rank_cd(c.search_vector, websearch_to_tsquery('english', $3))`;
-      candidate = `c.search_vector @@ websearch_to_tsquery('english', $3)`;
+      score = `ts_rank_cd(c.search_vector, websearch_to_tsquery('english', $${queryIndex}))`;
+      candidate = `c.search_vector @@ websearch_to_tsquery('english', $${queryIndex})`;
     } else {
       const embedding = await this.language.embed(input.query);
       const vectorIndex = params.push(vectorLiteral(embedding));
@@ -561,8 +750,8 @@ export class ContentService {
         score = semantic;
         candidate = `c.embedding IS NOT NULL`;
       } else {
-        score = `(COALESCE(ts_rank_cd(c.search_vector, websearch_to_tsquery('english', $3)), 0) * 0.45 + COALESCE(${semantic}, 0) * 0.55)`;
-        candidate = `(c.search_vector @@ websearch_to_tsquery('english', $3) OR c.embedding IS NOT NULL)`;
+        score = `(COALESCE(ts_rank_cd(c.search_vector, websearch_to_tsquery('english', $${queryIndex})), 0) * 0.45 + COALESCE(${semantic}, 0) * 0.55)`;
+        candidate = `(c.search_vector @@ websearch_to_tsquery('english', $${queryIndex}) OR c.embedding IS NOT NULL)`;
       }
     }
     const limitIndex = params.push(input.limit);
@@ -579,15 +768,18 @@ export class ContentService {
 
   async retrieve(principal: Principal, input: z.infer<typeof RetrieveSchema>) {
     const scope = await this.resolveLibrary(principal, input.libraryId, input.librarySlug);
-    const params: unknown[] = [principal.tenantId, scope?.libraryId ?? null];
+    const params = this.scopeParameters(principal, scope);
+    const membership = this.effectiveMembership(scope, params);
     const selector = input.ids?.length
       ? `c.id = ANY($${params.push(input.ids)}::uuid[])`
       : `c.conversation_id = $${params.push(input.conversationId)}${input.sourceAgentId ? ` AND c.source_agent_id = $${params.push(input.sourceAgentId)}` : ''}`;
     const result = await this.database.query<ContentRow>(
       `SELECT c.* FROM content_items c WHERE c.tenant_id = $1 AND c.status <> 'deleted'
-        AND ($2::uuid IS NULL OR c.library_id = $2) AND ${selector}
+        AND ${membership} AND ${selector}
         ORDER BY c.turn_index NULLS LAST, c.turn_timestamp NULLS LAST, c.created_at, c.id`, params,
     );
+    await this.audit(principal, 'content.retrieve', 'query', null, scope?.libraryId ?? null,
+      { resultCount: result.rows.length });
     return { items: result.rows.map((row) => this.present(row, input.include)), ...(scope ? { scope } : {}) };
   }
 
@@ -627,6 +819,8 @@ export class ContentService {
       ? 'Answer only from the supplied local memory. Cite sources inline as [1], [2]. Say when evidence is insufficient.'
       : 'Answer only from the supplied local memory in a natural concise style. Say when evidence is insufficient.';
     const completion = await this.language.complete({ system, prompt: `${input.question}\n\nMemory:\n${context}` });
+    await this.audit(principal, 'content.ask', 'answer', null, scope?.libraryId ?? null,
+      { question: input.question, citationCount: citations.length, retrievalMode: input.retrievalMode });
     return {
       answer: completion.text, citations: citations.map(({ index: _index, ...citation }) => citation),
       modelId: completion.model, provider: completion.provider, retrievalMode: input.retrievalMode,
@@ -638,9 +832,16 @@ export class ContentService {
     const selected = new Set(include);
     return {
       id: row.id, contentType: row.content_type, title: row.title,
+      source: row.source, sourceIdentifier: row.source_identifier, status: row.status,
+      tags: row.tags ?? [],
       ...(selected.has('summary') || !include.length ? { summary: row.summary } : {}),
       ...(selected.has('content') || !include.length ? { content: row.content } : {}),
       ...(selected.has('metadata') || !include.length ? { metadata: row.metadata } : {}),
+      ...(selected.has('metadata') || !include.length ? {
+        sourceData: row.source_data,
+        analysisData: row.analysis_data,
+        rawArchiveManifest: row.raw_archive_manifest,
+      } : {}),
       textKind: row.primary_text_kind ?? 'compatibility', sourceUrl: row.external_url,
       sourceAgentId: row.source_agent_id, conversationId: row.conversation_id,
       turnIndex: row.turn_index, turnRole: row.turn_role,

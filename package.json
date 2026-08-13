@@ -15,6 +15,10 @@
       "types": "./dist/app.d.ts",
       "import": "./dist/app.js"
     },
+    "./composition": {
+      "types": "./dist/composition.d.ts",
+      "import": "./dist/composition.js"
+    },
     "./server": "./dist/server.js"
   },
   "files": [

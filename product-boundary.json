@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "paidExtensionFamilies": [
+    "roles",
+    "rbac",
+    "teams",
+    "billing",
+    "permissions"
+  ],
+  "requiredCoreCapabilities": [
+    "content",
+    "imports",
+    "tags",
+    "libraries",
+    "answers",
+    "recipes",
+    "artifacts",
+    "reports",
+    "dashboards",
+    "batch-jobs",
+    "settings",
+    "access-tokens",
+    "audit"
+  ],
+  "requiredCoreSurfaces": [
+    { "id": "content", "path": "/content", "capabilityId": "content", "kind": "route" },
+    { "id": "content-artifacts", "path": "/content#artifacts", "capabilityId": "artifacts", "kind": "embedded" },
+    { "id": "import", "path": "/import", "capabilityId": "imports", "kind": "route" },
+    { "id": "tags", "path": "/tags", "capabilityId": "tags", "kind": "route" },
+    { "id": "libraries", "path": "/libraries", "capabilityId": "libraries", "kind": "route" },
+    { "id": "library-members", "path": "/libraries/:libraryId", "capabilityId": "libraries", "kind": "route" },
+    { "id": "library-overview", "path": "/libraries/:libraryId/overview", "capabilityId": "libraries", "kind": "route" },
+    { "id": "library-answers", "path": "/libraries/:libraryId/answers", "capabilityId": "answers", "kind": "route" },
+    { "id": "library-recipes", "path": "/libraries/:libraryId/recipes", "capabilityId": "recipes", "kind": "route" },
+    { "id": "library-reports", "path": "/libraries/:libraryId/reports", "capabilityId": "reports", "kind": "route" },
+    { "id": "library-dashboards", "path": "/libraries/:libraryId/dashboards", "capabilityId": "dashboards", "kind": "route" },
+    { "id": "library-audit", "path": "/libraries/:libraryId/audit", "capabilityId": "audit", "kind": "route" },
+    { "id": "answers", "path": "/answers", "capabilityId": "answers", "kind": "route" },
+    { "id": "batch-jobs", "path": "/batch-jobs", "capabilityId": "batch-jobs", "kind": "route" },
+    { "id": "settings", "path": "/settings", "capabilityId": "settings", "kind": "route" },
+    { "id": "access-tokens", "path": "/settings#tokens", "capabilityId": "access-tokens", "kind": "embedded" },
+    { "id": "workspace-audit", "path": "/settings#audit", "capabilityId": "audit", "kind": "embedded" }
+  ]
+}

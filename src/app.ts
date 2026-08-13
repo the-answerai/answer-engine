@@ -10,15 +10,24 @@ import { createApiKeyAuth } from './middleware/api-key-auth.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 import { createLocalUiSessionCookie } from './middleware/local-ui-session.js';
 import { createAgentRoutes } from './routes/agent-routes.js';
+import { createApplicationRoutes } from './routes/application-routes.js';
 import { createContentRoutes } from './routes/content-routes.js';
 import { OpenAiCompatibleProvider } from './services/ai/openai-compatible.js';
+import { ApplicationService } from './services/application/application-service.js';
 import { ContentService } from './services/content/content-service.js';
+import { LocalBlobStorage } from './services/storage/local-blob-storage.js';
 import { logger } from './utils/logger.js';
-import type { ApplicationCompositionContext, CreateAppOptions } from './runtime/application-composition.js';
+import {
+  createApplicationRequestContextMiddleware,
+  validateApplicationExtensions,
+  type ApplicationCompositionContext,
+  type CreateAppOptions,
+} from './runtime/application-composition.js';
 
 export type {
-  ApplicationCompositionContext, ApplicationExtensions, ApplicationRegistrar, CreateAppOptions,
-  LocalRequestContext,
+  ApplicationAuthenticationExtension, ApplicationCapabilityExtension,
+  ApplicationCompositionContext, ApplicationExtensions, ApplicationRegistrar,
+  ApplicationRouteExtension, CreateAppOptions, LocalRequestContext, PaidExtensionFamily,
 } from './runtime/application-composition.js';
 export type { LanguageProvider } from './services/ai/openai-compatible.js';
 
@@ -29,10 +38,16 @@ export type { LanguageProvider } from './services/ai/openai-compatible.js';
 const MAX_JSON_BODY_SIZE = '64mb';
 
 export function createApp<TConfig = Record<string, never>>(options: CreateAppOptions<TConfig> = {}): Express {
+  validateApplicationExtensions(options.extensions);
   const app = express();
   const database = options.dependencies?.database ?? pool;
   const language = options.dependencies?.languageProvider ?? new OpenAiCompatibleProvider();
   const service = new ContentService(database, language);
+  const applicationService = new ApplicationService(
+    database,
+    language,
+    options.dependencies?.blobStorage ?? new LocalBlobStorage(env.AE_HOME),
+  );
   const extensions = options.extensions;
   const localUiApiKey = !extensions?.authentication && env.LOCAL_UI_AUTO_AUTH
     ? env.ANSWER_ENGINE_API_KEY
@@ -59,15 +74,29 @@ export function createApp<TConfig = Record<string, never>>(options: CreateAppOpt
   }
   extensions?.registerPublicRoutes?.(app, context);
 
-  app.use('/api/v1', extensions?.authentication ?? createApiKeyAuth(database, { localUiApiKey }));
+  if (extensions?.authentication) {
+    app.use('/api/v1', extensions.authentication.middleware);
+    app.use('/api/v1', createApplicationRequestContextMiddleware(extensions.authentication));
+  } else {
+    app.use('/api/v1', createApiKeyAuth(database, { localUiApiKey }));
+  }
   extensions?.registerAuthenticatedRoutes?.(app, context);
   app.get('/api/v1', (_req, res) => res.json({
     message: 'Answer Engine API v1',
     endpoints: {
       content: '/api/v1/content', agent: '/api/v1/agent',
+      tags: '/api/v1/tags', libraries: '/api/v1/libraries',
+      batchJobs: '/api/v1/batch-jobs', accessTokens: '/api/v1/access-tokens',
+      audit: '/api/v1/audit',
+      settings: '/api/v1/settings',
       ...(extensions?.endpointMetadata ?? {}),
     },
+    extensions: {
+      capabilities: extensions?.capabilities ?? [],
+      routes: extensions?.routes ?? [],
+    },
   }));
+  app.use('/api/v1', createApplicationRoutes(applicationService));
   app.use('/api/v1/content', createContentRoutes(service));
   app.use('/api/v1/agent', createAgentRoutes(service));
 

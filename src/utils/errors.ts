@@ -21,6 +21,18 @@ export class NotFoundError extends AppError {
   }
 }
 
+export class ConflictError extends AppError {
+  constructor(message: string) {
+    super(409, 'CONFLICT', message);
+  }
+}
+
+export class AccessDeniedError extends AppError {
+  constructor(message = 'This access token is read-only') {
+    super(403, 'FORBIDDEN', message);
+  }
+}
+
 export class ConfigurationError extends AppError {
   constructor(message: string) {
     super(503, 'PROVIDER_NOT_CONFIGURED', message);
