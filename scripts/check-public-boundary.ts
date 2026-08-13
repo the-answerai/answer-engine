@@ -3,7 +3,7 @@ import { extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repositoryRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
-const ignoredDirectories = new Set(['.git', 'dist', 'node_modules']);
+const ignoredDirectories = new Set(['.git', '.worktrees', 'dist', 'node_modules']);
 const textExtensions = new Set(['.css', '.html', '.json', '.md', '.sql', '.ts', '.tsx', '.yaml', '.yml']);
 
 function filesUnder(path: string): string[] {
