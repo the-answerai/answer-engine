@@ -38,6 +38,16 @@ export interface ContentRow {
   turn_role: string | null;
   turn_timestamp: Date | null;
   turn_metadata: Record<string, unknown> | null;
+  status: 'active' | 'archived' | 'deleted';
+  tags?: Array<{
+    id: string;
+    slug: string;
+    label: string;
+    category: string | null;
+    color: string | null;
+    confidence: number | null;
+  }>;
+  total_count?: string;
   created_at: Date;
   updated_at: Date;
   relevance_score?: number;

@@ -97,7 +97,7 @@ Core routes:
 |---|---|
 | `GET /health` | Local health check |
 | `POST /api/v1/content/import` | Import or update content idempotently |
-| `GET /api/v1/content` | Browse stored content |
+| `GET /api/v1/content` | Browse, filter, sort, and cursor-paginate stored content |
 | `GET /api/v1/content/:id/lineage` | Inspect origin and artifact history |
 | `POST /api/v1/agent/query` | Full-text, semantic, or hybrid search |
 | `POST /api/v1/agent/retrieve` | Retrieve known IDs or a conversation |

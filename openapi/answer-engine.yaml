@@ -66,12 +66,25 @@ paths:
   /api/v1/content:
     get:
       tags: [Content]
-      summary: List recent content
+      summary: List, filter, sort, and paginate content
+      description: Returns lightweight rows with source, status, and assigned tags. Stable cursors follow the selected sort field and direction.
       parameters:
-        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
         - { in: query, name: cursor, schema: { type: string } }
         - { in: query, name: libraryId, schema: { type: string } }
         - { in: query, name: librarySlug, schema: { type: string } }
+        - { in: query, name: search, schema: { type: string, maxLength: 500 } }
+        - { in: query, name: contentType, schema: { $ref: '#/components/schemas/ContentType' } }
+        - { in: query, name: contentTypes, description: Comma-separated content types., schema: { type: string } }
+        - { in: query, name: source, schema: { type: string, maxLength: 120 } }
+        - { in: query, name: sources, description: Comma-separated neutral source identifiers such as claude-code, codex, and cowork., schema: { type: string } }
+        - { in: query, name: tag, schema: { type: string, maxLength: 120 } }
+        - { in: query, name: tags, description: Comma-separated tag slugs., schema: { type: string } }
+        - { in: query, name: status, schema: { enum: [active, archived] } }
+        - { in: query, name: dateFrom, schema: { type: string, format: date-time } }
+        - { in: query, name: dateTo, schema: { type: string, format: date-time } }
+        - { in: query, name: sortBy, schema: { enum: [createdAt, title, contentType, source, status], default: createdAt } }
+        - { in: query, name: sortDirection, schema: { enum: [asc, desc], default: desc } }
       responses:
         '200': { $ref: '#/components/responses/Success' }
         '401': { $ref: '#/components/responses/Unauthorized' }
