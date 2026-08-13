@@ -30,7 +30,11 @@ const LEGACY_API_KEY_STORAGE_KEY = 'answer-engine-api-key';
 const EMPTY_META: PageMeta = { hasMore: false, nextCursor: null, total: 0 };
 
 function isEnvelope<T>(payload: ApiEnvelope<T> | T): payload is ApiEnvelope<T> {
-  return Boolean(payload && typeof payload === 'object' && 'data' in payload);
+  return Boolean(
+    payload
+    && typeof payload === 'object'
+    && ('success' in payload || 'data' in payload || 'error' in payload || 'meta' in payload),
+  );
 }
 
 async function requestEnvelope<T>(path: string, init: RequestInit = {}): Promise<ApiEnvelope<T>> {

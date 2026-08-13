@@ -536,20 +536,30 @@ export class ContentService {
     } as const;
     const sortColumn = sortColumns[input.sortBy];
     const direction = input.sortDirection === 'asc' ? 'ASC' : 'DESC';
+    const cursorConditions: string[] = [];
     if (input.cursor) {
       const [sortValue, id] = cursorDecode(input.cursor);
       const valueIndex = params.push(sortValue);
       const idIndex = params.push(id);
       const valueCast = input.sortBy === 'createdAt' ? '::timestamptz' : '::text';
       const comparator = input.sortDirection === 'asc' ? '>' : '<';
-      conditions.push(`(${sortColumn}, c.id) ${comparator} ($${valueIndex}${valueCast}, $${idIndex}::uuid)`);
+      cursorConditions.push(`(${sortColumn}, c.id) ${comparator} ($${valueIndex}${valueCast}, $${idIndex}::uuid)`);
     }
     params.push(input.limit + 1);
     const result = await this.database.query<ContentRow>(
-      `SELECT c.id, c.content_type, c.source, c.source_identifier, c.title, c.summary,
-              c.status, c.primary_text_kind, c.external_url, c.source_agent_id, c.conversation_id,
-              c.turn_index, c.turn_role, c.turn_timestamp, c.turn_metadata,
-              c.created_at, c.updated_at, COUNT(*) OVER()::text AS total_count,
+      `WITH filtered_content AS (
+         SELECT c.id, c.tenant_id, c.content_type, c.source, c.source_identifier,
+                c.title, c.summary, c.status, c.primary_text_kind, c.external_url,
+                c.source_agent_id, c.conversation_id, c.turn_index, c.turn_role,
+                c.turn_timestamp, c.turn_metadata, c.created_at, c.updated_at,
+                COUNT(*) OVER()::text AS total_count
+           FROM content_items c
+          WHERE ${conditions.join(' AND ')}
+       )
+       SELECT c.id, c.content_type, c.source, c.source_identifier, c.title, c.summary,
+              c.status, c.primary_text_kind, c.external_url, c.source_agent_id,
+              c.conversation_id, c.turn_index, c.turn_role, c.turn_timestamp,
+              c.turn_metadata, c.created_at, c.updated_at, c.total_count,
               COALESCE((
                 SELECT jsonb_agg(jsonb_build_object(
                   'id', t.id, 'slug', t.slug, 'label', t.label, 'category', t.category,
@@ -559,8 +569,8 @@ export class ContentService {
                 JOIN tags t ON t.tenant_id = ct.tenant_id AND t.id = ct.tag_id
                 WHERE ct.tenant_id = c.tenant_id AND ct.content_id = c.id AND t.is_active = true
               ), '[]'::jsonb) AS tags
-        FROM content_items c
-        WHERE ${conditions.join(' AND ')}
+        FROM filtered_content c
+        WHERE ${cursorConditions.length ? cursorConditions.join(' AND ') : 'TRUE'}
         ORDER BY ${sortColumn} ${direction}, c.id ${direction}
         LIMIT $${params.length}`,
       params,

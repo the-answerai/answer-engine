@@ -319,6 +319,28 @@ describe('ContentService tenant boundaries', () => {
     });
   });
 
+  it('computes the filtered total before applying a page cursor', async () => {
+    const contentId = randomUUID();
+    const createdAt = new Date('2026-08-12T15:00:00.000Z');
+    const cursor = Buffer.from(JSON.stringify([createdAt.toISOString(), contentId])).toString('base64url');
+    const query = vi.fn().mockResolvedValue({ rows: [] });
+    const service = new ContentService(
+      { query } as unknown as Database,
+      { embed: vi.fn(), complete: vi.fn() },
+    );
+
+    await service.list(
+      { tenantId: randomUUID(), apiKeyId: randomUUID() },
+      { limit: 25, cursor },
+    );
+
+    const [sql] = query.mock.calls[0] as [string, unknown[]];
+    const totalPosition = sql.indexOf('COUNT(*) OVER()');
+    const cursorPosition = sql.indexOf('(c.created_at, c.id) <');
+    expect(totalPosition).toBeGreaterThan(-1);
+    expect(cursorPosition).toBeGreaterThan(totalPosition);
+  });
+
   it('returns complete raw metadata and assigned tags from content detail', async () => {
     const contentId = randomUUID();
     const createdAt = new Date('2026-08-12T16:00:00.000Z');

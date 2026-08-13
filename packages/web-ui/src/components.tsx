@@ -115,7 +115,7 @@ export function ConfirmDialog({
 }) {
   return (
     <Dialog open={open} title={title} onClose={onClose}>
-      <p>{children}</p>
+      <div className="confirm-copy">{children}</div>
       <div className="dialog-actions"><Button variant="secondary" onClick={onClose}>Cancel</Button><Button variant="danger" onClick={onConfirm} disabled={busy}>{busy ? 'Working…' : confirmLabel}</Button></div>
     </Dialog>
   );

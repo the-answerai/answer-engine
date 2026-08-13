@@ -68,6 +68,38 @@ describe('primary local workflows', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/content/import', expect.objectContaining({ method: 'POST' }));
   });
 
+  it('keeps the import preview open and shows the server error when commit fails', async () => {
+    window.history.replaceState({}, '', '/import');
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === '/local-ui/session') return new Response(null, { status: 204 });
+      if (url === '/health') return new Response(null, { status: 200 });
+      if (url === '/api/v1/libraries') return json([]);
+      if (url === '/api/v1/content/import/preview') return json({
+        format: 'json', rowCount: 1,
+        sample: [{ title: 'Duplicate decision', content: 'Preserve this.', contentType: 'document' }],
+        parseErrors: [],
+      });
+      if (url === '/api/v1/content/import' && init?.method === 'POST') {
+        return new Response(JSON.stringify({
+          success: false,
+          error: { code: 'CONFLICT', message: 'The destination library is no longer available.' },
+        }), { status: 409, headers: { 'content-type': 'application/json' } });
+      }
+      return json([]);
+    });
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.type(await screen.findByLabelText('Title'), 'Duplicate decision');
+    await user.type(screen.getByLabelText('Content'), 'Preserve this.');
+    await user.click(screen.getByRole('button', { name: 'Preview import' }));
+    await user.click(await screen.findByRole('button', { name: 'Import 1 item' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('The destination library is no longer available.');
+    expect(screen.getByRole('button', { name: 'Import 1 item' })).toBeTruthy();
+  });
+
   it('filters content with array-backed facets and ISO date boundaries', async () => {
     window.history.replaceState({}, '', '/content');
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {

@@ -92,6 +92,15 @@ describe('local API client', () => {
     );
   });
 
+  it('surfaces the API error message from an unsuccessful envelope', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      success: false,
+      error: { code: 'CONFLICT', message: 'A tag with this slug already exists.' },
+    }), { status: 409, headers: { 'content-type': 'application/json' } }));
+
+    await expect(listContent()).rejects.toThrow('A tag with this slug already exists.');
+  });
+
   it('preserves page metadata and encodes workspace filters', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
       success: true,
