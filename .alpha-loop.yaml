@@ -78,7 +78,7 @@ skip_install: false
 
 # === Safety limits ==========================================================
 # Caps to keep an unattended loop from running away. 0 = unlimited.
-max_issues: 6
+max_issues: 9
 max_session_duration: 21600   # Six-hour hard stop; the operator monitors every five minutes.
 # poll_interval: 60           # Seconds between issue queue polls when running continuously
 

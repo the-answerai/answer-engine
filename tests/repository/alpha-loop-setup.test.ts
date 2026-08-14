@@ -64,7 +64,7 @@ describe('Alpha Loop repository posture', () => {
       setup_command: 'pnpm browser:prepare',
       batch: true,
       batch_size: 1,
-      max_issues: 6,
+      max_issues: 9,
       max_session_duration: 21600,
       skip_tests: false,
       skip_review: false,
