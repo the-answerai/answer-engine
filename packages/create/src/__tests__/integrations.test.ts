@@ -127,6 +127,7 @@ describe('integration plan/apply/remove', () => {
       command: dockerCommand,
       args: expect.arrayContaining([
         'exec', '-T', '-e', 'ANSWER_ENGINE_API_URL=http://127.0.0.1:5000',
+        '-e', 'ANSWER_ENGINE_CLIENT_ID=codex',
         'api', 'node', '/app/packages/mcp-server/dist/index.js',
       ]),
       env: {},
@@ -137,6 +138,12 @@ describe('integration plan/apply/remove', () => {
       'utf8',
     )) as { mcpServers: Record<string, unknown> };
     expect(installedCodexManifest.mcpServers).toHaveProperty('answer-engine');
+    const installedClaudeMcp = JSON.parse(readFileSync(
+      join(aeHome, 'client-plugins', 'claude-marketplace', 'plugins', 'answer-engine', '.mcp.json'),
+      'utf8',
+    )) as { mcpServers: { 'answer-engine': { args: string[] } } };
+    expect(installedClaudeMcp.mcpServers['answer-engine'].args)
+      .toEqual(expect.arrayContaining(['-e', 'ANSWER_ENGINE_CLIENT_ID=claude-code']));
   });
 
   it('preserves an existing Codex marketplace name and installs through that marketplace', async () => {

@@ -10,12 +10,14 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { AnswerEngineClient, parseLibraryScope } from './api-client.js';
 import { startHttpServer, type AnswerEngineHttpServer } from './http-server.js';
 import { createAnswerEngineMcpServer, resolveServerCapabilities } from './server.js';
+import { z } from 'zod';
 
 export type McpTransportMode = 'stdio' | 'http';
 
 export interface RuntimeConfig {
   apiUrl: string;
   apiKey: string;
+  clientId?: 'codex' | 'chatgpt-desktop' | 'claude-code' | 'claude-desktop' | 'cursor';
   library?: string;
   httpPort: number;
   httpHost: string;
@@ -25,6 +27,7 @@ export interface RuntimeConfig {
 export const DEFAULT_API_URL = 'http://localhost:5050';
 const DEFAULT_HTTP_PORT = 3333;
 const DEFAULT_HTTP_HOST = '127.0.0.1';
+const McpClientIdSchema = z.enum(['codex', 'chatgpt-desktop', 'claude-code', 'claude-desktop', 'cursor']);
 
 function parsePort(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
@@ -68,6 +71,7 @@ export function resolveRuntimeConfig(
   return {
     apiUrl: env.ANSWER_ENGINE_API_URL ?? DEFAULT_API_URL,
     apiKey: env.ANSWER_ENGINE_API_KEY ?? '',
+    clientId: env.ANSWER_ENGINE_CLIENT_ID ? McpClientIdSchema.parse(env.ANSWER_ENGINE_CLIENT_ID) : undefined,
     library: env.ANSWER_ENGINE_LIBRARY,
     httpPort: parsePort(env.ANSWER_ENGINE_MCP_PORT, DEFAULT_HTTP_PORT),
     httpHost: env.ANSWER_ENGINE_MCP_HOST ?? DEFAULT_HTTP_HOST,
@@ -79,6 +83,7 @@ function createClient(config: RuntimeConfig): AnswerEngineClient {
   return new AnswerEngineClient({
     apiUrl: config.apiUrl,
     apiKey: config.apiKey,
+    clientId: config.clientId,
     ...parseLibraryScope(config.library),
   });
 }
@@ -127,6 +132,7 @@ export async function main(
       host: config.httpHost,
       apiUrl: config.apiUrl,
       apiKey: config.apiKey,
+      clientId: config.clientId,
       library: config.library,
     });
     installShutdownHandlers(httpServer);

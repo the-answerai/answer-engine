@@ -155,6 +155,13 @@ audit trail. Undo removes only organization state introduced by that plan and
 never deletes imported content. An undone plan can be reviewed and applied
 again without duplicating tags, libraries, or memberships.
 
+The **First memory** workspace and `ae tutorial` commands generate a harmless,
+distinctive fact for a same-client or cross-client proof. The second prompt
+contains only an opaque marker, never the answer. Completion requires server
+audit evidence that the selected, client-identified MCP/CLI integration remembered the exact fact,
+recalled its content ID from a fresh chat, and inspected that record's source.
+Unsupported localhost/client combinations fail before the challenge starts.
+
 ## API
 
 CLI, MCP, and direct requests to `/api/v1/*` require the local key in either
@@ -178,6 +185,8 @@ Core routes:
 | `GET/POST /api/v1/organization-plans` | List or create non-mutating evidence-backed organization proposals |
 | `POST /api/v1/organization-plans/:id/apply` | Apply a complete set of individual accept/reject decisions |
 | `POST /api/v1/organization-plans/:id/undo` | Restore organization state introduced by one applied plan |
+| `GET/POST /api/v1/recall-tutorials` | Preflight and run an audited first-memory proof |
+| `POST /api/v1/recall-tutorials/:id/check` | Verify ordered remember, recall, and source-inspection evidence |
 | `GET /api/v1/content` | Browse, filter, sort, and cursor-paginate stored content |
 | `GET /api/v1/content/:id/lineage` | Inspect origin and artifact history |
 | `POST /api/v1/agent/query` | Full-text, semantic, or hybrid search |

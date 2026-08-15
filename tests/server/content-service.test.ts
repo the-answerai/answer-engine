@@ -13,7 +13,7 @@ describe('ContentService tenant boundaries', () => {
     const searchText = "memory'); DROP TABLE content_items; --";
 
     await service.query(
-      { tenantId, apiKeyId: randomUUID() },
+      { tenantId, apiKeyId: randomUUID(), surface: 'mcp', client: 'codex' },
       QuerySchema.parse({ query: searchText, searchType: 'fulltext' }),
     );
 
@@ -23,6 +23,10 @@ describe('ContentService tenant boundaries', () => {
     expect(params[0]).toBe(tenantId);
     expect(params).not.toContain(null);
     expect(params[1]).toBe(searchText);
+    const [, auditParameters] = query.mock.calls[1] as [string, unknown[]];
+    expect(auditParameters[6]).toEqual({
+      surface: 'mcp', client: 'codex', query: searchText, resultCount: 0, resultIds: [], searchType: 'fulltext',
+    });
   });
 
   it('does not call the embedding provider for deterministic full-text search', async () => {
@@ -130,6 +134,8 @@ describe('ContentService tenant boundaries', () => {
         provider: 'lmstudio',
       },
     });
+    const [, auditParameters] = databaseQuery.mock.calls.at(-1) as [string, unknown[]];
+    expect(auditParameters[6]).toMatchObject({ surface: 'api', client: 'unknown', contentIds: [contentId] });
     expect(release).toHaveBeenCalledOnce();
   });
 

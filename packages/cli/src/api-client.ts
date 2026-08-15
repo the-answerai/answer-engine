@@ -46,6 +46,7 @@ export class AnswerEngineClient {
       'Content-Type': 'application/json',
       'X-API-Key': this.apiKey,
       'X-AE-Surface': requestOptions.surface ?? 'cli',
+      'X-AE-Client': 'cli',
     };
 
     const options: RequestInit = { method, headers };
@@ -112,6 +113,7 @@ export class AnswerEngineClient {
           'Content-Type': 'application/json',
           'X-API-Key': this.apiKey,
           'X-AE-Surface': 'cli-sync',
+          'X-AE-Client': 'cli',
         },
       },
     );
@@ -217,6 +219,27 @@ export class AnswerEngineClient {
     return this.request('POST', `/api/v1/organization-plans/${encodeURIComponent(planId)}/undo`, {});
   }
 
+  async recallTutorialCapabilities(environment: 'native' | 'wsl'): Promise<ApiResponse<RecallClientCapability[]>> {
+    return this.request('GET', `/api/v1/recall-tutorials/capabilities?environment=${environment}`);
+  }
+
+  async createRecallTutorial(input: RecallTutorialCreateRequest): Promise<ApiResponse<RecallTutorial>> {
+    return this.request('POST', '/api/v1/recall-tutorials', input as unknown as Record<string, unknown>);
+  }
+
+  async listRecallTutorials(): Promise<ApiResponse<RecallTutorial[]>> {
+    return this.request('GET', '/api/v1/recall-tutorials');
+  }
+
+  async getRecallTutorial(id: string): Promise<ApiResponse<RecallTutorial>> {
+    return this.request('GET', `/api/v1/recall-tutorials/${encodeURIComponent(id)}`);
+  }
+
+  async checkRecallTutorial(id: string, reportedFailure?: RecallDiagnosticCode): Promise<ApiResponse<RecallTutorial>> {
+    return this.request('POST', `/api/v1/recall-tutorials/${encodeURIComponent(id)}/check`,
+      reportedFailure ? { reportedFailure } : {});
+  }
+
   // Agent endpoints
   async getSchema(): Promise<ApiResponse<SchemaResponse>> {
     return this.request<SchemaResponse>('GET', '/api/v1/agent/schema');
@@ -236,7 +259,7 @@ export class AnswerEngineClient {
 
   async healthCheck(): Promise<HealthResponse> {
     const response = await fetch(`${this.apiUrl}/health`, {
-      headers: { 'X-AE-Surface': 'cli' },
+      headers: { 'X-AE-Surface': 'cli', 'X-AE-Client': 'cli' },
     });
     if (!response.ok) {
       throw new ApiError(response.status, `HTTP_${response.status}`, `Health check failed: ${response.status}`);
@@ -502,4 +525,17 @@ export interface OrganizationPlan {
   undoneAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export type RecallTutorialClient = 'codex' | 'chatgpt-desktop' | 'chatgpt-work' | 'chatgpt-web' | 'claude-code' | 'claude-desktop' | 'claude-cowork' | 'cursor' | 'cli';
+export type RecallDiagnosticCode = 'runtime' | 'wiring' | 'access' | 'indexing' | 'retrieval';
+export interface RecallClientCapability { id: RecallTutorialClient; label: string; supported: boolean; verification: 'command' | 'guided' | 'unavailable'; surface: 'mcp' | 'cli'; limitation?: string }
+export interface RecallTutorialCreateRequest { writeClient: RecallTutorialClient; recallClient: RecallTutorialClient; environment: 'native' | 'wsl' }
+export interface RecallTutorial {
+  id: string; status: 'planned' | 'remembered' | 'verified'; writeClient: RecallTutorialClient;
+  recallClient: RecallTutorialClient; sameClient: boolean; marker: string; fact: string;
+  sourceIdentifier: string; contentId: string | null;
+  diagnostic: { code: string; details: Record<string, unknown> };
+  instructions: { remember: { client: RecallTutorialClient; text: string }; freshChat: { client: RecallTutorialClient; answerBearingContextIncluded: false; text: string } };
+  rememberedAt: string | null; verifiedAt: string | null; createdAt: string; updatedAt: string;
 }

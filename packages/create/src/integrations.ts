@@ -378,7 +378,7 @@ export function resolveDockerExecutable(
   throw new Error('Docker executable path could not be resolved for client MCP configuration.');
 }
 
-function managedMcpEntry(aeHome: string, dockerCommand: string): McpStdioEntry {
+function managedMcpEntry(aeHome: string, dockerCommand: string, client: AgentClientId): McpStdioEntry {
   return {
     command: dockerCommand,
     args: [
@@ -388,6 +388,7 @@ function managedMcpEntry(aeHome: string, dockerCommand: string): McpStdioEntry {
       '--file', join(aeHome, 'docker-compose.yml'),
       'exec', '-T',
       '-e', 'ANSWER_ENGINE_API_URL=http://127.0.0.1:5000',
+      '-e', `ANSWER_ENGINE_CLIENT_ID=${client}`,
       '-e', `ANSWER_ENGINE_LIBRARY=${LOCAL_LIBRARY_ID}`,
       'api', 'node', '/app/packages/mcp-server/dist/index.js',
     ],
@@ -491,10 +492,7 @@ export async function applyIntegrationPlan(
   const templateDir = options.templateDir
     ?? fileURLToPath(new URL('../templates/integrations/answer-engine', import.meta.url));
   const command = options.runCommand ?? defaultRunCommand;
-  const mcpEntry = managedMcpEntry(
-    plan.aeHome,
-    options.dockerCommand ?? resolveDockerExecutable(),
-  );
+  const dockerCommand = options.dockerCommand ?? resolveDockerExecutable();
   let ledger = readLedgerIfPresent(plan);
   let changed = 0;
 
@@ -541,6 +539,7 @@ export async function applyIntegrationPlan(
     const created = !existsSync(operation.path);
     const beforeSha256 = created ? undefined : sha256Path(operation.path);
     const backupPath = backupManagedPath(plan.aeHome, operation.path);
+    const mcpEntry = managedMcpEntry(plan.aeHome, dockerCommand, operation.client);
     switch (operation.kind) {
       case 'mcp-config':
         wireClient({

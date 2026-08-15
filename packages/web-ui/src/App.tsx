@@ -17,6 +17,7 @@ import { ContentPage } from './pages/ContentPage';
 import { ImportPage } from './pages/ImportPage';
 import { LibrariesPage, LibraryPage } from './pages/LibrariesPage';
 import { OrganizePage } from './pages/OrganizePage';
+import { RecallTutorialPage } from './pages/RecallTutorialPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { TagsPage } from './pages/TagsPage';
 
@@ -97,6 +98,7 @@ function coreRouteElement(surface: CoreSurfaceManifest, visible: VisibleWebCompo
     case 'tags': return <TagsPage />;
     case 'libraries': return <LibrariesPage />;
     case 'organize': return <OrganizePage />;
+    case 'recall-tutorial': return <RecallTutorialPage />;
     case 'library-answers': return <AnswersPage />;
     case 'library-members':
     case 'library-overview':

@@ -9,18 +9,21 @@ import { pool } from './config/database.js';
 import { createApiKeyAuth } from './middleware/api-key-auth.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 import { createLocalUiSessionCookie } from './middleware/local-ui-session.js';
+import { identifyRequestSurface } from './middleware/request-surface.js';
 import { createAgentRoutes } from './routes/agent-routes.js';
 import { createApplicationRoutes } from './routes/application-routes.js';
 import { createContentRoutes } from './routes/content-routes.js';
 import { createFirstImportRoutes } from './routes/first-import-routes.js';
 import { createFolderIngestionRoutes } from './routes/folder-ingestion-routes.js';
 import { createOrganizationRoutes } from './routes/organization-routes.js';
+import { createRecallTutorialRoutes } from './routes/recall-tutorial-routes.js';
 import { OpenAiCompatibleProvider } from './services/ai/openai-compatible.js';
 import { ApplicationService } from './services/application/application-service.js';
 import { ContentService } from './services/content/content-service.js';
 import { FirstImportService } from './services/first-import/first-import-service.js';
 import { FolderIngestionService } from './services/folder-ingestion/folder-ingestion-service.js';
 import { OrganizationService } from './services/organization/organization-service.js';
+import { RecallTutorialService } from './services/recall-tutorial/recall-tutorial-service.js';
 import { LocalBlobStorage } from './services/storage/local-blob-storage.js';
 import { logger } from './utils/logger.js';
 import {
@@ -52,6 +55,7 @@ export function createApp<TConfig = Record<string, never>>(options: CreateAppOpt
   const firstImportService = new FirstImportService(database);
   const folderIngestionService = new FolderIngestionService(database);
   const organizationService = new OrganizationService(database, language);
+  const recallTutorialService = new RecallTutorialService(database);
   const applicationService = new ApplicationService(
     database,
     language,
@@ -70,6 +74,7 @@ export function createApp<TConfig = Record<string, never>>(options: CreateAppOpt
   app.use(helmet({ contentSecurityPolicy: false }));
   app.use(cors({ origin: '*' }));
   app.use(express.json({ limit: MAX_JSON_BODY_SIZE }));
+  app.use(identifyRequestSurface);
   if (env.NODE_ENV !== 'test') {
     app.use(morgan('combined', { stream: { write: (message) => logger.http(message.trim()) } }));
   }
@@ -104,6 +109,7 @@ export function createApp<TConfig = Record<string, never>>(options: CreateAppOpt
       firstImports: '/api/v1/first-imports',
       folderSources: '/api/v1/folder-sources',
       organizationPlans: '/api/v1/organization-plans',
+      recallTutorials: '/api/v1/recall-tutorials',
       settings: '/api/v1/settings',
       ...(extensions?.endpointMetadata ?? {}),
     },
@@ -117,6 +123,7 @@ export function createApp<TConfig = Record<string, never>>(options: CreateAppOpt
   app.use('/api/v1/first-imports', createFirstImportRoutes(firstImportService));
   app.use('/api/v1/folder-sources', createFolderIngestionRoutes(folderIngestionService));
   app.use('/api/v1/organization-plans', createOrganizationRoutes(organizationService));
+  app.use('/api/v1/recall-tutorials', createRecallTutorialRoutes(recallTutorialService));
   app.use('/api/v1/agent', createAgentRoutes(service));
 
   if (env.WEB_UI_DIR) {

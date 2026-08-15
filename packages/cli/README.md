@@ -129,6 +129,25 @@ accept or reject decision for every suggestion and refuses a stale snapshot.
 it cannot delete imported content. Run `apply` on the undone plan to review and
 reapply it without duplicate tags, libraries, or memberships.
 
+## Prove memory across a fresh chat
+
+```bash
+ae tutorial clients
+ae tutorial clients --environment wsl
+ae tutorial start --write-client codex --recall-client claude-code
+ae tutorial show <tutorial-id>
+ae tutorial check <tutorial-id>
+ae tutorial check <tutorial-id> --report access
+```
+
+`start` generates a harmless fact and rejects unsupported client combinations
+before the demo. Follow the first-chat `remember` instruction, then paste only
+the answer-free marker prompt into a genuinely fresh chat. `check` passes only
+after the audit trail proves the selected client identity returned the exact content ID with `recall` and
+then inspected with `inspect_memory`; typed answer text is never accepted as
+proof. Failure reports return separate runtime, wiring, access, indexing,
+or retrieval recovery guidance.
+
 ## Evaluate retrieval
 
 ```bash

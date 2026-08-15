@@ -53,6 +53,17 @@ export interface OrganizationPlan {
   updatedAt: string;
 }
 
+export type RecallTutorialClient = 'codex' | 'chatgpt-desktop' | 'chatgpt-work' | 'chatgpt-web' | 'claude-code' | 'claude-desktop' | 'claude-cowork' | 'cursor' | 'cli';
+export interface RecallClientCapability { id: RecallTutorialClient; label: string; supported: boolean; verification: 'command' | 'guided' | 'unavailable'; surface: 'mcp' | 'cli'; limitation?: string }
+export interface RecallTutorial {
+  id: string; status: 'planned' | 'remembered' | 'verified'; writeClient: RecallTutorialClient;
+  recallClient: RecallTutorialClient; sameClient: boolean; marker: string; fact: string;
+  sourceIdentifier: string; contentId: string | null;
+  diagnostic: { code: string; details: Record<string, unknown> };
+  instructions: { remember: { client: RecallTutorialClient; text: string }; freshChat: { client: RecallTutorialClient; answerBearingContextIncluded: false; text: string } };
+  rememberedAt: string | null; verifiedAt: string | null; createdAt: string; updatedAt: string;
+}
+
 export interface ContentTag extends Pick<Tag, 'id' | 'slug' | 'label' | 'category' | 'color'> {
   confidence: number | null;
 }

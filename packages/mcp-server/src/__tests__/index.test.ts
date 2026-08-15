@@ -12,11 +12,17 @@ describe('MCP entrypoint transport selection', () => {
       resolveRuntimeConfig(['node', 'index.js'], {
         ANSWER_ENGINE_API_URL: 'http://127.0.0.1:6060',
         ANSWER_ENGINE_LIBRARY: 'personal-memory',
+        ANSWER_ENGINE_CLIENT_ID: 'claude-code',
       })
     ).toMatchObject({
       apiUrl: 'http://127.0.0.1:6060',
       library: 'personal-memory',
+      clientId: 'claude-code',
     });
+  });
+
+  it('rejects an unknown audited client identity', () => {
+    expect(() => resolveRuntimeConfig(['node', 'index.js'], { ANSWER_ENGINE_CLIENT_ID: 'unknown' })).toThrow();
   });
 
   it('defaults to stdio transport', () => {
