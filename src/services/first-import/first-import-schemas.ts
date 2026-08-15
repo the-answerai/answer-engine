@@ -21,7 +21,7 @@ export const FirstImportDiscoverySchema = z.object({
     estimatedBytes: z.number().int().nonnegative(),
     privacyPosture: z.string().trim().min(1).max(1_000),
     exclusions: z.array(z.string().trim().min(1).max(500)).max(100),
-    availability: z.enum(['available', 'not_found', 'unsupported_platform']),
+    availability: z.enum(['available', 'not_found', 'unsupported_platform', 'unavailable']),
     availabilityNote: z.string().trim().min(1).max(500),
     items: z.array(z.object({
       fingerprint: FingerprintSchema,

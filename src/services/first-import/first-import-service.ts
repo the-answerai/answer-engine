@@ -31,7 +31,7 @@ interface SourceRow {
   estimated_bytes: string | number;
   privacy_posture: string;
   exclusions: string[];
-  availability: 'available' | 'not_found' | 'unsupported_platform';
+  availability: 'available' | 'not_found' | 'unsupported_platform' | 'unavailable';
   availability_note: string;
   status: string;
   error_code: string | null;
@@ -268,11 +268,16 @@ export class FirstImportService {
     if (current.status === 'running') return current;
     try { assertFirstImportTransition(current.status, 'running'); }
     catch (error) { throw new ConflictError(error instanceof Error ? error.message : String(error)); }
-    await this.database.query(
+    const started = await this.database.query(
       `UPDATE first_import_sessions SET status='running',started_at=COALESCE(started_at,NOW())
-       WHERE tenant_id=$1 AND id=$2 AND approved_at IS NOT NULL`,
+       WHERE tenant_id=$1 AND id=$2 AND status='approved' AND approved_at IS NOT NULL`,
       [principal.tenantId, sessionId],
     );
+    if ((started.rowCount ?? 0) === 0) {
+      const latest = await this.get(principal, sessionId);
+      if (latest.status === 'running') return latest;
+      throw new ConflictError(`Cannot start first import from ${latest.status}`);
+    }
     await this.database.query(
       `UPDATE first_import_sources SET status='running'
        WHERE tenant_id=$1 AND session_id=$2 AND source_id=ANY($3::text[]) AND status='approved'`,

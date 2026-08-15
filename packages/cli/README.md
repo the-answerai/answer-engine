@@ -70,8 +70,10 @@ ae sync uninstall-service
 
 `first-import` performs metadata-only discovery, waits for source-by-source
 approval in the `/import` web surface, merges only approved transcript sources
-into `config.yaml`, and records a resumable reconciled inventory. Supported
-history sources are Claude Code, Codex, Cowork, and local directories.
+into `config.yaml`, verifies the full bundle fingerprint again before reading,
+and records a resumable reconciled inventory. Changed bundles require a fresh
+preview and approval; inaccessible sources receive safe permission guidance.
+Supported history sources are Claude Code, Codex, Cowork, and local directories.
 The sync cursor and raw source archive remain local under `AE_HOME`.
 
 Staging history discovery is refused unless staging `config.yaml` contains

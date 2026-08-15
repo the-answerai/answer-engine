@@ -5,9 +5,14 @@
 The first agent-history import now discovers Claude Code, Codex, and Cowork
 without reading transcript bodies, presents a selectable consent preview, and
 uses a tenant-scoped session lifecycle to approve, run, cancel, retry, resume,
-and reconcile every discovered item. Deterministic raw archives are reused only
-after hash verification, and imported chat outcomes require both a non-empty
-summary and a matching raw-manifest path.
+and reconcile every discovered item. Complete bundle metadata and byte totals
+are previewed, and the bundle fingerprint is verified again before any approved
+transcript body is read. Deterministic raw archives are reused only after hash
+verification, and imported chat outcomes require both a non-empty summary and a
+matching raw-manifest path.
+Resumed runs additionally require the owner-only channel-local discovery
+manifest to match the complete server inventory, preventing a fabricated API
+session from turning the CLI into an arbitrary local-file reader.
 
 The manual text and JSON import paths remain available. Folder scanning,
 automatic organization, Graphify, and npm publication remain out of scope.
@@ -15,7 +20,8 @@ automatic organization, Graphify, and npm publication remain out of scope.
 ## Acceptance criteria
 
 - [x] No progress event or transcript import can occur before explicit source
-  approval; discovery uses adapter path/stat metadata only.
+  approval; discovery uses adapter path/stat metadata only and execution rejects
+  a bundle that changed after approval.
 - [x] Any available subset can be approved, while unavailable sources are
   shown with a safe explanation and cannot be selected.
 - [x] Session items, sync cursors, deterministic archives, atomic staging
@@ -25,7 +31,8 @@ automatic organization, Graphify, and npm publication remain out of scope.
   to the discovered inventory. Imported outcomes verify tenant-scoped chat
   content, non-empty summaries, and matching raw manifests.
 - [x] Errors are limited to source labels, safe codes, and recovery actions;
-  transcript content and credentials are not persisted in error fields or logs.
+  inaccessible discovery and changed snapshots do not expose transcript
+  content, raw filesystem errors, or credentials.
 - [x] Desktop and 375px interaction, responsive width, keyboard focus,
   reduced-motion, and browser-error checks passed through `pnpm browser:ui`.
 - [x] `pnpm verify` passes.

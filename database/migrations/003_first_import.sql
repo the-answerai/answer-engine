@@ -31,7 +31,7 @@ CREATE TABLE first_import_sources (
   estimated_bytes BIGINT NOT NULL CHECK (estimated_bytes >= 0),
   privacy_posture TEXT NOT NULL,
   exclusions JSONB NOT NULL CHECK (jsonb_typeof(exclusions) = 'array'),
-  availability TEXT NOT NULL CHECK (availability IN ('available','not_found','unsupported_platform')),
+  availability TEXT NOT NULL CHECK (availability IN ('available','not_found','unsupported_platform','unavailable')),
   availability_note TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'discovered' CHECK (status IN (
     'discovered','approved','running','completed','failed','skipped','canceled'

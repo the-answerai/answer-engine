@@ -269,7 +269,9 @@ ae sync status
 The command performs metadata-only discovery and waits. Have the user open the
 local `/import` page, review the paths, estimated counts and sizes, privacy
 posture, and exclusions, then explicitly approve any subset. Nothing is read or
-imported before approval. If the command is interrupted, use the recovery
+imported before approval except file names and statistics needed for the preview.
+The approved bundle fingerprint is checked again before transcript bodies are
+read. If it changed, run a fresh discovery and approval. If the command is interrupted, use the recovery
 command shown by the page: `ae sync first-import --resume <session-id>`.
 
 Choose a distinctive phrase from one imported conversation or document and run:

@@ -39,6 +39,7 @@ export interface SyncRunOptions {
   librarySlug?: string;
   client: SyncClient;
   onWarning?: (message: string) => void;
+  inventoryOnly?: boolean;
 }
 
 export interface SyncRunSummary {
@@ -317,7 +318,10 @@ export async function runSyncOnce(options: SyncRunOptions): Promise<SyncRunSumma
 
   const source = getSource(options.sourceId);
   const warn = options.onWarning ?? defaultWarning;
-  const files = await source.discover({ paths: options.paths });
+  const files = await source.discover({
+    paths: options.paths,
+    inventoryOnly: options.inventoryOnly,
+  });
   const summary: SyncRunSummary = {
     sourceId: source.id,
     cursorFile: cursorStore.path,

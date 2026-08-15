@@ -8,10 +8,20 @@ ae sync first-import
 ```
 
 Discovery invokes the Claude Code, Codex, and Cowork adapters for file paths,
-identity/stat metadata, and a metadata fingerprint only. It does not read
-transcript bodies, create raw archives, import content, scan arbitrary folders,
-or change tags and libraries. The owner-readable discovery manifest is stored
-under `$AE_HOME/data/first-import` for the selected runtime channel.
+identity/stat metadata, and a metadata fingerprint only. For a history bundle,
+the displayed size and fingerprint cover every subagent, audit, metadata, and
+artifact file that the approved import will read. It does not read transcript
+bodies, create raw archives, import content, scan arbitrary folders, or change
+tags and libraries. Optional Claude Desktop launch metadata is excluded because
+mapping it would require reading JSON before consent. The owner-readable
+discovery manifest is stored under `$AE_HOME/data/first-import` for the selected
+runtime channel. Inaccessible sources appear as unavailable with a permission
+recovery action; raw filesystem errors are not exposed.
+
+On every new or resumed run, the CLI requires that owner-readable local
+manifest to remain inside the selected channel home and match the server's
+session ID, source metadata, and complete item inventory. A server record alone
+cannot direct the CLI to read an unmanifested local path.
 
 Open `http://127.0.0.1:3200/import`. Review each source's paths, estimated
 conversation count, byte size, privacy posture, and expected exclusions. Select
@@ -20,10 +30,13 @@ events until this explicit approval has been recorded.
 
 After approval, the CLI atomically adds only missing approved transcript source
 entries to `$AE_HOME/config.yaml`, preserving other source and model settings.
-It imports one discovered history at a time through the authenticated sync
-client. Each source fingerprint receives a deterministic immutable raw archive;
-a complete archive is hash-verified and reused on retry. The content cursor
-advances only after the synchronous import result is durable.
+Before reading each history, it verifies that the complete metadata inventory
+still matches the approved fingerprint. A changed bundle is not read or
+imported; the user is asked to run a fresh discovery and approve its current
+inventory. The CLI then imports one discovered history at a time through the
+authenticated sync client. Each source fingerprint receives a deterministic
+immutable raw archive; a complete archive is hash-verified and reused on retry.
+The content cursor advances only after the synchronous import result is durable.
 
 The page can request cancellation at the next item boundary. Closing the page
 does not stop the local process, and closing the terminal does not corrupt

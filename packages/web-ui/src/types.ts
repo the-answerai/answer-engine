@@ -427,7 +427,7 @@ export interface FirstImportSession {
     estimatedBytes: number;
     privacyPosture: string;
     exclusions: string[];
-    availability: 'available' | 'not_found' | 'unsupported_platform';
+    availability: 'available' | 'not_found' | 'unsupported_platform' | 'unavailable';
     availabilityNote: string;
     status: string;
     errorCode: string | null;

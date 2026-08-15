@@ -918,7 +918,7 @@ components:
               estimatedBytes: { type: integer, minimum: 0 }
               privacyPosture: { type: string, minLength: 1 }
               exclusions: { type: array, items: { type: string } }
-              availability: { enum: [available, not_found, unsupported_platform] }
+              availability: { enum: [available, not_found, unsupported_platform, unavailable] }
               availabilityNote: { type: string, minLength: 1 }
               items:
                 type: array

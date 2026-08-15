@@ -207,9 +207,10 @@ contract.
 After installer wiring succeeds, run `ae sync first-import` in the stable
 channel, open `/import`, review the discovered Claude Code, Codex, and Cowork
 paths/counts/sizes/exclusions, and approve any subset. The command waits for
-approval, preserves unrelated `config.yaml` source settings, imports one
-source-backed history at a time, and reconciles imported, duplicate, failed,
-and skipped outcomes. Resume an interruption with
+approval, preserves unrelated `config.yaml` source settings, verifies each
+complete history bundle still matches the approved metadata fingerprint,
+imports one source-backed history at a time, and reconciles imported,
+duplicate, failed, and skipped outcomes. Resume an interruption with
 `ae sync first-import --resume <session-id>`. See
 [First agent-history import](./docs/first-agent-history-import.md).
 

@@ -35,7 +35,9 @@ import { assertHistorySyncAllowed, HistorySyncPolicyError } from '../sync/channe
 import { resolveRuntimeChannel } from '../channel.js';
 import { configYamlPath } from '../home.js';
 import {
+  assertFirstImportManifestMatchesSession,
   mergeApprovedHistorySources,
+  firstImportItemMatchesDiscovery,
   registerFirstImportDiscovery,
 } from '../sync/first-import.js';
 import type {
@@ -148,13 +150,14 @@ async function recordSafeFailure(
   sessionId: string,
   item: FirstImportSession['items'][number],
   errorCode: string,
+  action: string = recoveryAction(sessionId),
 ): Promise<void> {
   await client.recordFirstImportEvent(sessionId, {
     sourceId: item.sourceId,
     fingerprint: item.fingerprint,
     outcome: 'failed',
     errorCode,
-    recoveryAction: recoveryAction(sessionId),
+    recoveryAction: action,
   });
 }
 
@@ -166,6 +169,16 @@ async function runFirstImportItem(
 ): Promise<void> {
   let summary: SyncRunSummary;
   try {
+    if (!await firstImportItemMatchesDiscovery(item)) {
+      await recordSafeFailure(
+        client,
+        sessionId,
+        item,
+        'SOURCE_CHANGED_SINCE_APPROVAL',
+        'Run ae sync first-import to review and approve a fresh source inventory.',
+      );
+      return;
+    }
     summary = await runSyncOnce({
       sourceId: item.sourceId,
       paths: [item.sourcePath],
@@ -174,6 +187,7 @@ async function runFirstImportItem(
       concurrency: 1,
       client,
       onWarning: () => undefined,
+      inventoryOnly: true,
     });
   } catch {
     await recordSafeFailure(client, sessionId, item, 'SOURCE_READ_FAILED');
@@ -219,7 +233,19 @@ async function runFirstImportCommand(opts: FirstImportCommandOptions): Promise<v
     let session = opts.resume
       ? (await client.getFirstImport(opts.resume)).data
       : await registerFirstImportDiscovery(client);
+    try {
+      assertFirstImportManifestMatchesSession(session);
+    } catch {
+      throw new UserInputError(
+        'The local first-import discovery manifest is missing or does not match this session. Run ae sync first-import to create and approve a fresh inventory.',
+      );
+    }
     printHeader('First agent-history import');
+    if (session.status === 'discovered'
+      && !session.sources.some((source) => source.availability === 'available')) {
+      printJson({ data: session });
+      throw new UserInputError('No supported agent history is currently available. Review source status on /import, then retry discovery.');
+    }
     if (session.status === 'discovered') {
       printJson({ data: {
         sessionId: session.id,

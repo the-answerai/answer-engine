@@ -316,7 +316,7 @@ export interface FirstImportDiscoverySource {
   estimatedBytes: number;
   privacyPosture: string;
   exclusions: string[];
-  availability: 'available' | 'not_found' | 'unsupported_platform';
+  availability: 'available' | 'not_found' | 'unsupported_platform' | 'unavailable';
   availabilityNote: string;
   items: FirstImportDiscoveryItem[];
 }

@@ -28,6 +28,15 @@ export interface TranscriptFile {
   identity?: string;
   size: number;
   mtimeMs: number;
+  inventoryFiles?: TranscriptInventoryFile[];
+  includeOptionalMetadata?: boolean;
+}
+
+export interface TranscriptInventoryFile {
+  path: string;
+  identity?: string;
+  size: number;
+  mtimeMs: number;
 }
 
 export interface FileCursor {
