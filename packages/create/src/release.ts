@@ -6,7 +6,22 @@ import { z } from 'zod';
 
 const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
 const DigestReferenceSchema = z.string().regex(/@sha256:[a-f0-9]{64}$/);
-const RELEASE_ARTIFACTS = ['docker-compose.yml', 'env.compose.tmpl'] as const;
+const RELEASE_ARTIFACTS = [
+  'docker-compose.yml',
+  'env.compose.tmpl',
+  'integrations/answer-engine/.claude-plugin/plugin.json',
+  'integrations/answer-engine/.codex-plugin/plugin.json',
+  'integrations/answer-engine/.mcp.json',
+  'integrations/answer-engine/evals/install-answer-engine.json',
+  'integrations/answer-engine/evals/organize-answer-engine.json',
+  'integrations/answer-engine/evals/use-answer-engine.json',
+  'integrations/answer-engine/references/capabilities.md',
+  'integrations/answer-engine/references/safety.md',
+  'integrations/answer-engine/references/tools.md',
+  'integrations/answer-engine/skills/install-answer-engine/SKILL.md',
+  'integrations/answer-engine/skills/organize-answer-engine/SKILL.md',
+  'integrations/answer-engine/skills/use-answer-engine/SKILL.md',
+] as const;
 export const ReleaseManifestSchema = z.object({
   schemaVersion: z.literal(1),
   version: z.string().regex(/^\d+\.\d+\.\d+$/),

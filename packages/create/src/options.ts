@@ -7,7 +7,9 @@ export interface InstallerOptions {
   image?: string;
   yes?: boolean;
   models?: string;
+  clients?: string;
   agents?: string;
+  coworkMode?: string;
   home?: string;
   llmProvider?: string;
   llmKey?: string;

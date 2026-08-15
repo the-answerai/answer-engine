@@ -1,4 +1,5 @@
 import { join, resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import chalk from 'chalk';
 import { activateApiKey, detectOwnedPorts, startStack } from './docker.js';
@@ -18,8 +19,14 @@ import {
 import { runLifecycleAction } from './lifecycle.js';
 import { scaffoldInstallation } from './scaffold.js';
 import { readEnvValue } from './scaffold.js';
-import { verifyMemoryRoundTrip } from './verify.js';
-import { selectAgents, wireAgents } from './wire.js';
+import { verifyClientIntegrations, verifyMemoryRoundTrip } from './verify.js';
+import { selectClients } from './wire.js';
+import {
+  applyIntegrationPlan,
+  buildIntegrationPlan,
+  updateIntegrationVerification,
+} from './integrations.js';
+import { CoworkModeSchema } from './clients.js';
 import {
   assertRuntimeChannelConfiguration,
   channelProfiles,
@@ -40,11 +47,13 @@ export interface InstallDependencies {
   verifyBundledRelease?: typeof verifyBundledRelease;
   runLifecycleAction?: typeof runLifecycleAction;
   resolveModelSetup?: typeof resolveModelSetup;
-  selectAgents?: typeof selectAgents;
+  selectClients?: typeof selectClients;
   startStack?: typeof startStack;
   activateApiKey?: typeof activateApiKey;
-  wireAgents?: typeof wireAgents;
+  applyIntegrationPlan?: typeof applyIntegrationPlan;
   verifyMemoryRoundTrip?: typeof verifyMemoryRoundTrip;
+  verifyClientIntegrations?: typeof verifyClientIntegrations;
+  updateIntegrationVerification?: typeof updateIntegrationVerification;
 }
 
 export const INSTALL_AGENT_URL = loadReleaseManifest().promptUrl;
@@ -73,8 +82,9 @@ export async function install(
   });
   const home = profile.home;
   await validateRuntimeChannelIsolation(channelProfiles(channel, home));
-  if (channel === 'staging' && options.agents && options.agents.trim().toLowerCase() !== 'none') {
-    throw new Error('Staging cannot write global agent configuration; use --agents none.');
+  const requestedClients = options.clients ?? options.agents;
+  if (channel === 'staging' && requestedClients && requestedClients.trim().toLowerCase() !== 'none') {
+    throw new Error('Staging cannot write global client configuration; use --clients none.');
   }
   output.write(chalk.cyan('1/6 Preflight'));
   const ownedPorts = await (dependencies.detectOwnedPorts ?? detectOwnedPorts)(home, {}, profile);
@@ -115,7 +125,7 @@ export async function install(
 
   if (preflight.installation === 'managed') {
     const status = await (dependencies.runLifecycleAction ?? runLifecycleAction)('status', profile);
-    if (status?.healthy && installationIsComplete(profile, release.tag)) {
+    if (status?.healthy && requestedClients === undefined && installationIsComplete(profile, release.tag)) {
       output.write(chalk.green(`Answer Engine is already healthy at ${profile.apiUrl}; no changes were made.`));
       writeInstallAgentGuidance(output);
       return;
@@ -124,8 +134,23 @@ export async function install(
 
   output.write(chalk.cyan('2/6 Models'));
   const modelSetup = await (dependencies.resolveModelSetup ?? resolveModelSetup)(options, { prompt });
-  const agents = channel === 'staging' ? [] : await (dependencies.selectAgents ?? selectAgents)(options, prompt);
-  if (prompt) await requireInstallConsent(prompt, { home, profile: recommendation.id, agents });
+  const clients = channel === 'staging' ? [] : await (dependencies.selectClients ?? selectClients)(options, prompt);
+  const coworkMode = CoworkModeSchema.parse(options.coworkMode ?? 'unknown');
+  const integrationPlan = buildIntegrationPlan({
+    channel,
+    aeHome: home,
+    clients,
+    coworkMode,
+  });
+  output.write('  Planned client integration changes:');
+  if (integrationPlan.operations.length === 0) output.write('    No supported global client paths selected.');
+  for (const operation of integrationPlan.operations) {
+    output.write(`    ${operation.client}: ${operation.description} (${operation.path})`);
+  }
+  for (const client of integrationPlan.clients.filter((candidate) => !candidate.supported)) {
+    output.write(chalk.yellow(`    ${client.label}: unavailable — ${client.limitation}`));
+  }
+  if (prompt) await requireInstallConsent(prompt, { home, profile: recommendation.id, agents: clients });
   clearInstallationCompletion(profile);
   process.env.AE_HOME = home;
   process.env.AE_CHANNEL = channel;
@@ -170,17 +195,41 @@ export async function install(
   }
   output.write(chalk.green(`  ${channel} Answer Engine is healthy at ${profile.apiUrl}.`));
 
-  output.write(chalk.cyan('5/6 Wire agents'));
-  const wiring = (dependencies.wireAgents ?? wireAgents)(agents, apiKey, profile.apiUrl);
-  if (wiring.length === 0) output.write('  No agent configs selected.');
-  for (const result of wiring) output.write(chalk.green(`  Wired ${result.path}`));
+  output.write(chalk.cyan('5/6 Connect clients'));
+  if (integrationPlan.operations.length === 0) output.write('  No supported client integrations selected.');
+  else {
+    const applied = await (dependencies.applyIntegrationPlan ?? applyIntegrationPlan)(integrationPlan, {
+      apiKey,
+      apiUrl: profile.apiUrl,
+    });
+    output.write(chalk.green(applied.changed === 0
+      ? '  Client integrations already matched; no files changed.'
+      : `  Applied ${applied.changed} managed client integration changes.`));
+  }
 
   output.write(chalk.cyan('6/6 Verify'));
+  const marker = `aecreate${randomUUID().replaceAll('-', '')}`;
   const contentId = await (dependencies.verifyMemoryRoundTrip ?? verifyMemoryRoundTrip)({
     apiKey,
     apiUrl: profile.apiUrl,
+    marker,
   });
   output.write(chalk.green(`  remember → recall → inspect_memory passed (${contentId}).`));
+  const clientVerification = await (dependencies.verifyClientIntegrations ?? verifyClientIntegrations)({
+    clients,
+    coworkMode,
+    marker,
+    contentId,
+    ...(prompt ? { prompt } : {}),
+  });
+  for (const result of clientVerification) {
+    output.write(result.status === 'passed'
+      ? chalk.green(`  ${result.client}: ${result.detail}`)
+      : chalk.yellow(`  ${result.client}: ${result.detail}`));
+  }
+  if (integrationPlan.operations.length > 0) {
+    (dependencies.updateIntegrationVerification ?? updateIntegrationVerification)(home, clientVerification);
+  }
 
   writeInstallationCompletion(profile, release.tag);
 

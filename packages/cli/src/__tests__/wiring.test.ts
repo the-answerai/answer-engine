@@ -19,6 +19,7 @@ import {
   renderClaudeCodeCommand,
   renderHttpConnection,
   resolveClientConfigPath,
+  unwireClient,
   wireClient,
 } from '../wiring/index.js';
 import type { FileWiringClient, WiringInput } from '../wiring/index.js';
@@ -104,6 +105,24 @@ describe('agent wiring config writers', () => {
       expect(result).toEqual({ path, backupPath: `${path}.bak`, created: false });
       expect(statSync(path).mode & 0o777).toBe(0o600);
       expect(statSync(`${path}.bak`).mode & 0o777).toBe(0o600);
+    });
+  }
+
+  for (const client of FILE_WIRING_CLIENTS) {
+    it(`removes only the managed ${client} MCP entry`, () => {
+      const fixture = readFileSync(join(fixturesDir, existingFixtureByClient[client]), 'utf8');
+      const extension = client === 'codex' ? 'toml' : 'json';
+      const path = createTempPath(`remove.${extension}`);
+      writeFileSync(path, fixture, { encoding: 'utf8', mode: 0o600 });
+      wireClient(inputFor(client), { path, backup: false });
+
+      unwireClient(client, { path, backup: false });
+
+      const contents = readFileSync(path, 'utf8');
+      expect(contents).toContain(preservedTextByClient[client]);
+      expect(contents).not.toContain('answer-engine');
+      expect(existsSync(`${path}.bak`)).toBe(false);
+      parseWritten(client, contents);
     });
   }
 

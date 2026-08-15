@@ -1,4 +1,12 @@
 import { randomUUID } from 'node:crypto';
+import {
+  capabilityForClient,
+  type AgentClientId,
+  type CoworkMode,
+} from './clients.js';
+import type { CommandRunner } from './process.js';
+import { runCommand as defaultRunCommand } from './process.js';
+import type { Prompt } from './prompt.js';
 
 const LOCAL_LIBRARY_ID = '00000000-0000-0000-0000-000000000002';
 const VERIFY_SOURCE = 'create-installer';
@@ -116,4 +124,89 @@ export async function verifyMemoryRoundTrip(options: VerifyOptions): Promise<str
     throw new Error(`Local inspect_memory check returned invalid lineage for ${contentId}.`);
   }
   return contentId;
+}
+
+export interface ClientVerificationResult {
+  client: AgentClientId;
+  status: 'passed' | 'unavailable';
+  detail: string;
+}
+
+export interface VerifyClientIntegrationOptions {
+  clients: readonly AgentClientId[];
+  coworkMode?: CoworkMode;
+  marker: string;
+  contentId: string;
+  runCommand?: CommandRunner;
+  prompt?: Prompt;
+}
+
+function recallPrompt(marker: string, contentId: string): string {
+  return [
+    'Use the configured Answer Engine recall tool, not shell, curl, or a direct HTTP request.',
+    `Find the exact verification marker "${marker}".`,
+    `Return the marker and expected content id "${contentId}" after the tool result.`,
+  ].join(' ');
+}
+
+function hasRecallToolEvidence(output: string, marker: string, contentId: string): boolean {
+  const normalized = output.toLowerCase();
+  const namesAnswerEngine = normalized.includes('answer-engine') || normalized.includes('answer_engine');
+  const namesRecall = normalized.includes('recall');
+  const namesToolEvent = normalized.includes('mcp_tool_call')
+    || normalized.includes('tool_use')
+    || normalized.includes('tool.call')
+    || normalized.includes('mcp__');
+  return namesAnswerEngine && namesRecall && namesToolEvent
+    && output.includes(marker) && output.includes(contentId);
+}
+
+export async function verifyClientIntegrations(
+  options: VerifyClientIntegrationOptions,
+): Promise<ClientVerificationResult[]> {
+  const command = options.runCommand ?? defaultRunCommand;
+  const results: ClientVerificationResult[] = [];
+  for (const client of options.clients) {
+    const capability = capabilityForClient(client, options.coworkMode);
+    if (!capability.supported) {
+      results.push({
+        client,
+        status: 'unavailable',
+        detail: capability.limitation ?? 'This client cannot use the selected local integration.',
+      });
+      continue;
+    }
+    if (capability.verification === 'command') {
+      const prompt = recallPrompt(options.marker, options.contentId);
+      let response: Awaited<ReturnType<CommandRunner>>;
+      try {
+        response = client === 'codex'
+          ? await command('codex', ['exec', '--json', '--skip-git-repo-check', prompt])
+          : await command('claude', [
+            '-p', '--output-format', 'stream-json', '--verbose', '--no-session-persistence', prompt,
+          ]);
+      } catch (error) {
+        throw new Error(`${capability.label} verification command failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      if (!hasRecallToolEvidence(response.stdout, options.marker, options.contentId)) {
+        throw new Error(`${capability.label} verification did not show an Answer Engine recall tool call for the expected memory.`);
+      }
+      results.push({ client, status: 'passed', detail: 'Verified a real recall tool call.' });
+      continue;
+    }
+    if (capability.verification === 'guided') {
+      if (!options.prompt?.confirm) {
+        throw new Error(`${capability.label} interactive verification is required; rerun interactively or remove this client from the selection.`);
+      }
+      const confirmed = await options.prompt.confirm(
+        `Restart ${capability.label}, ask it to recall "${options.marker}", and confirm the result cites ${options.contentId}. Did it pass?`,
+        false,
+      );
+      if (!confirmed) {
+        throw new Error(`${capability.label} guided recall was not confirmed; installation remains incomplete.`);
+      }
+      results.push({ client, status: 'passed', detail: 'User confirmed the guided recall challenge.' });
+    }
+  }
+  return results;
 }

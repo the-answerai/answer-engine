@@ -59,7 +59,8 @@ describe('stable channel adoption', () => {
       runtime: {},
     };
 
-    await expect(install({ channel: 'stable', home }, { write: vi.fn() }, {
+    const messages: string[] = [];
+    await expect(install({ channel: 'stable', home }, { write: (message) => messages.push(message) }, {
       prompt,
       detectOwnedPorts: async () => new Set(),
       runPreflight: () => runPreflight({
@@ -69,10 +70,13 @@ describe('stable channel adoption', () => {
         probePort: async () => true,
       }),
       resolveModelSetup: async () => modelSetup,
-      selectAgents: async () => [],
+      selectClients: async () => ['codex'],
     })).rejects.toThrow('cancelled before any changes');
 
     expect(readdirSync(home)).toEqual([]);
+    expect(messages.join('\n')).toContain('.codex/config.toml');
+    expect(messages.join('\n')).toContain('.agents/plugins/marketplace.json');
+    expect(prompt.confirm).toHaveBeenCalledOnce();
   });
 
   it('resumes final verification after a healthy partial run, then makes completed retries no-ops', async () => {
@@ -83,7 +87,12 @@ describe('stable channel adoption', () => {
     const verifyMemoryRoundTrip = vi.fn()
       .mockRejectedValueOnce(new Error('simulated verification failure'))
       .mockResolvedValue('content-verified');
-    const wireAgents = vi.fn(() => []);
+    const applyIntegrationPlan = vi.fn(async () => ({
+      changed: 0,
+      ledger: {
+        schemaVersion: 1 as const, channel: 'stable' as const, home, clients: [], entries: [], verification: [],
+      },
+    }));
     const startStack = vi.fn(async () => 'ae_live_resume_test_key_1234567890');
     const activateApiKey = vi.fn(async (_home: string, envPath: string, apiKey: string) => {
       persistApiKey(envPath, apiKey);
@@ -120,11 +129,15 @@ describe('stable channel adoption', () => {
         },
       }),
       resolveModelSetup: async () => modelSetup,
-      selectAgents: async () => [],
+      selectClients: async () => ['codex'],
       startStack,
       activateApiKey,
-      wireAgents,
+      applyIntegrationPlan,
       verifyMemoryRoundTrip,
+      verifyClientIntegrations: async () => [
+        { client: 'codex' as const, status: 'passed' as const, detail: 'Verified a real recall tool call.' },
+      ],
+      updateIntegrationVerification: vi.fn(),
     };
 
     await expect(install({ channel: 'stable', home, yes: true }, { write: vi.fn() }, dependencies))
@@ -133,12 +146,12 @@ describe('stable channel adoption', () => {
       .resolves.toBeUndefined();
 
     expect(verifyMemoryRoundTrip).toHaveBeenCalledTimes(2);
-    expect(wireAgents).toHaveBeenCalledTimes(2);
+    expect(applyIntegrationPlan).toHaveBeenCalledTimes(2);
     expect(existsSync(join(home, '.install-complete.json'))).toBe(true);
 
     await expect(install({ channel: 'stable', home, yes: true }, { write: vi.fn() }, dependencies))
       .resolves.toBeUndefined();
     expect(verifyMemoryRoundTrip).toHaveBeenCalledTimes(2);
-    expect(wireAgents).toHaveBeenCalledTimes(2);
+    expect(applyIntegrationPlan).toHaveBeenCalledTimes(2);
   });
 });

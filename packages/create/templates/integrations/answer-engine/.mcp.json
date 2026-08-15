@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "answer-engine": {
+      "command": "npx",
+      "args": ["-y", "@answer-engine/mcp-server@1.1.0"],
+      "env": {
+        "ANSWER_ENGINE_API_KEY": "__ANSWER_ENGINE_API_KEY__",
+        "ANSWER_ENGINE_API_URL": "__ANSWER_ENGINE_API_URL__",
+        "ANSWER_ENGINE_LIBRARY": "00000000-0000-0000-0000-000000000002"
+      }
+    }
+  }
+}

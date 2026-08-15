@@ -33,7 +33,7 @@ accepts `--channel staging` and an optional channel-specific `--home`.
 
 ```bash
 npx @answer-engine/create@1.1.0 install --channel stable
-npx @answer-engine/create@1.1.0 install --channel staging --agents none
+npx @answer-engine/create@1.1.0 install --channel staging --clients none
 npx @answer-engine/create@1.1.0 start --channel staging
 npx @answer-engine/create@1.1.0 stop --channel staging
 npx @answer-engine/create@1.1.0 status --channel staging

@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { verifyMemoryRoundTrip } from '../verify.js';
+import { describe, expect, it, vi } from 'vitest';
+import { verifyClientIntegrations, verifyMemoryRoundTrip } from '../verify.js';
 
 function response(data: unknown, ok = true, status = 200): Response {
   return { ok, status, json: () => Promise.resolve(data) } as Response;
@@ -71,5 +71,57 @@ describe('verifyMemoryRoundTrip', () => {
       marker: 'marker-2',
       fetchImpl,
     })).rejects.toThrow('did not cite remembered content content-1');
+  });
+});
+
+describe('verifyClientIntegrations', () => {
+  it('requires real recall tool evidence from Codex and Claude Code command output', async () => {
+    const runCommand = vi.fn(async (command: string) => ({
+      stdout: command === 'codex'
+        ? '{"type":"item.completed","item":{"type":"mcp_tool_call","server":"answer-engine","tool":"recall","result":"marker-unique content-1"}}\n'
+        : '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"mcp__answer-engine__recall"},{"type":"text","text":"marker-unique content-1"}]}}\n',
+      stderr: '',
+    }));
+
+    const results = await verifyClientIntegrations({
+      clients: ['codex', 'claude-code'], marker: 'marker-unique', contentId: 'content-1', runCommand,
+    });
+
+    expect(results).toEqual([
+      { client: 'codex', status: 'passed', detail: 'Verified a real recall tool call.' },
+      { client: 'claude-code', status: 'passed', detail: 'Verified a real recall tool call.' },
+    ]);
+    expect(runCommand.mock.calls[0]?.[0]).toBe('codex');
+    expect(runCommand.mock.calls[1]?.[0]).toBe('claude');
+  });
+
+  it('rejects a plausible answer without recall tool evidence', async () => {
+    await expect(verifyClientIntegrations({
+      clients: ['codex'], marker: 'marker-unique', contentId: 'content-1',
+      runCommand: async () => ({ stdout: 'marker-unique content-1', stderr: '' }),
+    })).rejects.toThrow(/did not show an Answer Engine recall tool call/i);
+  });
+
+  it('requires explicit guided confirmation for GUI-only supported clients', async () => {
+    await expect(verifyClientIntegrations({
+      clients: ['claude-desktop'], marker: 'marker-unique', contentId: 'content-1',
+    })).rejects.toThrow(/interactive verification is required/i);
+    const prompt = {
+      input: vi.fn(), secret: vi.fn(), select: vi.fn(), confirm: vi.fn(async () => true),
+    };
+    await expect(verifyClientIntegrations({
+      clients: ['claude-desktop'], marker: 'marker-unique', contentId: 'content-1', prompt,
+    })).resolves.toEqual([
+      { client: 'claude-desktop', status: 'passed', detail: 'User confirmed the guided recall challenge.' },
+    ]);
+  });
+
+  it('records honest unavailable explanations for remote-only surfaces', async () => {
+    const results = await verifyClientIntegrations({
+      clients: ['chatgpt-web', 'claude-cowork'], coworkMode: 'remote',
+      marker: 'marker-unique', contentId: 'content-1',
+    });
+    expect(results.every((result) => result.status === 'unavailable')).toBe(true);
+    expect(results.map((result) => result.detail).join(' ')).toMatch(/remote mcp|cannot reach localhost/i);
   });
 });

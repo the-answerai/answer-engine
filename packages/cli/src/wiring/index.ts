@@ -6,8 +6,8 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname } from 'node:path';
-import { mergeCodexToml } from './codex-toml.js';
-import { mergeJsonClientConfig } from './json-clients.js';
+import { mergeCodexToml, removeCodexToml } from './codex-toml.js';
+import { mergeJsonClientConfig, removeJsonClientConfig } from './json-clients.js';
 import { resolveClientConfigPath } from './paths.js';
 import type { WiringPathOptions } from './paths.js';
 import type { FileWiringInput, WiringResult } from './types.js';
@@ -21,6 +21,7 @@ export * from './types.js';
 
 export interface WireClientOptions extends WiringPathOptions {
   path?: string;
+  backup?: boolean;
 }
 
 function isMissingFile(error: unknown): boolean {
@@ -57,7 +58,7 @@ export function wireClient(input: FileWiringInput, options: WireClientOptions = 
     return { path, created: false };
   }
 
-  const backupPath = existing === undefined ? undefined : backupFile(path);
+  const backupPath = existing === undefined || options.backup === false ? undefined : backupFile(path);
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, merged, { encoding: 'utf8', mode: 0o600 });
   chmodSync(path, 0o600);
@@ -67,4 +68,23 @@ export function wireClient(input: FileWiringInput, options: WireClientOptions = 
     ...(backupPath ? { backupPath } : {}),
     created: existing === undefined,
   };
+}
+
+export function unwireClient(client: FileWiringInput['client'], options: WireClientOptions = {}): WiringResult {
+  const path = options.path ?? resolveClientConfigPath(client, options);
+  let existing: string;
+  try {
+    existing = readFileSync(path, 'utf8');
+  } catch (error) {
+    if (isMissingFile(error)) return { path, created: false };
+    throw error;
+  }
+  const updated = client === 'codex'
+    ? removeCodexToml(existing)
+    : removeJsonClientConfig(existing);
+  if (updated === existing) return { path, created: false };
+  const backupPath = options.backup === false ? undefined : backupFile(path);
+  writeFileSync(path, updated, { encoding: 'utf8', mode: 0o600 });
+  chmodSync(path, 0o600);
+  return { path, ...(backupPath ? { backupPath } : {}), created: false };
 }

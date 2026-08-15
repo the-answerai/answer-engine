@@ -16,6 +16,7 @@ import {
   parseRuntimeChannel,
   validateRuntimeChannelIsolation,
 } from './runtime-channel.js';
+import { removeManagedIntegrations } from './integrations.js';
 
 export function buildProgram(): Command {
   const manifest = JSON.parse(
@@ -25,11 +26,13 @@ export function buildProgram(): Command {
     .name('create-answer-engine')
     .description('Install and wire a local Answer Engine in one command')
     .version(manifest.version)
-    .argument('[action]', 'preflight, install, start, stop, status, repair, upgrade, rollback, or uninstall', 'install')
+    .argument('[action]', 'preflight, install, start, stop, status, repair, upgrade, rollback, uninstall, or remove-integrations', 'install')
     .option('--channel <channel>', 'runtime channel: stable or staging')
     .option('-y, --yes', 'run without interactive prompts')
     .option('--models <models>', 'LM Studio models: chat=<id>,embedding=<id>')
-    .option('--agents <agents>', 'agents to wire, comma-separated, or none')
+    .option('--clients <clients>', 'client surfaces to connect, comma-separated, or none')
+    .option('--agents <agents>', 'legacy alias for --clients')
+    .option('--cowork-mode <mode>', 'Cowork execution mode: local, remote, or unknown', 'unknown')
     .option('--home <directory>', 'installation directory (AE_HOME)')
     .option('--lm-studio-url <url>', 'LM Studio OpenAI-compatible base URL')
     .option('--llm-provider <provider>', 'cloud chat provider: anthropic or openai')
@@ -50,7 +53,7 @@ export async function run(argv: string[] = process.argv): Promise<void> {
   const program = buildProgram();
   program.parse(argv);
   const options = program.opts<InstallerOptions>();
-  const action = parseLifecycleAction(options.uninstall ? 'uninstall' : program.args[0]);
+  const requestedAction = options.uninstall ? 'uninstall' : program.args[0];
   if (options.uninstall && program.args[0] !== 'install' && program.args[0] !== 'uninstall') {
     throw new Error('--uninstall cannot be combined with another lifecycle action.');
   }
@@ -61,6 +64,14 @@ export async function run(argv: string[] = process.argv): Promise<void> {
   });
   const home = profile.home;
   await validateRuntimeChannelIsolation(channelProfiles(channel, home));
+
+  if (requestedAction === 'remove-integrations') {
+    if (channel !== 'stable') throw new Error('Staging has no global client integrations to remove.');
+    const result = await removeManagedIntegrations(home);
+    process.stdout.write(`Removed ${result.removed.length} managed integration entries; preserved ${result.preserved.length} client config files.\n`);
+    return;
+  }
+  const action = parseLifecycleAction(requestedAction);
 
   if (action === 'preflight') {
     const ownedPorts = await detectOwnedPorts(home, {}, profile);

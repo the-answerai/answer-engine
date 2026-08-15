@@ -75,3 +75,20 @@ export function mergeCodexToml(existing: string, input: WiringInput): string {
   parseTomlConfig(merged);
   return merged;
 }
+
+export function removeCodexToml(existing: string): string {
+  if (existing.length === 0) return existing;
+  parseTomlConfig(existing);
+  const answerSections = sectionsIn(existing).filter((section) => isAnswerEngineSection(section.name));
+  if (answerSections.length === 0) return existing;
+  let cursor = 0;
+  const chunks: string[] = [];
+  for (const section of answerSections) {
+    chunks.push(existing.slice(cursor, section.start));
+    cursor = section.end;
+  }
+  chunks.push(existing.slice(cursor));
+  const removed = chunks.join('').replace(/\n{3,}/g, '\n\n');
+  parseTomlConfig(removed);
+  return removed;
+}
