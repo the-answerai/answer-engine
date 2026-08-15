@@ -4,10 +4,11 @@ services:
   postgres:
     image: pgvector/pgvector:pg16
     environment:
-      POSTGRES_DB: answerengine
+      POSTGRES_DB: ${DATABASE_NAME}
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_HOST_AUTH_METHOD: trust
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+    ports:
+      - "127.0.0.1:${DATABASE_PORT_HOST}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -21,6 +22,8 @@ services:
     command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
+    ports:
+      - "127.0.0.1:${REDIS_PORT_HOST}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -55,7 +58,7 @@ services:
     command: ["node", "dist/server.js"]
     env_file: [.env.compose]
     ports:
-      - "127.0.0.1:5050:5000"
+      - "127.0.0.1:${ANSWER_ENGINE_PORT}:5000"
     volumes:
       - answerengine_blobs:/data
     extra_hosts:
@@ -78,5 +81,8 @@ services:
 
 volumes:
   postgres_data:
+    name: {{POSTGRES_VOLUME}}
   redis_data:
+    name: {{REDIS_VOLUME}}
   answerengine_blobs:
+    name: {{BLOBS_VOLUME}}

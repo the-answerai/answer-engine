@@ -35,6 +35,7 @@ export interface WebIdentity {
   readonly detail?: string;
   readonly workspaceLabel?: string;
   readonly shortLabel?: string;
+  readonly channel?: 'stable' | 'staging';
 }
 
 export interface WebIdentityExtension {
@@ -98,13 +99,14 @@ export const localIdentityExtension: WebIdentityExtension = {
   async bootstrap() {
     clearLegacyBrowserApiKey();
     await initializeLocalUiSession();
-    if (!await health()) throw new Error('The local API health check failed.');
+    const runtime = await health();
     return {
       subject: 'local-owner',
       label: 'LOCAL SESSION',
       detail: 'No login or API key required',
       workspaceLabel: 'LOCAL WORKSPACE',
       shortLabel: 'LOCAL',
+      channel: runtime.channel,
     };
   },
 };

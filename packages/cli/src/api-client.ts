@@ -195,7 +195,7 @@ export interface RetrieveResult { items: RetrieveResultItem[]; scope?: LibrarySc
 
 export interface SummarizeInput { prompt: string; libraryId?: string; librarySlug?: string; filter?: { contentTypes?: string[]; tags?: string[]; dateFrom?: string; dateTo?: string }; limit?: number; }
 export interface SummarizeResult { summary: string; sourceCount: number; prompt: string; scope?: LibraryScope; }
-export interface HealthResponse { status: string; uptime: number; }
+export interface HealthResponse { status: string; uptime: number; channel: 'stable' | 'staging'; }
 
 export type ImportItem = Record<string, unknown>;
 

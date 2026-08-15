@@ -12,6 +12,7 @@ import {
   searchMemories,
   updateSettings,
   rowsToCsv,
+  health,
 } from './api';
 
 describe('local API client', () => {
@@ -64,6 +65,18 @@ describe('local API client', () => {
     await initializeLocalUiSession();
 
     expect(fetchMock).toHaveBeenCalledWith('/local-ui/session', { credentials: 'same-origin' });
+  });
+
+  it('requires an explicit stable or staging identity from health', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response(JSON.stringify({
+      status: 'healthy', uptime: 1, channel: 'staging',
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    await expect(health()).resolves.toEqual({ status: 'healthy', uptime: 1, channel: 'staging' });
+
+    vi.mocked(globalThis.fetch).mockResolvedValueOnce(new Response(JSON.stringify({
+      status: 'healthy', uptime: 1,
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    await expect(health()).rejects.toThrow('invalid runtime channel identity');
   });
 
   it('normalizes query results from the agent envelope', async () => {

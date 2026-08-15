@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { afterEach, describe, expect, it } from 'vitest';
 import { scaffoldInstallation } from '../scaffold.js';
+import { createRuntimeChannelProfile } from '../runtime-channel.js';
 
 const tempDirs: string[] = [];
 
@@ -76,5 +77,25 @@ describe('scaffoldInstallation', () => {
     expect(env).toContain(`ENCRYPTION_SALT=${'b'.repeat(64)}`);
     expect(env).toContain('ANSWER_ENGINE_API_KEY=ae_live_once');
     expect(second.apiKey).toBe('ae_live_once');
+  });
+
+  it('renders staging-only ports, credentials, volumes, and disabled sync defaults', () => {
+    const home = tempHome();
+    const profile = createRuntimeChannelProfile('staging', { home });
+    const result = scaffoldInstallation({ home, config: { ...config, server: { ...config.server, port: 5150 } }, profile }, {
+      generateSecret: (name) => `${name}-staging-secret`,
+    });
+    const environment = readFileSync(result.envPath, 'utf8');
+    const compose = readFileSync(result.composePath, 'utf8');
+
+    expect(environment).toContain('AE_CHANNEL=staging');
+    expect(environment).toContain('AE_HISTORY_SYNC_ENABLED=false');
+    expect(environment).toContain('COMPOSE_PROJECT_NAME=answer-engine-staging');
+    expect(environment).toContain('DATABASE_NAME=answerengine_staging');
+    expect(environment).toContain('DATABASE_PASSWORD=database-staging-secret');
+    expect(compose).toContain('127.0.0.1:${ANSWER_ENGINE_PORT}:5000');
+    expect(compose).toContain('name: answer-engine-staging-postgres');
+    expect(compose).toContain('name: answer-engine-staging-redis');
+    expect(compose).toContain('name: answer-engine-staging-blobs');
   });
 });

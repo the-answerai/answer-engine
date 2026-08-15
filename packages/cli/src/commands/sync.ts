@@ -30,7 +30,9 @@ import {
   SUPPORTED_SYNC_SOURCES,
   type SourceType,
 } from '../sync/types.js';
-import { UserConfigError } from '../user-config.js';
+import { loadUserConfig, UserConfigError } from '../user-config.js';
+import { assertHistorySyncAllowed, HistorySyncPolicyError } from '../sync/channel-policy.js';
+import { resolveRuntimeChannel } from '../channel.js';
 
 const DEFAULT_SYNC_BATCH_SIZE = 25;
 const DEFAULT_POLL_INTERVAL_SECONDS = 15;
@@ -43,6 +45,7 @@ interface SyncCommandOptions {
   concurrency: string;
   pollInterval: string;
   cursorFile?: string;
+  confirmStagingHistorySync?: boolean;
 }
 
 class UserInputError extends Error {
@@ -50,6 +53,11 @@ class UserInputError extends Error {
     super(message);
     this.name = 'UserInputError';
   }
+}
+
+function assertCommandHistorySync(confirmed: boolean): void {
+  const policy = resolveRuntimeChannel() === 'staging' ? loadUserConfig().history_sync : undefined;
+  assertHistorySyncAllowed(policy, confirmed);
 }
 
 function collectPath(value: string, previous: string[] = []): string[] {
@@ -116,6 +124,7 @@ function resolveCommandSources(opts: SyncCommandOptions): ConfiguredSyncSource[]
 
 async function runOnceCommand(opts: SyncCommandOptions): Promise<void> {
   try {
+    assertCommandHistorySync(opts.confirmStagingHistorySync ?? false);
     const sources = resolveCommandSources(opts);
     const batchSize = parseBatchSize(opts.batchSize);
     const concurrency = parseConcurrency(opts.concurrency);
@@ -134,7 +143,7 @@ async function runOnceCommand(opts: SyncCommandOptions): Promise<void> {
     }
     if (failedItems > 0) process.exitCode = 1;
   } catch (error) {
-    if (error instanceof UserInputError || error instanceof UserConfigError) {
+    if (error instanceof UserInputError || error instanceof UserConfigError || error instanceof HistorySyncPolicyError) {
       printError(error.message);
       process.exit(1);
     }
@@ -144,6 +153,7 @@ async function runOnceCommand(opts: SyncCommandOptions): Promise<void> {
 
 async function runDaemonCommand(opts: SyncCommandOptions): Promise<void> {
   try {
+    assertCommandHistorySync(opts.confirmStagingHistorySync ?? false);
     const sources = resolveCommandSources(opts);
     const batchSize = parseBatchSize(opts.batchSize);
     const concurrency = parseConcurrency(opts.concurrency);
@@ -173,7 +183,7 @@ async function runDaemonCommand(opts: SyncCommandOptions): Promise<void> {
       onRun: printLoopSummary,
     });
   } catch (error) {
-    if (error instanceof UserInputError || error instanceof UserConfigError) {
+    if (error instanceof UserInputError || error instanceof UserConfigError || error instanceof HistorySyncPolicyError) {
       printError(error.message);
       process.exit(1);
     }
@@ -249,8 +259,9 @@ async function runStatusCommand(opts: Pick<SyncCommandOptions, 'cursorFile' | 's
   }
 }
 
-function runInstallServiceCommand(): void {
+function runInstallServiceCommand(opts: Pick<SyncCommandOptions, 'confirmStagingHistorySync'>): void {
   try {
+    assertCommandHistorySync(opts.confirmStagingHistorySync ?? false);
     const target = installService();
     printSuccess(`Installed Answer Engine sync service at ${target.unitPath}`);
     printJson({
@@ -261,7 +272,7 @@ function runInstallServiceCommand(): void {
       },
     });
   } catch (error) {
-    if (error instanceof ServicePlatformError || error instanceof ServiceCommandError) {
+    if (error instanceof ServicePlatformError || error instanceof ServiceCommandError || error instanceof UserConfigError || error instanceof HistorySyncPolicyError) {
       printError(error.message);
       process.exit(1);
     }
@@ -296,7 +307,8 @@ function addSyncOptions(command: Command, includePolling: boolean): Command {
     .option('--library <slug>', 'Library slug to attach imported items to')
     .option('--batch-size <n>', `Items per synchronous import request (max ${SYNC_IMPORT_MAX_BATCH_SIZE})`, String(DEFAULT_SYNC_BATCH_SIZE))
     .option('--concurrency <n>', `Concurrent history files to import (max ${SYNC_IMPORT_MAX_CONCURRENCY})`, String(DEFAULT_SYNC_CONCURRENCY))
-    .option('--cursor-file <path>', 'Cursor JSON file override');
+    .option('--cursor-file <path>', 'Cursor JSON file override')
+    .option('--confirm-staging-history-sync', 'Confirm access to real local history from staging');
   if (includePolling) {
     command.option('--poll-interval <seconds>', 'Seconds between daemon scans', String(DEFAULT_POLL_INTERVAL_SECONDS));
   }
@@ -325,7 +337,8 @@ export function registerSyncCommands(program: Command): void {
   sync
     .command('install-service')
     .description('Install and start the per-user sync background service')
-    .action(runInstallServiceCommand);
+    .option('--confirm-staging-history-sync', 'Confirm access to real local history from staging')
+    .action((opts: Pick<SyncCommandOptions, 'confirmStagingHistorySync'>) => runInstallServiceCommand(opts));
 
   sync
     .command('uninstall-service')

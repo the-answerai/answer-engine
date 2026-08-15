@@ -28,6 +28,10 @@ agent clients, and verifies remember, recall, and memory inspection. The bundled
 loopback web interface opens already connected through an HttpOnly local session;
 users do not copy the API key into the browser.
 
+Use `--channel staging --agents none` for the isolated development runtime at
+`~/.answer-engine-staging`. Staging cannot write global agent configuration and
+history sync is disabled by default.
+
 Generated client entries use exact package versions:
 
 - `@answer-engine/cli@1.1.0`
@@ -41,6 +45,8 @@ Compose namespace so legacy enterprise state is never adopted implicitly.
 ## Important options
 
 ```text
+install|start|stop|status|repair|upgrade|rollback|uninstall
+--channel <stable|staging>
 --home <directory>
 --agents <list-or-none>
 --models chat=<id>,embedding=<id>
@@ -48,17 +54,21 @@ Compose namespace so legacy enterprise state is never adopted implicitly.
 --llm-provider <anthropic|openai>
 --embedding-provider <openai>
 --api-key <existing-local-key>
+--image <pinned-reference>  # upgrade only
 --uninstall
 --purge
 ```
 
-The API listens on `127.0.0.1:5050`.
+Stable listens on API port 5050; staging listens on 5150. Lifecycle actions are
+channel-aware and destructive actions require the selected home's ownership
+marker. See `docs/local-runtime-channels.md` in the repository for the complete
+resource table, existing-install adoption, and rollback behavior.
 
 ## Uninstall
 
 ```bash
-npx @answer-engine/create@1.1.0 --uninstall
-npx @answer-engine/create@1.1.0 --uninstall --purge
+npx @answer-engine/create@1.1.0 uninstall --channel stable
+npx @answer-engine/create@1.1.0 uninstall --channel stable --purge
 ```
 
 Without `--purge`, local configuration and data remain in `AE_HOME`.

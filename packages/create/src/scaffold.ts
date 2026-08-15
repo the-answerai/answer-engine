@@ -13,6 +13,7 @@ import {
   type UserConfig,
 } from '@answer-engine/cli/scaffold';
 import type { ModelRuntime } from './models.js';
+import { createRuntimeChannelProfile, writeRuntimeOwnershipMarker, type RuntimeChannelProfile } from './runtime-channel.js';
 
 const templateDirectory = fileURLToPath(new URL('../templates/', import.meta.url));
 
@@ -20,6 +21,7 @@ export interface ScaffoldInput {
   home: string;
   config: UserConfig;
   runtime?: ModelRuntime;
+  profile?: RuntimeChannelProfile;
 }
 
 export interface ScaffoldResult {
@@ -31,7 +33,7 @@ export interface ScaffoldResult {
 }
 
 export interface ScaffoldDependencies {
-  generateSecret?: (name: 'key' | 'salt') => string;
+  generateSecret?: (name: 'key' | 'salt' | 'database') => string;
   templatesDir?: string;
 }
 
@@ -79,11 +81,26 @@ function replacements(
   encryptionKey: string,
   encryptionSalt: string,
   apiKey: string | undefined,
+  databasePassword: string,
+  profile: RuntimeChannelProfile,
 ): Record<string, string> {
   const localChat = config.models.chat_provider === 'lmstudio';
   const localEmbedding = config.models.embedding_provider === 'lmstudio';
   const openAiKey = config.connectors.openai_api_key;
   return {
+    COMPOSE_PROJECT: envValue(profile.composeProject),
+    CHANNEL: envValue(profile.channel),
+    API_PORT: String(profile.ports.api),
+    DATABASE_HOST_PORT: String(profile.ports.database),
+    REDIS_HOST_PORT: String(profile.ports.redis),
+    WEB_PORT: String(profile.ports.web),
+    MCP_PORT: String(profile.ports.mcp),
+    DATABASE_NAME: envValue(profile.databaseName),
+    DATABASE_PASSWORD: envValue(databasePassword),
+    POSTGRES_VOLUME: envValue(profile.volumes.postgres),
+    REDIS_VOLUME: envValue(profile.volumes.redis),
+    BLOBS_VOLUME: envValue(profile.volumes.blobs),
+    HISTORY_SYNC_ENABLED: String(profile.sync.enabledByDefault),
     CHAT_PROVIDER: envValue(config.models.chat_provider),
     CHAT_MODEL: envValue(config.models.chat),
     EMBEDDING_PROVIDER: envValue(config.models.embedding_provider),
@@ -131,6 +148,7 @@ export function scaffoldInstallation(
   dependencies: ScaffoldDependencies = {},
 ): ScaffoldResult {
   const config = UserConfigSchema.parse(input.config);
+  const profile = input.profile ?? createRuntimeChannelProfile('stable', { home: input.home });
   const templatesDir = dependencies.templatesDir ?? templateDirectory;
   const generateSecret = dependencies.generateSecret
     ?? (() => randomBytes(32).toString('hex'));
@@ -143,6 +161,8 @@ export function scaffoldInstallation(
   const encryptionSalt = readEnvValue(existingEnv, 'ENCRYPTION_SALT')
     ?? generateSecret('salt');
   const apiKey = readEnvValue(existingEnv, 'ANSWER_ENGINE_API_KEY');
+  const databasePassword = readEnvValue(existingEnv, 'DATABASE_PASSWORD')
+    ?? generateSecret('database');
 
   mkdirSync(join(input.home, 'data', 'postgres'), { recursive: true });
   mkdirSync(join(input.home, 'data', 'redis'), { recursive: true });
@@ -162,6 +182,8 @@ export function scaffoldInstallation(
         encryptionKey,
         encryptionSalt,
         apiKey,
+        databasePassword,
+        profile,
       ),
     ),
     'utf8',
@@ -174,10 +196,13 @@ export function scaffoldInstallation(
       encryptionKey,
       encryptionSalt,
       apiKey,
+      databasePassword,
+      profile,
     ),
   );
   writeFileSync(envPath, environment, { encoding: 'utf8', mode: 0o600 });
   chmodSync(envPath, 0o600);
+  writeRuntimeOwnershipMarker(profile);
 
   return {
     home: input.home,

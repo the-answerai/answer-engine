@@ -28,11 +28,12 @@ export async function selectAgents(
 export function wireAgents(
   clients: FileWiringClient[],
   apiKey: string,
+  serverUrl = 'http://127.0.0.1:5050',
 ): WiringResult[] {
   return clients.map((client) => wireClient({
     client,
     apiKey,
-    serverUrl: 'http://localhost:5050',
+    serverUrl,
     library: LOCAL_LIBRARY_ID,
   }));
 }

@@ -18,7 +18,7 @@ export function registerSystemCommands(program: Command): void {
 
       try {
         const health = await client.healthCheck();
-        printSuccess(`API is ${health.status} (uptime: ${Math.round(health.uptime)}s)`);
+        printSuccess(`${health.channel} API is ${health.status} (uptime: ${Math.round(health.uptime)}s)`);
       } catch {
         printError(`Cannot reach API at ${config.api_url}`);
         process.exit(2);

@@ -76,4 +76,17 @@ describe('runPreflight', () => {
 
     expect(result).toEqual({ ok: true, failures: [] });
   });
+
+  it('checks every selected channel port and reports all collisions', async () => {
+    const requiredPorts = [5150, 5533, 6480, 3300, 5151];
+    const result = await runPreflight({
+      nodeVersion: '22.16.0',
+      runCommand: successRunner,
+      requiredPorts,
+      probePort: vi.fn(() => Promise.resolve(false)),
+    });
+
+    expect(result.failures.filter((failure) => failure.code === 'PORT_IN_USE').map((failure) => failure.port))
+      .toEqual([...requiredPorts].sort((left, right) => left - right));
+  });
 });

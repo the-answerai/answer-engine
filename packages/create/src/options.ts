@@ -2,6 +2,9 @@ export type LlmProvider = 'anthropic' | 'openai';
 export type EmbeddingProvider = 'openai';
 
 export interface InstallerOptions {
+  channel?: string;
+  action?: string;
+  image?: string;
   yes?: boolean;
   models?: string;
   agents?: string;

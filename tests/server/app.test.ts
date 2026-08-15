@@ -15,6 +15,7 @@ describe('createApp local defaults', () => {
     const response = await request(createApp({ dependencies: { database, languageProvider } })).get('/health');
     expect(response.status).toBe(200);
     expect(response.body.status).toBe('healthy');
+    expect(response.body.channel).toBe(process.env.AE_CHANNEL ?? 'stable');
   });
 
   it('protects all v1 endpoints with local API-key authentication', async () => {

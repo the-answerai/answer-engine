@@ -14,6 +14,7 @@ import { registerConfigCommands } from './commands/config.js';
 import { registerEvalCommands } from './commands/eval.js';
 import { setOutputMode } from './output.js';
 import { getConfig } from './config.js';
+import { resolveRuntimeChannel } from './channel.js';
 
 const program = new Command();
 
@@ -22,8 +23,10 @@ program
   .description('Answer Engine CLI — local memory, search, import, sync, and evaluation')
   .version('1.1.0')
   .option('--json', 'Force JSON output')
+  .option('--channel <channel>', 'Runtime channel: stable or staging')
   .hook('preAction', (thisCommand) => {
-    const opts = thisCommand.opts() as { json?: boolean };
+    const opts = thisCommand.optsWithGlobals() as { json?: boolean; channel?: string };
+    process.env.AE_CHANNEL = resolveRuntimeChannel(opts.channel);
     if (opts.json) {
       setOutputMode('json');
     } else {
@@ -68,6 +71,8 @@ Examples:
   ae sync install-service                     Start sync now and automatically after login
   ae sync status                              Show service health and per-source cursors
   ae sync uninstall-service                   Stop and remove the background service
+  ae --channel staging sync once --confirm-staging-history-sync
+                                                Sync opted-in staging history explicitly
 
   ae config path                              Show the AE_HOME layout
   ae config validate                          Validate AE_HOME/config.yaml

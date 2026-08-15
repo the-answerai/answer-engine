@@ -26,6 +26,7 @@ Loop's `pnpm browser:prepare` host preflight. Do not substitute
 - `packages/cli/` — configuration, installation wiring, history import, and sync.
 - `packages/mcp-server/` — MCP tools and resources.
 - `packages/create/` — clean installer-managed setup.
+- `packages/create/src/runtime-channel.ts` — stable/staging resource contract and collision validation.
 - `packages/web-ui/` — complete single-user web application.
 - `.alpha-loop/templates/` — canonical harness skills, agents, and instructions.
 - `.alpha-loop/learnings/` — retained learnings for processed issues.

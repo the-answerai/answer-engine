@@ -12,6 +12,13 @@ function json(data: unknown, meta?: Record<string, unknown>, status = 200) {
   });
 }
 
+function healthResponse() {
+  return new Response(JSON.stringify({ status: 'healthy', uptime: 1, channel: 'stable' }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
 describe('primary local workflows', () => {
   beforeEach(() => { vi.restoreAllMocks(); });
   afterEach(cleanup);
@@ -21,7 +28,7 @@ describe('primary local workflows', () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const url = String(input);
       if (url === '/local-ui/session') return new Response(null, { status: 204 });
-      if (url === '/health') return new Response(null, { status: 200 });
+      if (url === '/health') return healthResponse();
       if (url === '/api/v1/tags') return json([]);
       if (url === '/api/v1/agent/ask' && init?.method === 'POST') return json({
         answer: 'The shell was restored [1].',
@@ -50,7 +57,7 @@ describe('primary local workflows', () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const url = String(input);
       if (url === '/local-ui/session') return new Response(null, { status: 204 });
-      if (url === '/health') return new Response(null, { status: 200 });
+      if (url === '/health') return healthResponse();
       if (url === '/api/v1/libraries') return json([]);
       if (url === '/api/v1/content/import/preview') return json({ format: 'json', rowCount: 1, sample: [{ title: 'Local decision', content: 'Preserve this.', contentType: 'document', source: 'local-ui' }], parseErrors: [] });
       if (url === '/api/v1/content/import' && init?.method === 'POST') return json({ completedItems: 1, failedItems: 0, items: [{ rowIndex: 0, id: contentId, contentType: 'document', sourceIdentifier: 'local-ui:test', title: 'Local decision' }], failures: [] }, undefined, 201);
@@ -73,7 +80,7 @@ describe('primary local workflows', () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const url = String(input);
       if (url === '/local-ui/session') return new Response(null, { status: 204 });
-      if (url === '/health') return new Response(null, { status: 200 });
+      if (url === '/health') return healthResponse();
       if (url === '/api/v1/libraries') return json([]);
       if (url === '/api/v1/content/import/preview') return json({
         format: 'json', rowCount: 1,
@@ -105,7 +112,7 @@ describe('primary local workflows', () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input);
       if (url === '/local-ui/session') return new Response(null, { status: 204 });
-      if (url === '/health') return new Response(null, { status: 200 });
+      if (url === '/health') return healthResponse();
       if (url === '/api/v1/tags') return json([{
         id: '22222222-2222-4222-8222-222222222222',
         slug: 'shipping',
@@ -146,7 +153,7 @@ describe('primary local workflows', () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const url = String(input);
       if (url === '/local-ui/session') return new Response(null, { status: 204 });
-      if (url === '/health') return new Response(null, { status: 200 });
+      if (url === '/health') return healthResponse();
       if (url === '/api/v1/tags' || url === '/api/v1/libraries') return json([]);
       if (url.startsWith('/api/v1/content?')) return json([{
         id: contentId,
