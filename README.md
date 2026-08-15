@@ -88,6 +88,17 @@ For an agent-led installation, use [INSTALL_AGENT.md](./INSTALL_AGENT.md). The
 installer is idempotent and keeps its editable configuration under `AE_HOME`
 (default `~/.answer-engine`).
 
+Background history sync stores immutable, content-addressed source evidence
+under `AE_HOME/raw-archive`. It reuses identical bundles and fails closed before
+crossing its default 256 MiB per-bundle limit, 10 GiB total limit, or 10 GiB
+free-space reserve. The byte ceilings can be overridden with
+`AE_RAW_ARCHIVE_MAX_BUNDLE_BYTES`, `AE_RAW_ARCHIVE_MAX_TOTAL_BYTES`, and
+`AE_RAW_ARCHIVE_MIN_FREE_BYTES`. Cowork only archives supported text artifacts
+explicitly listed in session metadata; it does not recursively copy a workspace.
+Use `ae sync archive plan` for a tenant-aware, non-destructive retention preview.
+Pruning requires a stopped sync service and the exact confirmation token emitted
+by an unchanged plan.
+
 ## API
 
 CLI, MCP, and direct requests to `/api/v1/*` require the local key in either

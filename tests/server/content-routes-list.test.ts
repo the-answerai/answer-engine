@@ -76,4 +76,18 @@ describe('content workspace list route', () => {
     expect(response.body.error.code).toBe('VALIDATION_ERROR');
     expect(list).not.toHaveBeenCalled();
   });
+
+  it('returns referenced raw archive manifests only to a read-capable caller', async () => {
+    const rawArchiveReferences = vi.fn().mockResolvedValue(['/archive/manifest.json']);
+
+    const allowed = await request(routeApp({ rawArchiveReferences }, ['read']))
+      .get('/api/v1/content/raw-archive-references');
+    const denied = await request(routeApp({ rawArchiveReferences }, ['write']))
+      .get('/api/v1/content/raw-archive-references');
+
+    expect(allowed.status).toBe(200);
+    expect(allowed.body.data).toEqual({ manifestPaths: ['/archive/manifest.json'] });
+    expect(denied.status).toBe(403);
+    expect(rawArchiveReferences).toHaveBeenCalledTimes(1);
+  });
 });
