@@ -2,38 +2,26 @@
 
 ## Architecture
 
-The repository is a pnpm TypeScript workspace. The root Express server exports
-the composable application, PostgreSQL/pgvector owns durable state, and Redis
-supports background work. `packages/cli` owns the CLI entry point, installation,
-configuration, history discovery/import, and sync; `packages/mcp-server` exposes
-agent tools; `packages/create` owns installer-managed setup; and
-`packages/web-ui` is the complete single-user React application. Database
-changes are tracked in `database/migrations`.
+- The root strict-TypeScript Express server owns composable memory, retrieval, context, evaluation, and public application APIs; PostgreSQL/pgvector owns durable state and Redis supports background work.
+- `database/migrations/` owns tracked schema changes. Local services default to API `5050`, web `3200`, PostgreSQL `5433`, and Redis `6380`, with Docker Compose managing database services.
+- `packages/cli` owns the CLI entry point, configuration, history discovery/import, sync, and agent wiring; `packages/mcp-server/` exposes MCP tools; `packages/create/` owns installer setup; `packages/web-ui/` is the React application.
+- The OSS core contains every non-paid single-user capability and neutral enterprise extension interface. Roles, RBAC, teams, billing, and permissions belong only in `answer-engine-enterprise`.
 
 ## Conventions
 
-Use strict TypeScript and Zod at runtime boundaries. Scope persistence by
-`tenant_id`, parameterize SQL, preserve unknown source metadata, and use
-structured logging. Every change starts from a GitHub issue, uses the branch and
-commit forms in `AGENTS.md`, targets `master` through a PR, and is verified with
-`pnpm verify`. UI work additionally requires the pinned `pnpm browser:ui`
-workflow at desktop and 375px.
+- Prefer established utilities and narrow, strictly typed changes. Do not use `any`; validate runtime input with Zod and use structured logging instead of `console.log`.
+- Parameterize SQL, scope every persistence operation by `tenant_id`, preserve unknown history/source metadata, and record transcript origin in metadata rather than `content_type`.
+- Use pnpm. The complete repository gate is `pnpm verify`; UI changes additionally require the pinned `pnpm browser:ui` flow at desktop and 375px after `pnpm browser:prepare`.
+- Keep local/no-op defaults. Remote model providers and history sync are explicit opt-ins, and staging worktrees must use isolated homes, projects, ports, credentials, logs, and archives.
 
 ## Critical Rules
 
-The complete non-paid single-user application belongs in OSS. Only roles,
-RBAC, teams, billing, and permissions are private. Do not push `master`, publish
-npm packages, expose secrets, weaken local/no-login defaults, or create a second
-Alpha Loop runner. Stop on a wrong/skipped issue, auth or service failure,
-conflict, missing dependency, repeated verification failure, or missing learning
-file. Do not load, invoke, update, generate, or depend on Graphify skills or
-artifacts.
+- Follow `AGENTS.md`: every change has an issue and plan comment, uses the prescribed branch/commit form, and reaches `master` only through a pull request.
+- Never expose secrets, publish npm, run duplicate Alpha Loops, omit a processed issue learning file, or allow staging automation to touch stable memory or services.
+- Database changes require tracked migrations and clean-database verification. Do not freeze clocks around wall-time validation or use fixed sleeps in browser tests.
+- Do not load, invoke, update, generate, or depend on Graphify skills or artifacts.
 
 ## Active State
 
-Epic #6 children #7 through #11 are merged. Enterprise #964 is merged and
-composes the reviewed OSS core through the five private capability families.
-Issue #12 is the final ready and unchecked ordered child; its acceptance run
-must prove the clean installer, real-history integrity and retrieval, background
-sync/local models, all product workflows, desktop/mobile UI, both repository
-verifiers, and the epic verify-only gate.
+- Epic #40 is the active ordered Alpha Loop run. Its nine ready children are processed serially as #41 through #49 with batch size 1.
+- PR #52 added a fail-closed worktree bootstrap so the run receives isolated staging resources before any worker command executes.
