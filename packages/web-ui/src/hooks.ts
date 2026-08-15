@@ -8,6 +8,7 @@ import {
   createBatchJob,
   createDashboard,
   createLibrary,
+  createOrganizationProposal,
   createRecipe,
   createReport,
   createTag,
@@ -40,6 +41,7 @@ import {
   listBlobs,
   listContent,
   listLibraries,
+  listOrganizationPlans,
   listDashboards,
   listLibraryMembers,
   listGeneratedReports,
@@ -64,8 +66,10 @@ import {
   updateSettings,
   updateAccessToken,
   updateTag,
+  applyOrganizationPlan,
+  undoOrganizationPlan,
 } from './api';
-import type { BatchJob, ContentFilters, Dashboard, FirstImportSourceId, ImportItem, LibraryFilter, LocalSettings, RecipeInput, ReportInput, Tag } from './types';
+import type { BatchJob, ContentFilters, Dashboard, FirstImportSourceId, ImportItem, LibraryFilter, LocalSettings, OrganizationDecision, RecipeInput, ReportInput, Tag } from './types';
 
 const isActive = (status?: string) => status === 'queued' || status === 'running';
 
@@ -195,6 +199,32 @@ export function useSetLibraryMembership() {
     (input: { libraryId: string; contentId: string; mode: 'include' | 'exclude'; active: boolean }) =>
       setLibraryMembership(input.libraryId, input.contentId, input.mode, input.active),
     [['libraries'], ['content']],
+  );
+}
+
+export function useOrganizationPlans() {
+  return useQuery({ queryKey: ['organization-plans'], queryFn: listOrganizationPlans });
+}
+
+export function useCreateOrganizationProposal() {
+  return useInvalidatingMutation(
+    createOrganizationProposal,
+    [['organization-plans']],
+  );
+}
+
+export function useApplyOrganizationPlan() {
+  return useInvalidatingMutation(
+    ({ planId, decisions }: { planId: string; decisions: OrganizationDecision[] }) =>
+      applyOrganizationPlan(planId, decisions),
+    [['organization-plans'], ['tags'], ['libraries'], ['content']],
+  );
+}
+
+export function useUndoOrganizationPlan() {
+  return useInvalidatingMutation(
+    (planId: string) => undoOrganizationPlan(planId),
+    [['organization-plans'], ['tags'], ['libraries'], ['content']],
   );
 }
 

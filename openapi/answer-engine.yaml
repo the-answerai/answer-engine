@@ -428,6 +428,65 @@ paths:
         '200': { $ref: '#/components/responses/Success' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/organization-plans:
+    get:
+      tags: [Organization]
+      summary: List recent organization proposals
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Organization]
+      summary: Create a non-mutating organization proposal
+      description: Samples bounded titles, summaries, source metadata, and existing taxonomy. Full content and raw archives are never sent to the proposal model.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrganizationProposalRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/organization-plans/{planId}:
+    parameters:
+      - { $ref: '#/components/parameters/PlanId' }
+    get:
+      tags: [Organization]
+      summary: Inspect an organization proposal and its decisions
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/organization-plans/{planId}/apply:
+    parameters:
+      - { $ref: '#/components/parameters/PlanId' }
+    post:
+      tags: [Organization]
+      summary: Apply individually reviewed organization suggestions
+      description: Requires an accept or reject decision for every suggestion and refuses a stale source snapshot.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrganizationApplyRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/organization-plans/{planId}/undo:
+    parameters:
+      - { $ref: '#/components/parameters/PlanId' }
+    post:
+      tags: [Organization]
+      summary: Undo changes introduced by an applied organization plan
+      description: Restores taxonomy and memberships without deleting imported content.
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /api/v1/tags:
     get:
       tags: [Organization]
@@ -1010,6 +1069,11 @@ components:
       name: blobId
       required: true
       schema: { type: string, format: uuid }
+    PlanId:
+      in: path
+      name: planId
+      required: true
+      schema: { type: string, format: uuid }
     FirstImportSessionId:
       in: path
       name: sessionId
@@ -1189,6 +1253,28 @@ components:
           type: array
           items: { type: string }
           uniqueItems: true
+    OrganizationProposalRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        useModel: { type: boolean, default: false }
+        limit: { type: integer, minimum: 1, maximum: 50, default: 50 }
+    OrganizationDecision:
+      type: object
+      additionalProperties: false
+      required: [suggestionId, decision]
+      properties:
+        suggestionId: { type: string, pattern: '^s-[a-f0-9]{16}$' }
+        decision: { enum: [accept, reject] }
+    OrganizationApplyRequest:
+      type: object
+      additionalProperties: false
+      required: [decisions]
+      properties:
+        decisions:
+          type: array
+          maxItems: 30
+          items: { $ref: '#/components/schemas/OrganizationDecision' }
     TagInput:
       type: object
       additionalProperties: false

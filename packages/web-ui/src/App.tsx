@@ -16,6 +16,7 @@ import { BatchJobsPage } from './pages/BatchJobsPage';
 import { ContentPage } from './pages/ContentPage';
 import { ImportPage } from './pages/ImportPage';
 import { LibrariesPage, LibraryPage } from './pages/LibrariesPage';
+import { OrganizePage } from './pages/OrganizePage';
 import { SettingsPage } from './pages/SettingsPage';
 import { TagsPage } from './pages/TagsPage';
 
@@ -95,6 +96,7 @@ function coreRouteElement(surface: CoreSurfaceManifest, visible: VisibleWebCompo
     case 'import': return <ImportPage />;
     case 'tags': return <TagsPage />;
     case 'libraries': return <LibrariesPage />;
+    case 'organize': return <OrganizePage />;
     case 'library-answers': return <AnswersPage />;
     case 'library-members':
     case 'library-overview':

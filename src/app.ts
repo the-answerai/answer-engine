@@ -14,11 +14,13 @@ import { createApplicationRoutes } from './routes/application-routes.js';
 import { createContentRoutes } from './routes/content-routes.js';
 import { createFirstImportRoutes } from './routes/first-import-routes.js';
 import { createFolderIngestionRoutes } from './routes/folder-ingestion-routes.js';
+import { createOrganizationRoutes } from './routes/organization-routes.js';
 import { OpenAiCompatibleProvider } from './services/ai/openai-compatible.js';
 import { ApplicationService } from './services/application/application-service.js';
 import { ContentService } from './services/content/content-service.js';
 import { FirstImportService } from './services/first-import/first-import-service.js';
 import { FolderIngestionService } from './services/folder-ingestion/folder-ingestion-service.js';
+import { OrganizationService } from './services/organization/organization-service.js';
 import { LocalBlobStorage } from './services/storage/local-blob-storage.js';
 import { logger } from './utils/logger.js';
 import {
@@ -49,6 +51,7 @@ export function createApp<TConfig = Record<string, never>>(options: CreateAppOpt
   const service = new ContentService(database, language);
   const firstImportService = new FirstImportService(database);
   const folderIngestionService = new FolderIngestionService(database);
+  const organizationService = new OrganizationService(database, language);
   const applicationService = new ApplicationService(
     database,
     language,
@@ -100,6 +103,7 @@ export function createApp<TConfig = Record<string, never>>(options: CreateAppOpt
       audit: '/api/v1/audit',
       firstImports: '/api/v1/first-imports',
       folderSources: '/api/v1/folder-sources',
+      organizationPlans: '/api/v1/organization-plans',
       settings: '/api/v1/settings',
       ...(extensions?.endpointMetadata ?? {}),
     },
@@ -112,6 +116,7 @@ export function createApp<TConfig = Record<string, never>>(options: CreateAppOpt
   app.use('/api/v1/content', createContentRoutes(service));
   app.use('/api/v1/first-imports', createFirstImportRoutes(firstImportService));
   app.use('/api/v1/folder-sources', createFolderIngestionRoutes(folderIngestionService));
+  app.use('/api/v1/organization-plans', createOrganizationRoutes(organizationService));
   app.use('/api/v1/agent', createAgentRoutes(service));
 
   if (env.WEB_UI_DIR) {

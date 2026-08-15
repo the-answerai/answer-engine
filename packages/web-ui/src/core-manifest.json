@@ -5,6 +5,7 @@
     "imports",
     "tags",
     "libraries",
+    "organization",
     "answers",
     "recipes",
     "artifacts",
@@ -21,6 +22,7 @@
     { "id": "import", "path": "/import", "capabilityId": "imports", "kind": "route" },
     { "id": "tags", "path": "/tags", "capabilityId": "tags", "kind": "route" },
     { "id": "libraries", "path": "/libraries", "capabilityId": "libraries", "kind": "route" },
+    { "id": "organize", "path": "/organize", "capabilityId": "organization", "kind": "route" },
     { "id": "library-members", "path": "/libraries/:libraryId", "capabilityId": "libraries", "kind": "route" },
     { "id": "library-overview", "path": "/libraries/:libraryId/overview", "capabilityId": "libraries", "kind": "route" },
     { "id": "library-answers", "path": "/libraries/:libraryId/answers", "capabilityId": "answers", "kind": "route" },
@@ -39,8 +41,9 @@
     { "id": "import", "to": "/import", "label": "Import", "mark": "02" },
     { "id": "tags", "to": "/tags", "label": "Tags", "mark": "03" },
     { "id": "libraries", "to": "/libraries", "label": "Libraries", "mark": "04" },
-    { "id": "answers", "to": "/answers", "label": "Answers", "mark": "05" },
-    { "id": "batch-jobs", "to": "/batch-jobs", "label": "Batch Jobs", "mark": "06" },
-    { "id": "settings", "to": "/settings", "label": "Settings", "mark": "07" }
+    { "id": "organize", "to": "/organize", "label": "Organize", "mark": "05" },
+    { "id": "answers", "to": "/answers", "label": "Answers", "mark": "06" },
+    { "id": "batch-jobs", "to": "/batch-jobs", "label": "Batch Jobs", "mark": "07" },
+    { "id": "settings", "to": "/settings", "label": "Settings", "mark": "08" }
   ]
 }
