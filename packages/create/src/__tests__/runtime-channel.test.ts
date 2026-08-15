@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   createRuntimeChannelProfile,
   validateRuntimeChannelIsolation,
+  writeRuntimeOwnershipMarker,
   type RuntimeChannelProfile,
 } from '../runtime-channel.js';
 
@@ -85,6 +86,19 @@ describe('runtime channel profiles', () => {
     symlinkSync(join(root, 'missing-target'), staging.home);
     await expect(validateRuntimeChannelIsolation([stable, staging]))
       .rejects.toThrow(/unresolved symbolic-link runtime path/i);
+  });
+
+  it('refuses to overwrite a symbolic-link ownership marker', () => {
+    const root = tempRoot();
+    const [stable] = profiles(root);
+    mkdirSync(stable.home, { recursive: true });
+    writeFileSync(join(stable.home, 'docker-compose.yml'), 'services: {}\n');
+    const target = join(root, 'unrelated.json');
+    writeFileSync(target, 'preserve me\n');
+    symlinkSync(target, stable.markerFile);
+
+    expect(() => writeRuntimeOwnershipMarker(stable)).toThrow(/symbolic link/i);
+    expect(readFileSync(target, 'utf8')).toBe('preserve me\n');
   });
 
   it('rejects matching credential fingerprints without exposing their values', async () => {

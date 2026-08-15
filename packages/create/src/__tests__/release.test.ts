@@ -39,6 +39,23 @@ describe('release manifest verification', () => {
     })).toThrow(/digest-pinned/i);
   });
 
+  it('requires the official tagged prompt and checksum coverage for every bundled template', () => {
+    const manifest = loadReleaseManifest();
+
+    expect(() => verifyReleaseManifest({
+      ...manifest,
+      promptUrl: `https://example.com/${manifest.tag}/INSTALL_AGENT.md`,
+    })).toThrow(/official tagged release/i);
+    expect(() => verifyReleaseManifest({
+      ...manifest,
+      artifacts: manifest.artifacts.filter((artifact) => artifact.path !== 'env.compose.tmpl'),
+    })).toThrow(/exactly cover/i);
+    expect(() => verifyReleaseManifest({
+      ...manifest,
+      artifacts: [...manifest.artifacts, manifest.artifacts[0]!],
+    })).toThrow(/exactly cover/i);
+  });
+
   it('rejects a tampered template before installation', () => {
     const fixture = mkdtempSync(join(tmpdir(), 'ae-release-'));
     tempDirs.push(fixture);

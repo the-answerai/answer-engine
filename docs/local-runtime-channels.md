@@ -19,7 +19,11 @@ database, or sync-policy drift in `.env.compose` before invoking Docker.
 | History sync default | enabled | disabled |
 
 Homes contain independent credentials, data, blobs, raw archives, logs, cursor
-state, and release state. Named PostgreSQL, Redis, and blob volumes are also
+state, install-completion state, and release state. The installer writes
+`.install-complete.json` only after agent wiring and the final memory round trip
+succeed. A healthy retry is a no-op only when that checkpoint still matches the
+selected home, channel, release, and ownership marker; otherwise it resumes the
+unfinished stages. Named PostgreSQL, Redis, and blob volumes are also
 channel-specific. `/health` and installer status always report the channel.
 
 ## Lifecycle

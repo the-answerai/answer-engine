@@ -9,7 +9,12 @@ import { formatPreflightReport } from './preflight.js';
 import { createPrompt } from './prompt.js';
 import type { Prompt } from './prompt.js';
 import { recommendModelProfile, requireInstallConsent } from './interview.js';
-import { verifyBundledRelease } from './release.js';
+import { loadReleaseManifest, verifyBundledRelease } from './release.js';
+import {
+  clearInstallationCompletion,
+  installationIsComplete,
+  writeInstallationCompletion,
+} from './install-state.js';
 import { runLifecycleAction } from './lifecycle.js';
 import { scaffoldInstallation } from './scaffold.js';
 import { readEnvValue } from './scaffold.js';
@@ -36,10 +41,13 @@ export interface InstallDependencies {
   runLifecycleAction?: typeof runLifecycleAction;
   resolveModelSetup?: typeof resolveModelSetup;
   selectAgents?: typeof selectAgents;
+  startStack?: typeof startStack;
+  activateApiKey?: typeof activateApiKey;
+  wireAgents?: typeof wireAgents;
+  verifyMemoryRoundTrip?: typeof verifyMemoryRoundTrip;
 }
 
-export const INSTALL_AGENT_URL =
-  'https://raw.githubusercontent.com/the-answerai/answer-engine/v1.1.0/INSTALL_AGENT.md';
+export const INSTALL_AGENT_URL = loadReleaseManifest().promptUrl;
 
 export function writeInstallAgentGuidance(output: InstallOutput): void {
   output.write(`Agent-guided configuration: ${INSTALL_AGENT_URL}`);
@@ -107,7 +115,7 @@ export async function install(
 
   if (preflight.installation === 'managed') {
     const status = await (dependencies.runLifecycleAction ?? runLifecycleAction)('status', profile);
-    if (status?.healthy) {
+    if (status?.healthy && installationIsComplete(profile, release.tag)) {
       output.write(chalk.green(`Answer Engine is already healthy at ${profile.apiUrl}; no changes were made.`));
       writeInstallAgentGuidance(output);
       return;
@@ -118,6 +126,7 @@ export async function install(
   const modelSetup = await (dependencies.resolveModelSetup ?? resolveModelSetup)(options, { prompt });
   const agents = channel === 'staging' ? [] : await (dependencies.selectAgents ?? selectAgents)(options, prompt);
   if (prompt) await requireInstallConsent(prompt, { home, profile: recommendation.id, agents });
+  clearInstallationCompletion(profile);
   process.env.AE_HOME = home;
   process.env.AE_CHANNEL = channel;
   if (modelSetup.config.models.chat_provider === 'lmstudio') {
@@ -147,7 +156,7 @@ export async function install(
     : `  Configuration: ${scaffold.configPath} (${scaffold.changes.join(', ')} updated).`));
 
   output.write(chalk.cyan('4/6 Start'));
-  const loggedKey = await startStack(home, {}, profile);
+  const loggedKey = await (dependencies.startStack ?? startStack)(home, {}, profile);
   const providedKey = options.apiKey?.trim();
   const apiKey = providedKey || scaffold.apiKey || loggedKey;
   if (!apiKey) {
@@ -156,17 +165,24 @@ export async function install(
       + 'Pass --api-key <key>, or run --uninstall --purge and install again.',
     );
   }
-  if (!scaffold.apiKey) await activateApiKey(home, scaffold.envPath, apiKey, {}, profile);
+  if (!scaffold.apiKey) {
+    await (dependencies.activateApiKey ?? activateApiKey)(home, scaffold.envPath, apiKey, {}, profile);
+  }
   output.write(chalk.green(`  ${channel} Answer Engine is healthy at ${profile.apiUrl}.`));
 
   output.write(chalk.cyan('5/6 Wire agents'));
-  const wiring = wireAgents(agents, apiKey, profile.apiUrl);
+  const wiring = (dependencies.wireAgents ?? wireAgents)(agents, apiKey, profile.apiUrl);
   if (wiring.length === 0) output.write('  No agent configs selected.');
   for (const result of wiring) output.write(chalk.green(`  Wired ${result.path}`));
 
   output.write(chalk.cyan('6/6 Verify'));
-  const contentId = await verifyMemoryRoundTrip({ apiKey, apiUrl: profile.apiUrl });
+  const contentId = await (dependencies.verifyMemoryRoundTrip ?? verifyMemoryRoundTrip)({
+    apiKey,
+    apiUrl: profile.apiUrl,
+  });
   output.write(chalk.green(`  remember → recall → inspect_memory passed (${contentId}).`));
+
+  writeInstallationCompletion(profile, release.tag);
 
   output.write(chalk.bold.green('Answer Engine is ready.'));
   output.write(`Config: ${scaffold.configPath}`);

@@ -116,7 +116,7 @@ function availableDiskBytes(path: string): number {
 function detectPlatform(platform: NodeJS.Platform, osRelease: string): PreflightResult['system']['platform'] {
   if (platform === 'darwin') return 'macos';
   if (platform === 'win32') return 'windows-native';
-  if (platform === 'linux' && /microsoft|wsl/i.test(osRelease)) return 'windows-wsl2';
+  if (platform === 'linux' && /microsoft-standard|wsl2/i.test(osRelease)) return 'windows-wsl2';
   if (platform === 'linux') return 'linux';
   return 'other';
 }

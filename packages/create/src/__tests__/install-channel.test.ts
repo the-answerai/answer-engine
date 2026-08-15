@@ -2,8 +2,11 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { persistApiKey } from '../docker.js';
 import { install } from '../install.js';
+import type { InstallDependencies } from '../install.js';
 import { runPreflight } from '../preflight.js';
+import { createRuntimeChannelProfile } from '../runtime-channel.js';
 
 const tempDirs: string[] = [];
 
@@ -70,5 +73,72 @@ describe('stable channel adoption', () => {
     })).rejects.toThrow('cancelled before any changes');
 
     expect(readdirSync(home)).toEqual([]);
+  });
+
+  it('resumes final verification after a healthy partial run, then makes completed retries no-ops', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'ae-resume-'));
+    tempDirs.push(home);
+    const profile = createRuntimeChannelProfile('stable', { home });
+    let installation: 'absent' | 'managed' = 'absent';
+    const verifyMemoryRoundTrip = vi.fn()
+      .mockRejectedValueOnce(new Error('simulated verification failure'))
+      .mockResolvedValue('content-verified');
+    const wireAgents = vi.fn(() => []);
+    const startStack = vi.fn(async () => 'ae_live_resume_test_key_1234567890');
+    const activateApiKey = vi.fn(async (_home: string, envPath: string, apiKey: string) => {
+      persistApiKey(envPath, apiKey);
+      installation = 'managed';
+    });
+    const modelSetup = {
+      config: {
+        models: {
+          chat: 'gpt-test', embedding: 'text-embedding-3-small', chat_provider: 'openai' as const,
+          embedding_provider: 'openai' as const, embedding_dimension: 1536,
+        },
+        sources: [], connectors: { openai_api_key: 'test-provider-key' },
+        server: { port: 5050, bind: '127.0.0.1' },
+      },
+      runtime: {},
+    };
+    const dependencies: InstallDependencies = {
+      detectOwnedPorts: async () => new Set<number>(),
+      runPreflight: () => runPreflight({
+        platform: 'darwin', architecture: 'arm64', totalMemoryBytes: 16 * 1024 ** 3,
+        freeDiskBytes: 60 * 1024 ** 3, nodeVersion: '22.16.0', installation,
+        modelRuntimeAvailable: true, runCommand: async () => ({ stdout: '' }),
+        probePort: async () => true,
+      }),
+      runLifecycleAction: async () => ({
+        channel: profile.channel, home, composeProject: profile.composeProject, apiUrl: profile.apiUrl,
+        ports: profile.ports, installed: true, healthy: true, runningServices: ['api', 'postgres', 'redis'],
+        syncService: {
+          launchdLabel: profile.sync.launchdLabel,
+          systemdUnit: profile.sync.systemdUnit,
+          enabledByDefault: profile.sync.enabledByDefault,
+          historyAccessEnabled: true,
+          installed: false,
+        },
+      }),
+      resolveModelSetup: async () => modelSetup,
+      selectAgents: async () => [],
+      startStack,
+      activateApiKey,
+      wireAgents,
+      verifyMemoryRoundTrip,
+    };
+
+    await expect(install({ channel: 'stable', home, yes: true }, { write: vi.fn() }, dependencies))
+      .rejects.toThrow('simulated verification failure');
+    await expect(install({ channel: 'stable', home, yes: true }, { write: vi.fn() }, dependencies))
+      .resolves.toBeUndefined();
+
+    expect(verifyMemoryRoundTrip).toHaveBeenCalledTimes(2);
+    expect(wireAgents).toHaveBeenCalledTimes(2);
+    expect(existsSync(join(home, '.install-complete.json'))).toBe(true);
+
+    await expect(install({ channel: 'stable', home, yes: true }, { write: vi.fn() }, dependencies))
+      .resolves.toBeUndefined();
+    expect(verifyMemoryRoundTrip).toHaveBeenCalledTimes(2);
+    expect(wireAgents).toHaveBeenCalledTimes(2);
   });
 });

@@ -58,7 +58,9 @@ The installer writes configuration beneath `~/.answer-engine`, starts the
 local Compose stack, waits for health, captures the local API key, wires selected
 agent clients, and verifies remember, recall, and memory inspection. The bundled
 loopback web interface opens already connected through an HttpOnly local session;
-users do not copy the API key into the browser.
+users do not copy the API key into the browser. The completion checkpoint is
+written only after all six stages pass, so a retry resumes failed wiring or
+verification instead of mistaking a healthy container for a completed install.
 
 Use `--channel staging --agents none` for the isolated development runtime at
 `~/.answer-engine-staging`. Staging cannot write global agent configuration and

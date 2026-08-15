@@ -118,7 +118,9 @@ npx @answer-engine/create@1.1.0
 
 For an agent-led installation, use [INSTALL_AGENT.md](./INSTALL_AGENT.md). The
 installer is idempotent and keeps its editable configuration under `AE_HOME`
-(default `~/.answer-engine`).
+(default `~/.answer-engine`). It records completion only after agent wiring and
+the final memory round trip pass, allowing interrupted healthy installs to
+resume instead of being reported as complete.
 
 Installer and CLI operations accept explicit `stable` and `staging` channels.
 Their homes, credentials, ports, Compose projects, volumes, logs, archives, and

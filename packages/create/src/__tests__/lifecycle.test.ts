@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -75,7 +75,7 @@ describe('channel lifecycle actions', () => {
     const environment = readFileSync(profile.credentialsFile, 'utf8')
       .replace(new RegExp(`^${key}=.*$`, 'm'), `${key}=${replacement}`);
     writeFileSync(profile.credentialsFile, environment);
-    const runCommand = vi.fn(async () => ({ stdout: '' }));
+    const runCommand = vi.fn(async (_command: string, _args: string[]) => ({ stdout: '' }));
 
     await expect(runLifecycleAction('status', profile, {}, { runCommand }))
       .rejects.toThrow(new RegExp(`Runtime (channel|${key})`, 'i'));
@@ -85,7 +85,7 @@ describe('channel lifecycle actions', () => {
   it('refuses a changed Compose definition before Docker runs', async () => {
     const profile = fixture();
     writeFileSync(join(profile.home, 'docker-compose.yml'), 'services:\n  api: {}\n');
-    const runCommand = vi.fn(async () => ({ stdout: '' }));
+    const runCommand = vi.fn(async (_command: string, _args: string[]) => ({ stdout: '' }));
 
     await expect(runLifecycleAction('stop', profile, {}, { runCommand }))
       .rejects.toThrow(/ownership marker/i);
@@ -191,5 +191,19 @@ describe('channel lifecycle actions', () => {
     expect(JSON.parse(readFileSync(profile.releaseFile, 'utf8'))).toEqual({
       current: next, previous: current, lastAction: 'upgrade',
     });
+  });
+
+  it('refuses to overwrite a symbolic-link release state during upgrade', async () => {
+    const profile = fixture();
+    const target = join(profile.home, 'unrelated.json');
+    writeFileSync(target, 'preserve me\n');
+    symlinkSync(target, profile.releaseFile);
+    const runCommand = vi.fn(async (_command: string, _args: string[]) => ({ stdout: '' }));
+
+    await expect(runLifecycleAction('upgrade', profile, {
+      image: `example/next@sha256:${'2'.repeat(64)}`,
+    }, { runCommand, probePort: async () => true })).rejects.toThrow(/release state.*symbolic link/i);
+    expect(readFileSync(target, 'utf8')).toBe('preserve me\n');
+    expect(runCommand.mock.calls.some(([, args]) => args.includes('pull'))).toBe(false);
   });
 });

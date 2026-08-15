@@ -6,6 +6,7 @@ import { z } from 'zod';
 
 const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
 const DigestReferenceSchema = z.string().regex(/@sha256:[a-f0-9]{64}$/);
+const RELEASE_ARTIFACTS = ['docker-compose.yml', 'env.compose.tmpl'] as const;
 export const ReleaseManifestSchema = z.object({
   schemaVersion: z.literal(1),
   version: z.string().regex(/^\d+\.\d+\.\d+$/),
@@ -35,8 +36,16 @@ export function verifyReleaseManifest(value: unknown): ReleaseManifest {
   if (!manifest.promptUrl.includes(`/${manifest.tag}/`)) {
     throw new Error('Release prompt URL must use the immutable release tag.');
   }
+  const expectedPromptUrl = `https://raw.githubusercontent.com/the-answerai/answer-engine/${manifest.tag}/INSTALL_AGENT.md`;
+  if (manifest.promptUrl !== expectedPromptUrl) {
+    throw new Error('Release prompt URL must use the official tagged release.');
+  }
   if (!manifest.images.answerEngine.endsWith(`:${manifest.version}`)) {
     throw new Error('Answer Engine runtime image must match the installer version.');
+  }
+  const artifactPaths = manifest.artifacts.map((artifact) => artifact.path).sort();
+  if (JSON.stringify(artifactPaths) !== JSON.stringify([...RELEASE_ARTIFACTS].sort())) {
+    throw new Error('Release checksums must exactly cover every bundled executable template.');
   }
   return manifest;
 }
@@ -54,6 +63,10 @@ export function verifyReleaseArtifacts(manifest: ReleaseManifest, root = templat
 
 export function verifyBundledRelease(): ReleaseManifest {
   const manifest = loadReleaseManifest();
+  const packageManifest = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as { version?: unknown };
+  if (packageManifest.version !== manifest.version) {
+    throw new Error('Installer package version does not match the bundled release manifest.');
+  }
   verifyReleaseArtifacts(manifest);
   return manifest;
 }

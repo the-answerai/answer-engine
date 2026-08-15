@@ -11,6 +11,7 @@ import { readEnvValue } from './scaffold.js';
 import { uninstall } from './uninstall.js';
 import { assertRuntimeChannelConfiguration, type RuntimeChannelProfile } from './runtime-channel.js';
 import { assertImmutableImageReference, verifyBundledRelease } from './release.js';
+import { assertRegularFileTarget, writePrivateFileAtomic } from './safe-file.js';
 
 export const LifecycleActionSchema = z.enum([
   'preflight', 'install', 'start', 'stop', 'status', 'repair', 'upgrade', 'rollback', 'uninstall',
@@ -182,8 +183,11 @@ function replaceEnvAssignment(path: string, key: string, value: string): void {
 }
 
 function writeReleaseState(path: string, state: ReleaseState): void {
-  writeFileSync(path, `${JSON.stringify(ReleaseStateSchema.parse(state))}\n`, { encoding: 'utf8', mode: 0o600 });
-  chmodSync(path, 0o600);
+  writePrivateFileAtomic(
+    path,
+    `${JSON.stringify(ReleaseStateSchema.parse(state))}\n`,
+    'Release state',
+  );
 }
 
 async function recreate(
@@ -247,6 +251,7 @@ export async function runLifecycleAction(
   }
   if (action === 'upgrade') {
     const manifest = verifyBundledRelease();
+    assertRegularFileTarget(profile.releaseFile, 'Release state');
     const environment = readFileSync(profile.credentialsFile, 'utf8');
     const current = readEnvValue(environment, 'ANSWER_ENGINE_IMAGE')
       ?? 'ghcr.io/the-answerai/answer-engine:1.1.0';
@@ -276,6 +281,7 @@ export async function runLifecycleAction(
   }
   if (action === 'rollback') {
     const manifest = verifyBundledRelease();
+    assertRegularFileTarget(profile.releaseFile, 'Release state');
     let release;
     try { release = ReleaseStateSchema.parse(JSON.parse(readFileSync(profile.releaseFile, 'utf8'))); }
     catch { throw new Error(`No guarded rollback release is recorded for ${profile.channel}.`); }

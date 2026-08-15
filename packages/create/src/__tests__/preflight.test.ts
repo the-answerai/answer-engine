@@ -51,6 +51,22 @@ describe('runPreflight', () => {
     });
   });
 
+  it('does not mistake WSL1 for the supported WSL2 baseline', async () => {
+    const result = await runPreflight({
+      platform: 'linux', architecture: 'x64', osRelease: '4.4.0-19041-Microsoft',
+      totalMemoryBytes: 24 * 1024 ** 3, freeDiskBytes: 100 * 1024 ** 3,
+      nodeVersion: '22.16.0', runCommand: successRunner,
+      probePort: vi.fn(async () => true), installation: 'absent', modelRuntimeAvailable: true,
+    });
+
+    expect(result.status).toBe('unsupported');
+    expect(result.system.platform).toBe('linux');
+    expect(result.checks.find((item) => item.code === 'WSL2')).toMatchObject({
+      status: 'unsupported',
+      remediation: expect.stringContaining('WSL2'),
+    });
+  });
+
   it('returns exact actionable human and JSON output for remediable states', async () => {
     const result = await runPreflight({
       platform: 'darwin', architecture: 'arm64', totalMemoryBytes: 12 * 1024 ** 3,
