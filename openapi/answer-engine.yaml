@@ -32,10 +32,11 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [status, uptime]
+                required: [status, uptime, channel]
                 properties:
                   status: { type: string, const: healthy }
                   uptime: { type: number }
+                  channel: { type: string, enum: [stable, staging] }
   /api/v1/content/import/preview:
     post:
       tags: [Content]

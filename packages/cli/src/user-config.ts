@@ -73,11 +73,16 @@ const ServerSchema = z.object({
   bind: z.string().trim().min(1).default('127.0.0.1'),
 }).strict();
 
+const HistorySyncSchema = z.object({
+  enabled: z.boolean().default(false),
+}).strict();
+
 export const UserConfigSchema = z.object({
   models: ModelsSchema,
   sources: z.array(SourceSchema).default([]),
   connectors: ConnectorsSchema.default({}),
   server: ServerSchema.default({}),
+  history_sync: HistorySyncSchema.optional(),
 }).strict().superRefine((config, context) => {
   if (
     config.models.embedding_provider !== 'lmstudio'

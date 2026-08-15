@@ -35,6 +35,8 @@ it does not replace the user's-data check in steps 5 and 6.
   values when merging source entries.
 - Never use `--uninstall --purge` without explicit confirmation because it
   deletes the local database and Answer Engine home.
+- This runbook installs `stable`. Never point staging at `$AE_HOME`; staging
+  defaults to `~/.answer-engine-staging` and must use `--agents none`.
 
 ## 1. Check prerequisites
 
@@ -94,6 +96,7 @@ LM Studio example, using IDs returned by `/v1/models`:
 
 ```bash
 npx @answer-engine/create@1.1.0 --yes \
+  --channel stable \
   --home "$AE_HOME" \
   --models chat=<loaded-chat-id>,embedding=<loaded-embedding-id> \
   --embedding-dimension <actual-width> \
@@ -104,6 +107,7 @@ OpenAI example (the user enters the key in the local shell):
 
 ```bash
 npx @answer-engine/create@1.1.0 --yes \
+  --channel stable \
   --home "$AE_HOME" \
   --llm-provider openai \
   --llm-key "$OPENAI_API_KEY" \
@@ -118,6 +122,7 @@ Anthropic chat with OpenAI embeddings:
 
 ```bash
 npx @answer-engine/create@1.1.0 --yes \
+  --channel stable \
   --home "$AE_HOME" \
   --llm-provider anthropic \
   --llm-key "$ANTHROPIC_API_KEY" \
@@ -237,11 +242,11 @@ same phrase.
 Preserve data:
 
 ```bash
-npx @answer-engine/create@1.1.0 --uninstall --home "$AE_HOME"
+npx @answer-engine/create@1.1.0 uninstall --channel stable --home "$AE_HOME"
 ```
 
 Delete data only after explicit user confirmation:
 
 ```bash
-npx @answer-engine/create@1.1.0 --uninstall --purge --home "$AE_HOME"
+npx @answer-engine/create@1.1.0 uninstall --channel stable --purge --home "$AE_HOME"
 ```

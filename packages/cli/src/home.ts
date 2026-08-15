@@ -1,9 +1,9 @@
 import { mkdirSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { defaultChannelHome } from './channel.js';
 
 export function resolveAeHome(): string {
-  return resolve(process.env.AE_HOME || join(homedir(), '.answer-engine'));
+  return resolve(process.env.AE_HOME || defaultChannelHome());
 }
 
 export function configYamlPath(): string {

@@ -3,6 +3,14 @@
  * HTTP wrapper for local content, sync, and agent endpoints
  */
 
+import { z } from 'zod';
+
+const HealthResponseSchema = z.object({
+  status: z.literal('healthy'),
+  uptime: z.number(),
+  channel: z.enum(['stable', 'staging']),
+});
+
 interface ApiResponse<T> {
   success: boolean;
   data: T;
@@ -17,9 +25,12 @@ interface ApiErrorResponse {
 }
 
 export class AnswerEngineClient {
+  private channelVerification?: Promise<void>;
+
   constructor(
     private apiUrl: string,
-    private apiKey: string
+    private apiKey: string,
+    private expectedChannel?: HealthResponse['channel'],
   ) {
     this.apiUrl = apiUrl.replace(/\/+$/, '');
   }
@@ -30,6 +41,7 @@ export class AnswerEngineClient {
     body?: Record<string, unknown>,
     requestOptions: { surface?: 'cli' | 'cli-sync' } = {}
   ): Promise<ApiResponse<T>> {
+    await this.ensureRuntimeChannel();
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'X-API-Key': this.apiKey,
@@ -48,6 +60,12 @@ export class AnswerEngineClient {
     }
 
     return data as ApiResponse<T>;
+  }
+
+  private async ensureRuntimeChannel(): Promise<void> {
+    if (!this.expectedChannel) return;
+    this.channelVerification ??= this.healthCheck().then(() => undefined);
+    await this.channelVerification;
   }
 
   async importPreview(input: ImportRequest): Promise<ApiResponse<ImportPreviewResult>> {
@@ -76,6 +94,7 @@ export class AnswerEngineClient {
   }
 
   async deleteContent(contentId: string): Promise<void> {
+    await this.ensureRuntimeChannel();
     const response = await fetch(
       `${this.apiUrl}/api/v1/content/${encodeURIComponent(contentId)}`,
       {
@@ -126,7 +145,22 @@ export class AnswerEngineClient {
     if (!response.ok) {
       throw new ApiError(response.status, `HTTP_${response.status}`, `Health check failed: ${response.status}`);
     }
-    return response.json() as Promise<HealthResponse>;
+    const parsed = HealthResponseSchema.safeParse(await response.json());
+    if (!parsed.success) {
+      throw new ApiError(
+        502,
+        'INVALID_HEALTH_RESPONSE',
+        'Health check returned an invalid runtime channel identity',
+      );
+    }
+    if (this.expectedChannel && parsed.data.channel !== this.expectedChannel) {
+      throw new ApiError(
+        409,
+        'RUNTIME_CHANNEL_MISMATCH',
+        `API reported ${parsed.data.channel}, expected ${this.expectedChannel}`,
+      );
+    }
+    return parsed.data;
   }
 }
 
@@ -195,7 +229,7 @@ export interface RetrieveResult { items: RetrieveResultItem[]; scope?: LibrarySc
 
 export interface SummarizeInput { prompt: string; libraryId?: string; librarySlug?: string; filter?: { contentTypes?: string[]; tags?: string[]; dateFrom?: string; dateTo?: string }; limit?: number; }
 export interface SummarizeResult { summary: string; sourceCount: number; prompt: string; scope?: LibraryScope; }
-export interface HealthResponse { status: string; uptime: number; }
+export interface HealthResponse { status: 'healthy'; uptime: number; channel: 'stable' | 'staging'; }
 
 export type ImportItem = Record<string, unknown>;
 

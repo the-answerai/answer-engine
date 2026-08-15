@@ -30,8 +30,12 @@ describe('CLI executable entrypoint', () => {
   });
 
   it('waits for an asynchronous API command before exiting', async () => {
-    const server = createServer((_request, response) => {
+    const server = createServer((request, response) => {
       response.writeHead(200, { 'Content-Type': 'application/json' });
+      if (request.url === '/health') {
+        response.end(JSON.stringify({ status: 'healthy', uptime: 1, channel: 'stable' }));
+        return;
+      }
       response.end(JSON.stringify({
         success: true,
         data: {

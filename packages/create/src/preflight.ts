@@ -27,6 +27,7 @@ export interface PreflightDependencies {
   runCommand?: CommandRunner;
   probePort?: (port: number) => Promise<boolean>;
   ownedPorts?: ReadonlySet<number>;
+  requiredPorts?: readonly number[];
 }
 
 export async function isPortFree(port: number): Promise<boolean> {
@@ -62,6 +63,7 @@ export async function runPreflight(
   const command = dependencies.runCommand ?? defaultRunCommand;
   const probePort = dependencies.probePort ?? isPortFree;
   const ownedPorts = dependencies.ownedPorts ?? new Set<number>();
+  const requiredPorts = dependencies.requiredPorts ?? REQUIRED_PORTS;
 
   if (!supportsNode(version)) {
     failures.push({
@@ -88,7 +90,7 @@ export async function runPreflight(
     }),
   ]);
 
-  await Promise.all(REQUIRED_PORTS.map(async (port) => {
+  await Promise.all(requiredPorts.map(async (port) => {
     if (ownedPorts.has(port) || await probePort(port)) return;
     failures.push({
       code: 'PORT_IN_USE',

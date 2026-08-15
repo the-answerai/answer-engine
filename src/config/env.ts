@@ -5,6 +5,7 @@ const BooleanString = z.enum(['true', 'false']).default('false').transform((valu
 
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  AE_CHANNEL: z.enum(['stable', 'staging']).default('stable'),
   HOST: z.string().default('127.0.0.1'),
   PORT: z.coerce.number().int().positive().default(5050),
   DATABASE_HOST: z.string().default('localhost'),

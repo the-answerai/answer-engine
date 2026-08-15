@@ -62,7 +62,8 @@ describe('sync service templates', () => {
     });
 
     expect(unit).toContain('[Unit]\nDescription=Answer Engine sync daemon');
-    expect(unit).toContain('ExecStart="/opt/Node Runtime/node" "/home/test/Answer Engine/index.js" "sync" "run"');
+    expect(unit).toContain('ExecStart="/opt/Node Runtime/node" "/home/test/Answer Engine/index.js" "--channel" "stable" "sync" "run"');
+    expect(unit).toContain('Environment="AE_CHANNEL=stable"');
     expect(unit).toContain('Environment="AE_HOME=/home/test/Answer Engine"');
     expect(unit).toContain('WorkingDirectory="/home/test/Answer Engine"');
     expect(unit).toContain('Restart=always\nRestartSec=5');
@@ -70,6 +71,23 @@ describe('sync service templates', () => {
     expect(unit).toContain('StandardError=append:/home/test/Answer Engine/logs/sync.err.log');
     expect(unit).toContain('[Install]\nWantedBy=default.target');
     expect(unit.endsWith('\n')).toBe(true);
+  });
+
+  it('renders staging-only service identities and a confirmed staging daemon invocation', () => {
+    const plist = renderLaunchdPlist({
+      nodePath: '/usr/bin/node', scriptPath: '/opt/ae/index.js', aeHome: '/tmp/staging',
+      logDir: '/tmp/staging/logs', workingDir: '/tmp/staging', channel: 'staging',
+    });
+    const unit = renderSystemdUnit({
+      nodePath: '/usr/bin/node', scriptPath: '/opt/ae/index.js', aeHome: '/tmp/staging',
+      logDir: '/tmp/staging/logs', channel: 'staging',
+    });
+
+    expect(plist).toContain('<string>ai.answer-engine.staging.sync</string>');
+    expect(plist).toContain('<string>--confirm-staging-history-sync</string>');
+    expect(plist).toContain('<key>AE_CHANNEL</key>\n      <string>staging</string>');
+    expect(unit).toContain('"--channel" "staging" "sync" "run" "--confirm-staging-history-sync"');
+    expect(unit).toContain('Environment="AE_CHANNEL=staging"');
   });
 });
 

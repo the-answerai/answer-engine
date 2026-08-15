@@ -65,7 +65,11 @@ export function createApp<TConfig = Record<string, never>>(options: CreateAppOpt
     app.use(morgan('combined', { stream: { write: (message) => logger.http(message.trim()) } }));
   }
 
-  app.get('/health', (_req, res) => res.json({ status: 'healthy', uptime: process.uptime() }));
+  app.get('/health', (_req, res) => res.json({
+    status: 'healthy',
+    uptime: process.uptime(),
+    channel: env.AE_CHANNEL,
+  }));
   if (localUiApiKey) {
     app.get('/local-ui/session', createLocalUiSessionCookie(localUiApiKey), (_req, res) => res.status(204).end());
   }

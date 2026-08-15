@@ -25,6 +25,10 @@ ae config set api_url http://127.0.0.1:5050
 export ANSWER_ENGINE_API_URL=http://127.0.0.1:5050
 ```
 
+Select isolated staging home, API, credentials, cursor state, and service
+identity with `ae --channel staging <command>`. Stable remains the default and
+keeps the legacy `~/.answer-engine` and `config.yml` paths.
+
 ## Local content and memory
 
 ```bash
@@ -64,6 +68,11 @@ ae sync uninstall-service
 
 Supported history sources are Claude Code, Codex, Cowork, and local directories.
 The sync cursor and raw source archive remain local under `AE_HOME`.
+
+Staging history discovery is refused unless staging `config.yaml` contains
+`history_sync: { enabled: true }` and the command also includes
+`--confirm-staging-history-sync`. The same confirmation is required when
+installing the staging background service.
 
 ## Evaluate retrieval
 

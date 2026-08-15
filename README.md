@@ -88,6 +88,12 @@ For an agent-led installation, use [INSTALL_AGENT.md](./INSTALL_AGENT.md). The
 installer is idempotent and keeps its editable configuration under `AE_HOME`
 (default `~/.answer-engine`).
 
+Installer and CLI operations accept explicit `stable` and `staging` channels.
+Their homes, credentials, ports, Compose projects, volumes, logs, archives, and
+sync services are isolated; staging history sync is disabled by default. See
+[Local runtime channels](./docs/local-runtime-channels.md) for lifecycle
+commands and the non-destructive existing-install migration.
+
 ## API
 
 CLI, MCP, and direct requests to `/api/v1/*` require the local key in either

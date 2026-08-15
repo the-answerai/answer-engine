@@ -80,9 +80,24 @@ function json(method: string, body?: unknown): RequestInit {
   return { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) };
 }
 
-export async function health(): Promise<boolean> {
+export interface HealthStatus {
+  status: string;
+  uptime: number;
+  channel: 'stable' | 'staging';
+}
+
+export async function health(): Promise<HealthStatus> {
   const response = await fetch('/health');
-  return response.ok;
+  if (!response.ok) throw new Error(`Health check failed (${response.status})`);
+  const payload = await response.json() as Partial<HealthStatus>;
+  if (
+    payload.status !== 'healthy'
+    || typeof payload.uptime !== 'number'
+    || (payload.channel !== 'stable' && payload.channel !== 'staging')
+  ) {
+    throw new Error('Health check returned an invalid runtime channel identity.');
+  }
+  return payload as HealthStatus;
 }
 
 export async function initializeLocalUiSession(): Promise<void> {

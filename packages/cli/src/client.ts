@@ -6,6 +6,7 @@
 import { getConfig } from './config.js';
 import { AnswerEngineClient, ApiError } from './api-client.js';
 import { printError } from './output.js';
+import { resolveRuntimeChannel } from './channel.js';
 
 export function createClient(): AnswerEngineClient {
   const config = getConfig();
@@ -13,7 +14,7 @@ export function createClient(): AnswerEngineClient {
     printError('No API key configured. Run: ae auth login');
     process.exit(3);
   }
-  return new AnswerEngineClient(config.api_url, config.api_key);
+  return new AnswerEngineClient(config.api_url, config.api_key, resolveRuntimeChannel());
 }
 
 export function handleApiError(error: unknown): never {

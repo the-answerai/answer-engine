@@ -41,11 +41,29 @@ describe('AnswerEngineClient', () => {
   it('healthCheck returns health data on success', async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ status: 'ok', uptime: 123 }),
+      json: async () => ({ status: 'healthy', uptime: 123, channel: 'stable' }),
     });
     const result = await client.healthCheck();
-    expect(result.status).toBe('ok');
+    expect(result.status).toBe('healthy');
     expect(mockFetch.mock.calls[0][1].headers['X-AE-Surface']).toBe('cli');
+  });
+
+  it('refuses authenticated requests when the API reports another runtime channel', async () => {
+    const stagingClient = new AnswerEngineClient(
+      'http://localhost:5050',
+      'ae_live_test',
+      'staging',
+    );
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ status: 'healthy', uptime: 123, channel: 'stable' }),
+    });
+
+    await expect(stagingClient.getSchema()).rejects.toMatchObject({
+      code: 'RUNTIME_CHANNEL_MISMATCH',
+    });
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetch.mock.calls[0][0]).toBe('http://localhost:5050/health');
   });
 
   it('strips trailing slashes from URL', async () => {

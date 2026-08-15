@@ -67,6 +67,7 @@ function AppShell({ composition, identity }: { composition: WebComposition; iden
       {menuOpen ? <button className="sidebar-scrim" aria-label="Close navigation" onClick={() => setMenuOpen(false)} /> : null}
       <aside className={`sidebar ${menuOpen ? 'open' : ''}`}>
         <div className="brand-block"><span className="brand-mark">AE</span><div><strong>Answer Engine</strong><small>{identity.workspaceLabel ?? 'WORKSPACE'}</small></div></div>
+        {identity.channel === 'staging' ? <div className="staging-indicator" data-testid="staging-sidebar-indicator">STAGING</div> : null}
         <nav ref={navigationRef} aria-label="Primary">
           {visible.navigation.map((item) => (
             <NavLink key={item.id} to={item.to} onClick={() => setMenuOpen(false)} className={({ isActive }) => isActive ? 'active' : ''}>
@@ -81,7 +82,7 @@ function AppShell({ composition, identity }: { composition: WebComposition; iden
         </div>
       </aside>
       <div className="shell-body">
-        <header className="mobile-header"><button ref={menuButtonRef} aria-label="Open navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen(true)}>☰</button><strong>Answer Engine</strong><span>{identity.shortLabel ?? identity.label}</span></header>
+        <header className="mobile-header"><button ref={menuButtonRef} aria-label="Open navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen(true)}>☰</button><strong>Answer Engine</strong><span data-testid={identity.channel === 'staging' ? 'staging-mobile-indicator' : undefined}>{identity.channel === 'staging' ? 'STAGING' : identity.shortLabel ?? identity.label}</span></header>
         <main id="workspace" tabIndex={-1}><ComposedRoutes visible={visible} /></main>
       </div>
     </div>

@@ -28,6 +28,7 @@ hr { width: 100%; border: 0; border-top: var(--hair-faint); }
 .brand-block strong, .brand-block small { display: block; }
 .brand-block small { margin-top: var(--sp-1); color: var(--text-faint); }
 .sidebar nav { display: grid; padding: var(--sp-3); }
+.staging-indicator { margin: 0 var(--sp-3); border: 2px solid var(--marker); background: var(--surface); color: var(--marker); padding: var(--sp-2); text-align: center; font: var(--fs-label) var(--font-mono); font-weight: 800; letter-spacing: .12em; }
 .sidebar nav a { display: grid; grid-template-columns: 34px 1fr; align-items: center; border-bottom: var(--hair-faint); padding: 14px var(--sp-2); color: var(--text); text-decoration: none; font-weight: 600; }
 .sidebar nav a span { color: var(--text-faint); font: var(--fs-label) var(--font-mono); }
 .sidebar nav a:hover, .sidebar nav a.active { background: var(--accent); color: var(--surface-2); }

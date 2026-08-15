@@ -11,6 +11,7 @@ describe('create-answer-engine CLI', () => {
 
     expect(flags).toEqual(expect.arrayContaining([
       '--yes',
+      '--channel',
       '--models',
       '--agents',
       '--home',
@@ -22,9 +23,11 @@ describe('create-answer-engine CLI', () => {
       '--embedding-model',
       '--embedding-dimension',
       '--api-key',
+      '--image',
       '--uninstall',
       '--purge',
     ]));
+    expect(buildProgram().registeredArguments[0]?.defaultValue).toBe('install');
   });
 
   it('points successful installs at the stable agent setup runbook', () => {

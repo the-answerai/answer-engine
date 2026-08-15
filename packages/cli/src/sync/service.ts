@@ -3,6 +3,7 @@ import { chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs
 import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { logsDir, resolveAeHome } from '../home.js';
+import { resolveRuntimeChannel, type RuntimeChannel } from '../channel.js';
 
 export const SERVICE_LABEL = 'ai.answer-engine.sync';
 export const SYSTEMD_UNIT_NAME = 'answer-engine-sync.service';
@@ -54,6 +55,7 @@ interface ServiceTemplateOptions {
   scriptPath: string;
   aeHome: string;
   logDir: string;
+  channel?: RuntimeChannel;
 }
 
 interface LaunchdTemplateOptions extends ServiceTemplateOptions {
@@ -109,17 +111,20 @@ export function resolveServiceTargets(
   platform: NodeJS.Platform,
   homeDir: string,
   xdgConfigHome: string | undefined = process.env.XDG_CONFIG_HOME,
+  channel: RuntimeChannel = resolveRuntimeChannel(),
 ): ServiceTarget {
+  const launchdLabel = channel === 'stable' ? SERVICE_LABEL : 'ai.answer-engine.staging.sync';
+  const systemdUnit = channel === 'stable' ? SYSTEMD_UNIT_NAME : 'answer-engine-staging-sync.service';
   if (platform === 'darwin') {
     return {
       platform,
-      unitPath: join(homeDir, 'Library', 'LaunchAgents', `${SERVICE_LABEL}.plist`),
+      unitPath: join(homeDir, 'Library', 'LaunchAgents', `${launchdLabel}.plist`),
     };
   }
   if (platform === 'linux') {
     return {
       platform,
-      unitPath: join(xdgConfigHome || join(homeDir, '.config'), 'systemd', 'user', SYSTEMD_UNIT_NAME),
+      unitPath: join(xdgConfigHome || join(homeDir, '.config'), 'systemd', 'user', systemdUnit),
     };
   }
   throw new ServicePlatformError(platform);
@@ -167,7 +172,9 @@ function systemdPathValue(value: string): string {
 }
 
 export function renderLaunchdPlist(options: LaunchdTemplateOptions): string {
-  const strings = [options.nodePath, options.scriptPath, 'sync', 'run']
+  const channel = options.channel ?? 'stable';
+  const label = channel === 'stable' ? SERVICE_LABEL : 'ai.answer-engine.staging.sync';
+  const strings = [options.nodePath, options.scriptPath, '--channel', channel, 'sync', 'run', ...(channel === 'staging' ? ['--confirm-staging-history-sync'] : [])]
     .map((value) => `      <string>${xmlEscape(value)}</string>`)
     .join('\n');
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -175,7 +182,7 @@ export function renderLaunchdPlist(options: LaunchdTemplateOptions): string {
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>${SERVICE_LABEL}</string>
+    <string>${label}</string>
     <key>ProgramArguments</key>
     <array>
 ${strings}
@@ -194,6 +201,8 @@ ${strings}
     <dict>
       <key>AE_HOME</key>
       <string>${xmlEscape(options.aeHome)}</string>
+      <key>AE_CHANNEL</key>
+      <string>${channel}</string>
     </dict>
 </dict>
 </plist>
@@ -201,7 +210,8 @@ ${strings}
 }
 
 export function renderSystemdUnit(options: ServiceTemplateOptions): string {
-  const invocation = [options.nodePath, options.scriptPath, 'sync', 'run']
+  const channel = options.channel ?? 'stable';
+  const invocation = [options.nodePath, options.scriptPath, '--channel', channel, 'sync', 'run', ...(channel === 'staging' ? ['--confirm-staging-history-sync'] : [])]
     .map(systemdQuote)
     .join(' ');
   return `[Unit]
@@ -212,6 +222,7 @@ After=network.target
 Type=simple
 ExecStart=${invocation}
 Environment=${systemdQuote(`AE_HOME=${options.aeHome}`)}
+Environment=${systemdQuote(`AE_CHANNEL=${channel}`)}
 WorkingDirectory=${systemdQuote(options.aeHome)}
 Restart=always
 RestartSec=5
@@ -228,15 +239,18 @@ function resolveOptions(options: ServiceBaseOptions): {
   aeHome: string;
   logDir: string;
   runner: ServiceCommandRunner;
+  channel: RuntimeChannel;
 } {
   const platform = options.platform ?? process.platform;
   const homeDir = options.homeDir ?? homedir();
   const aeHome = options.aeHome ?? resolveAeHome();
+  const channel = resolveRuntimeChannel();
   return {
-    target: resolveServiceTargets(platform, homeDir, options.xdgConfigHome),
+    target: resolveServiceTargets(platform, homeDir, options.xdgConfigHome, channel),
     aeHome,
     logDir: options.aeHome ? join(aeHome, 'logs') : logsDir(),
     runner: options.runner ?? defaultServiceCommandRunner,
+    channel,
   };
 }
 
@@ -245,14 +259,14 @@ function requireSuccess(action: string, result: CommandResult): void {
 }
 
 export function installService(options: ServiceInstallOptions = {}): ServiceTarget {
-  const { target, aeHome, logDir, runner } = resolveOptions(options);
+  const { target, aeHome, logDir, runner, channel } = resolveOptions(options);
   const invocation = resolveDaemonInvocation(options);
   mkdirSync(logDir, { recursive: true });
   mkdirSync(dirname(target.unitPath), { recursive: true });
 
   const contents = target.platform === 'darwin'
-    ? renderLaunchdPlist({ ...invocation, aeHome, logDir, workingDir: aeHome })
-    : renderSystemdUnit({ ...invocation, aeHome, logDir });
+    ? renderLaunchdPlist({ ...invocation, aeHome, logDir, workingDir: aeHome, channel })
+    : renderSystemdUnit({ ...invocation, aeHome, logDir, channel });
   writeFileSync(target.unitPath, contents, { encoding: 'utf8', mode: 0o600 });
   chmodSync(target.unitPath, 0o600);
 
@@ -269,14 +283,14 @@ export function installService(options: ServiceInstallOptions = {}): ServiceTarg
     );
     requireSuccess(
       'enable the systemd sync service',
-      runner('systemctl', ['--user', 'enable', '--now', SYSTEMD_UNIT_NAME]),
+      runner('systemctl', ['--user', 'enable', '--now', channel === 'stable' ? SYSTEMD_UNIT_NAME : 'answer-engine-staging-sync.service']),
     );
   }
   return target;
 }
 
 export function uninstallService(options: ServiceBaseOptions = {}): ServiceTarget {
-  const { target, runner } = resolveOptions(options);
+  const { target, runner, channel } = resolveOptions(options);
   if (!existsSync(target.unitPath)) return target;
 
   if (target.platform === 'darwin') {
@@ -285,7 +299,7 @@ export function uninstallService(options: ServiceBaseOptions = {}): ServiceTarge
   } else {
     requireSuccess(
       'disable the systemd sync service',
-      runner('systemctl', ['--user', 'disable', '--now', SYSTEMD_UNIT_NAME]),
+      runner('systemctl', ['--user', 'disable', '--now', channel === 'stable' ? SYSTEMD_UNIT_NAME : 'answer-engine-staging-sync.service']),
     );
     rmSync(target.unitPath, { force: true });
     requireSuccess(
@@ -310,7 +324,7 @@ function launchdDetail(output: string): string {
 }
 
 export function queryServiceStatus(options: ServiceStatusOptions = {}): ServiceStatus {
-  const { target, runner } = resolveOptions(options);
+  const { target, runner, channel } = resolveOptions(options);
   const installed = existsSync(target.unitPath);
   if (!installed) {
     return { ...target, installed, running: false, enabled: false, detail: 'not installed' };
@@ -318,7 +332,8 @@ export function queryServiceStatus(options: ServiceStatusOptions = {}): ServiceS
 
   if (target.platform === 'darwin') {
     const userId = options.userId ?? process.getuid?.();
-    const serviceTarget = userId === undefined ? `user/${SERVICE_LABEL}` : `gui/${userId}/${SERVICE_LABEL}`;
+    const label = channel === 'stable' ? SERVICE_LABEL : 'ai.answer-engine.staging.sync';
+    const serviceTarget = userId === undefined ? `user/${label}` : `gui/${userId}/${label}`;
     const result = runner('launchctl', ['print', serviceTarget]);
     if (commandUnavailable(result)) {
       return { ...target, installed, running: false, enabled: false, detail: 'launchctl unavailable' };
@@ -333,8 +348,9 @@ export function queryServiceStatus(options: ServiceStatusOptions = {}): ServiceS
     };
   }
 
-  const active = runner('systemctl', ['--user', 'is-active', SYSTEMD_UNIT_NAME]);
-  const enabled = runner('systemctl', ['--user', 'is-enabled', SYSTEMD_UNIT_NAME]);
+  const unit = channel === 'stable' ? SYSTEMD_UNIT_NAME : 'answer-engine-staging-sync.service';
+  const active = runner('systemctl', ['--user', 'is-active', unit]);
+  const enabled = runner('systemctl', ['--user', 'is-enabled', unit]);
   if (commandUnavailable(active) || commandUnavailable(enabled)) {
     return { ...target, installed, running: false, enabled: false, detail: 'systemctl unavailable' };
   }
