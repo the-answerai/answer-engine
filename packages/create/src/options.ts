@@ -20,4 +20,5 @@ export interface InstallerOptions {
   lmStudioUrl?: string;
   uninstall?: boolean;
   purge?: boolean;
+  json?: boolean;
 }

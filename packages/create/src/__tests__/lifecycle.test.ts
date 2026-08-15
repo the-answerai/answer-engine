@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -23,7 +23,7 @@ function fixture(channel: 'stable' | 'staging' = 'staging') {
     `WEB_UI_PORT=${profile.ports.web}`,
     `ANSWER_ENGINE_MCP_PORT=${profile.ports.mcp}`,
     `DATABASE_NAME=${profile.databaseName}`,
-    'ANSWER_ENGINE_IMAGE=example/current:1',
+    `ANSWER_ENGINE_IMAGE=example/current@sha256:${'1'.repeat(64)}`,
     '',
   ].join('\n'));
   writeRuntimeOwnershipMarker(profile);
@@ -75,7 +75,7 @@ describe('channel lifecycle actions', () => {
     const environment = readFileSync(profile.credentialsFile, 'utf8')
       .replace(new RegExp(`^${key}=.*$`, 'm'), `${key}=${replacement}`);
     writeFileSync(profile.credentialsFile, environment);
-    const runCommand = vi.fn(async () => ({ stdout: '' }));
+    const runCommand = vi.fn(async (_command: string, _args: string[]) => ({ stdout: '' }));
 
     await expect(runLifecycleAction('status', profile, {}, { runCommand }))
       .rejects.toThrow(new RegExp(`Runtime (channel|${key})`, 'i'));
@@ -85,7 +85,7 @@ describe('channel lifecycle actions', () => {
   it('refuses a changed Compose definition before Docker runs', async () => {
     const profile = fixture();
     writeFileSync(join(profile.home, 'docker-compose.yml'), 'services:\n  api: {}\n');
-    const runCommand = vi.fn(async () => ({ stdout: '' }));
+    const runCommand = vi.fn(async (_command: string, _args: string[]) => ({ stdout: '' }));
 
     await expect(runLifecycleAction('stop', profile, {}, { runCommand }))
       .rejects.toThrow(/ownership marker/i);
@@ -134,9 +134,76 @@ describe('channel lifecycle actions', () => {
     const runCommand = vi.fn(async (_command: string, _args: string[]) => ({ stdout: '' }));
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ status: 'healthy', channel: 'staging', uptime: 1 }), { status: 200 }));
 
-    await runLifecycleAction('upgrade', profile, { image: 'example/next:2' }, { runCommand, fetchImpl, probePort: async () => true });
-    expect(JSON.parse(readFileSync(profile.releaseFile, 'utf8'))).toEqual({ current: 'example/next:2', previous: 'example/current:1' });
+    const current = `example/current@sha256:${'1'.repeat(64)}`;
+    const next = `example/next@sha256:${'2'.repeat(64)}`;
+    await runLifecycleAction('upgrade', profile, { image: next }, { runCommand, fetchImpl, probePort: async () => true });
+    expect(JSON.parse(readFileSync(profile.releaseFile, 'utf8'))).toEqual({
+      current: next, previous: current, lastAction: 'upgrade',
+    });
     await runLifecycleAction('rollback', profile, {}, { runCommand, fetchImpl, probePort: async () => true });
-    expect(JSON.parse(readFileSync(profile.releaseFile, 'utf8'))).toEqual({ current: 'example/current:1', previous: 'example/next:2' });
+    expect(JSON.parse(readFileSync(profile.releaseFile, 'utf8'))).toEqual({
+      current, previous: next, lastAction: 'rollback',
+    });
+
+    const callsAfterRollback = runCommand.mock.calls.length;
+    await runLifecycleAction('rollback', profile, {}, { runCommand, fetchImpl, probePort: async () => true });
+    expect(runCommand).toHaveBeenCalledTimes(callsAfterRollback);
+  });
+
+  it('repairs a healthy runtime as an explicit no-op', async () => {
+    const profile = fixture();
+    const runCommand = vi.fn(async (_command: string, _args: string[]) => ({ stdout: 'api\npostgres\nredis\n' }));
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      status: 'healthy', channel: 'staging', uptime: 1,
+    }), { status: 200 }));
+
+    await runLifecycleAction('repair', profile, {}, { runCommand, fetchImpl, probePort: async () => true });
+
+    expect(runCommand.mock.calls.some(([, args]) => args.includes('up'))).toBe(false);
+  });
+
+  it('resumes a failed upgrade without losing the prior rollback target', async () => {
+    const profile = fixture();
+    const current = `example/current@sha256:${'1'.repeat(64)}`;
+    const next = `example/next@sha256:${'2'.repeat(64)}`;
+    let failRecreate = true;
+    const runCommand = vi.fn(async (_command: string, args: string[]) => {
+      if (args.includes('up') && failRecreate) {
+        failRecreate = false;
+        throw new Error('simulated interrupted recreate');
+      }
+      return { stdout: '' };
+    });
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      status: 'healthy', channel: 'staging', uptime: 1,
+    }), { status: 200 }));
+
+    await expect(runLifecycleAction('upgrade', profile, { image: next }, {
+      runCommand, fetchImpl, probePort: async () => true,
+    })).rejects.toThrow('simulated interrupted recreate');
+    expect(JSON.parse(readFileSync(profile.releaseFile, 'utf8'))).toMatchObject({
+      pending: { action: 'upgrade', from: current, to: next },
+    });
+
+    await runLifecycleAction('upgrade', profile, { image: next }, {
+      runCommand, fetchImpl, probePort: async () => true,
+    });
+    expect(JSON.parse(readFileSync(profile.releaseFile, 'utf8'))).toEqual({
+      current: next, previous: current, lastAction: 'upgrade',
+    });
+  });
+
+  it('refuses to overwrite a symbolic-link release state during upgrade', async () => {
+    const profile = fixture();
+    const target = join(profile.home, 'unrelated.json');
+    writeFileSync(target, 'preserve me\n');
+    symlinkSync(target, profile.releaseFile);
+    const runCommand = vi.fn(async (_command: string, _args: string[]) => ({ stdout: '' }));
+
+    await expect(runLifecycleAction('upgrade', profile, {
+      image: `example/next@sha256:${'2'.repeat(64)}`,
+    }, { runCommand, probePort: async () => true })).rejects.toThrow(/release state.*symbolic link/i);
+    expect(readFileSync(target, 'utf8')).toBe('preserve me\n');
+    expect(runCommand.mock.calls.some(([, args]) => args.includes('pull'))).toBe(false);
   });
 });

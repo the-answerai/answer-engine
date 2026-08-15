@@ -8,7 +8,39 @@ of the user's own data. Do not stop after scaffolding or after the synthetic
 installer check.
 
 Stable source:
-<https://raw.githubusercontent.com/the-answerai/answer-engine/master/INSTALL_AGENT.md>
+<https://raw.githubusercontent.com/the-answerai/answer-engine/v1.1.0/INSTALL_AGENT.md>
+
+## Copy and paste this one prompt
+
+<!-- INSTALL_PROMPT:START -->
+```text
+Install Answer Engine stable 1.1.0 on this computer. Follow only the immutable
+v1.1.0 instructions at:
+https://raw.githubusercontent.com/the-answerai/answer-engine/v1.1.0/INSTALL_AGENT.md
+
+First explain that preflight is read-only and ask permission to run it. Then run:
+npx @answer-engine/create@1.1.0 preflight --json --channel stable
+
+Translate every pass, warning, or unsupported result into plain language. Never
+install Docker, WSL2, LM Studio, drivers, or another privileged prerequisite
+without asking me. Recommend full-local only for supported hardware,
+reduced-local for constrained Apple Silicon, or cloud-backed only after explicit
+opt-in. Ask me in one short interview for the install folder, model route, and
+agent clients. Never ask me to paste a secret into chat.
+
+Before executing the installer, verify the bundled release manifest, immutable
+version/tag, and SHA-256 checksums, show exactly what will change, and ask for
+confirmation. Cancel without changing files if I decline. Use the stable channel,
+preserve any existing data and credentials, and retry safely if setup is partial.
+Do not ask me to create or copy a local Answer Engine API key; the installer must
+capture and store it automatically.
+
+Finish only when the health endpoint and local UI are ready. Report any no-op,
+repair, upgrade, rollback, or uninstall action clearly. Client integration,
+history import, folder ingestion, organization, and the cross-chat tutorial are
+separate guided handoffs; do not silently perform them during this installer.
+```
+<!-- INSTALL_PROMPT:END -->
 
 ## Completion criteria
 
@@ -40,13 +72,11 @@ it does not replace the user's-data check in steps 5 and 6.
 
 ## 1. Check prerequisites
 
-Run:
+Ask before running this read-only command:
 
 ```bash
-node --version
-docker version
-docker compose version
-docker info
+npx @answer-engine/create@1.1.0 preflight --channel stable
+# Use --json when the agent will interpret the result.
 ```
 
 Answer Engine requires Node.js 22.16 or newer, Docker, and Compose v2. Docker
@@ -65,17 +95,17 @@ Anthropic chat with OpenAI embeddings are also supported.
 
 ## 2. Interview the user
 
-Ask these questions in one concise batch and wait for the answers:
+The installer asks for the issue-#42 choices in one concise interview. If an
+agent is driving it, ask these questions in one batch and wait for the answers:
 
 1. Use the default `~/.answer-engine`, or another local home?
 2. Use LM Studio, OpenAI, or Anthropic? Collect exact model IDs. For LM Studio,
    also collect the embedding width. Have the user enter keys locally.
-3. Which clients should be wired: Claude Code, Codex, Cursor, or Claude Desktop?
-4. Which histories should be imported: Claude Code, Codex, and/or Cowork?
-5. Which local document directories should be imported? Ask for include/exclude
-   globs and whether a deleted file should leave its memory in place (default)
-   or forget it.
-6. Run one sync now only, or also install the per-user background sync service?
+3. Which clients will be handed to the client-integration guide after install?
+
+Client wiring, history import, document ingestion, organization, and the
+cross-chat tutorial are implemented by issues #43 through #47. Record the
+choices, but do not silently perform those downstream steps here.
 
 Default history discovery:
 
@@ -194,8 +224,9 @@ ae config gen-env
 
 ## 5. Import and prove real recall
 
-If the CLI does not yet have the local key, run `ae auth login` and have the user
-paste the key directly from `$AE_HOME/.env.compose`. Then:
+Issue #43 owns verified client/CLI authentication handoff. Never ask the user to
+copy the installer-managed local API key into the UI or paste it into chat. Once
+that handoff is available, continue with:
 
 ```bash
 ae auth status

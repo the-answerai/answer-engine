@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "version": "1.1.0",
+  "tag": "v1.1.0",
+  "promptUrl": "https://raw.githubusercontent.com/the-answerai/answer-engine/v1.1.0/INSTALL_AGENT.md",
+  "images": {
+    "answerEngine": "ghcr.io/the-answerai/answer-engine:1.1.0",
+    "postgres": "pgvector/pgvector:pg16@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b",
+    "redis": "redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2"
+  },
+  "artifacts": [
+    {
+      "path": "docker-compose.yml",
+      "sha256": "742d68c9e9437ebbb0edc9b92bd9875355949abe05eb44257cf6d9d0eae8de3f"
+    },
+    {
+      "path": "env.compose.tmpl",
+      "sha256": "7819ac70ba3ec78801bd1a3bb5e892234445b7118afde357342cd995b94ba71e"
+    }
+  ]
+}

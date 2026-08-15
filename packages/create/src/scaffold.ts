@@ -1,13 +1,15 @@
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
+  renameSync,
   readFileSync,
   writeFileSync,
 } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { stringify as stringifyYaml } from 'yaml';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import {
   UserConfigSchema,
   type UserConfig,
@@ -30,6 +32,7 @@ export interface ScaffoldResult {
   composePath: string;
   envPath: string;
   apiKey?: string;
+  changes: string[];
 }
 
 export interface ScaffoldDependencies {
@@ -44,6 +47,15 @@ function readOptional(path: string): string {
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return '';
     throw error;
   }
+}
+
+function writeAtomicIfChanged(path: string, contents: string, mode?: number): boolean {
+  if (readOptional(path) === contents) return false;
+  const temporary = `${path}.tmp-${process.pid}`;
+  writeFileSync(temporary, contents, { encoding: 'utf8', ...(mode ? { mode } : {}) });
+  renameSync(temporary, path);
+  if (mode) chmodSync(path, mode);
+  return true;
 }
 
 function decodeEnvValue(value: string): string {
@@ -147,12 +159,15 @@ export function scaffoldInstallation(
   input: ScaffoldInput,
   dependencies: ScaffoldDependencies = {},
 ): ScaffoldResult {
-  const config = UserConfigSchema.parse(input.config);
+  const configPath = join(input.home, 'config.yaml');
+  const existingConfig = readOptional(configPath);
+  const config = existingConfig
+    ? UserConfigSchema.parse(parseYaml(existingConfig) as unknown)
+    : UserConfigSchema.parse(input.config);
   const profile = input.profile ?? createRuntimeChannelProfile('stable', { home: input.home });
   const templatesDir = dependencies.templatesDir ?? templateDirectory;
   const generateSecret = dependencies.generateSecret
     ?? (() => randomBytes(32).toString('hex'));
-  const configPath = join(input.home, 'config.yaml');
   const composePath = join(input.home, 'docker-compose.yml');
   const envPath = join(input.home, '.env.compose');
   const existingEnv = readOptional(envPath);
@@ -170,11 +185,9 @@ export function scaffoldInstallation(
   mkdirSync(join(input.home, 'raw-archive'), { recursive: true });
   mkdirSync(join(input.home, 'logs'), { recursive: true });
 
-  writeFileSync(configPath, stringifyYaml(config), { encoding: 'utf8', mode: 0o600 });
-  chmodSync(configPath, 0o600);
-  writeFileSync(
-    composePath,
-    renderTemplate(
+  const changes: string[] = [];
+  if (!existsSync(configPath) && writeAtomicIfChanged(configPath, stringifyYaml(config), 0o600)) changes.push('config.yaml');
+  const compose = renderTemplate(
       readFileSync(join(templatesDir, 'docker-compose.yml'), 'utf8'),
       replacements(
         config,
@@ -185,9 +198,8 @@ export function scaffoldInstallation(
         databasePassword,
         profile,
       ),
-    ),
-    'utf8',
-  );
+    );
+  if (writeAtomicIfChanged(composePath, compose)) changes.push('docker-compose.yml');
   const environment = renderTemplate(
     readFileSync(join(templatesDir, 'env.compose.tmpl'), 'utf8'),
     replacements(
@@ -200,8 +212,7 @@ export function scaffoldInstallation(
       profile,
     ),
   );
-  writeFileSync(envPath, environment, { encoding: 'utf8', mode: 0o600 });
-  chmodSync(envPath, 0o600);
+  if (writeAtomicIfChanged(envPath, environment, 0o600)) changes.push('.env.compose');
   writeRuntimeOwnershipMarker(profile);
 
   return {
@@ -210,5 +221,6 @@ export function scaffoldInstallation(
     composePath,
     envPath,
     ...(apiKey ? { apiKey } : {}),
+    changes,
   };
 }

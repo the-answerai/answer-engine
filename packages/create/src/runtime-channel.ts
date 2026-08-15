@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
-import { chmodSync, existsSync, lstatSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { z } from 'zod';
+import { assertRegularFileTarget, writePrivateFileAtomic } from './safe-file.js';
 
 export const RuntimeChannelSchema = z.enum(['stable', 'staging']);
 export type RuntimeChannel = z.infer<typeof RuntimeChannelSchema>;
@@ -18,6 +19,7 @@ export const RuntimeChannelProfileSchema = z.object({
   rawArchiveDir: NonEmptySchema,
   credentialsFile: NonEmptySchema,
   markerFile: NonEmptySchema,
+  completionFile: NonEmptySchema,
   releaseFile: NonEmptySchema,
   composeProject: NonEmptySchema,
   databaseName: NonEmptySchema,
@@ -76,6 +78,7 @@ export function createRuntimeChannelProfile(
     rawArchiveDir: join(home, 'raw-archive'),
     credentialsFile: join(home, '.env.compose'),
     markerFile: join(home, '.runtime-channel.json'),
+    completionFile: join(home, '.install-complete.json'),
     releaseFile: join(home, '.release-state.json'),
     composeProject: defaults.composeProject,
     databaseName: defaults.databaseName,
@@ -88,7 +91,8 @@ export function createRuntimeChannelProfile(
 
 export function writeRuntimeOwnershipMarker(profile: RuntimeChannelProfile): void {
   const composeFile = join(profile.home, 'docker-compose.yml');
-  writeFileSync(profile.markerFile, `${JSON.stringify({
+  assertRegularFileTarget(profile.markerFile, 'Runtime ownership marker');
+  const contents = `${JSON.stringify({
     schemaVersion: 2,
     channel: profile.channel,
     home: profile.home,
@@ -97,8 +101,9 @@ export function writeRuntimeOwnershipMarker(profile: RuntimeChannelProfile): voi
     volumes: profile.volumes,
     databaseName: profile.databaseName,
     composeFileSha256: createHash('sha256').update(readFileSync(composeFile)).digest('hex'),
-  }, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
-  chmodSync(profile.markerFile, 0o600);
+  }, null, 2)}\n`;
+  if (existsSync(profile.markerFile) && readFileSync(profile.markerFile, 'utf8') === contents) return;
+  writePrivateFileAtomic(profile.markerFile, contents, 'Runtime ownership marker');
 }
 
 function environmentValue(contents: string, key: string): string | undefined {
@@ -225,7 +230,10 @@ export async function validateRuntimeChannelIsolation(
     if (new Set(Object.values(profile.volumes)).size !== Object.values(profile.volumes).length) {
       throw new Error(`Volume name collision inside the ${profile.channel} runtime channel.`);
     }
-    if (existsSync(profile.markerFile)) assertRuntimeChannelConfiguration(profile);
+    if (existsSync(profile.markerFile)) {
+      assertRegularFileTarget(profile.markerFile, 'Runtime ownership marker');
+      assertRuntimeChannelConfiguration(profile);
+    }
   }
 
   for (let leftIndex = 0; leftIndex < profiles.length; leftIndex += 1) {
@@ -233,8 +241,14 @@ export async function validateRuntimeChannelIsolation(
       const left = profiles[leftIndex];
       const right = profiles[rightIndex];
       if (!left || !right) continue;
-      const leftPaths = [left.home, left.dataDir, left.logsDir, left.rawArchiveDir, left.credentialsFile];
-      const rightPaths = [right.home, right.dataDir, right.logsDir, right.rawArchiveDir, right.credentialsFile];
+      const leftPaths = [
+        left.home, left.dataDir, left.logsDir, left.rawArchiveDir, left.credentialsFile,
+        left.markerFile, left.completionFile, left.releaseFile,
+      ];
+      const rightPaths = [
+        right.home, right.dataDir, right.logsDir, right.rawArchiveDir, right.credentialsFile,
+        right.markerFile, right.completionFile, right.releaseFile,
+      ];
       for (const leftPath of leftPaths) {
         for (const rightPath of rightPaths) {
           if (pathsOverlap(canonicalPath(leftPath), canonicalPath(rightPath))) {

@@ -77,6 +77,38 @@ docker compose down
 
 ## Install from npm
 
+### One-prompt guided install
+
+<!-- INSTALL_PROMPT:START -->
+```text
+Install Answer Engine stable 1.1.0 on this computer. Follow only the immutable
+v1.1.0 instructions at:
+https://raw.githubusercontent.com/the-answerai/answer-engine/v1.1.0/INSTALL_AGENT.md
+
+First explain that preflight is read-only and ask permission to run it. Then run:
+npx @answer-engine/create@1.1.0 preflight --json --channel stable
+
+Translate every pass, warning, or unsupported result into plain language. Never
+install Docker, WSL2, LM Studio, drivers, or another privileged prerequisite
+without asking me. Recommend full-local only for supported hardware,
+reduced-local for constrained Apple Silicon, or cloud-backed only after explicit
+opt-in. Ask me in one short interview for the install folder, model route, and
+agent clients. Never ask me to paste a secret into chat.
+
+Before executing the installer, verify the bundled release manifest, immutable
+version/tag, and SHA-256 checksums, show exactly what will change, and ask for
+confirmation. Cancel without changing files if I decline. Use the stable channel,
+preserve any existing data and credentials, and retry safely if setup is partial.
+Do not ask me to create or copy a local Answer Engine API key; the installer must
+capture and store it automatically.
+
+Finish only when the health endpoint and local UI are ready. Report any no-op,
+repair, upgrade, rollback, or uninstall action clearly. Client integration,
+history import, folder ingestion, organization, and the cross-chat tutorial are
+separate guided handoffs; do not silently perform them during this installer.
+```
+<!-- INSTALL_PROMPT:END -->
+
 The release installer will be published as `@answer-engine/create` after the
 local release candidate is verified:
 
@@ -86,7 +118,9 @@ npx @answer-engine/create@1.1.0
 
 For an agent-led installation, use [INSTALL_AGENT.md](./INSTALL_AGENT.md). The
 installer is idempotent and keeps its editable configuration under `AE_HOME`
-(default `~/.answer-engine`).
+(default `~/.answer-engine`). It records completion only after agent wiring and
+the final memory round trip pass, allowing interrupted healthy installs to
+resume instead of being reported as complete.
 
 Installer and CLI operations accept explicit `stable` and `staging` channels.
 Their homes, credentials, ports, Compose projects, volumes, logs, archives, and
