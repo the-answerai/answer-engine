@@ -1,0 +1,60 @@
+{
+  "name": "session/epic-40-epic-deliver-zero-to-first-memory-desktop-onboarding-and-isolated-local-channels",
+  "branch": "session/epic-40-epic-deliver-zero-to-first-memory-desktop-onboarding-and-isolated-local-channels",
+  "completed": "2026-08-15T01:12:49.958Z",
+  "results": [
+    {
+      "issueNum": 41,
+      "title": "feat: isolate stable and staging local Answer Engine channels",
+      "status": "failure",
+      "testsPassing": false,
+      "verifyPassing": false,
+      "duration": 2905,
+      "filesChanged": 0
+    }
+  ],
+  "stages": [
+    {
+      "stage": "batch-plan",
+      "model": "",
+      "endpoint": "default",
+      "tokens_in": 196400,
+      "tokens_out": 151077,
+      "cost_usd": 0,
+      "wall_time_s": 301.918,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "stage_success": true,
+      "started_at": "2026-08-15T00:24:05.128Z",
+      "issue_num": 41
+    },
+    {
+      "stage": "batch-implement",
+      "model": "",
+      "endpoint": "default",
+      "tokens_in": 4824005,
+      "tokens_out": 3710773,
+      "cost_usd": 0,
+      "wall_time_s": 1655.383,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "stage_success": true,
+      "started_at": "2026-08-15T00:29:07.083Z",
+      "issue_num": 41
+    },
+    {
+      "stage": "batch-review",
+      "model": "",
+      "endpoint": "default",
+      "tokens_in": 739445,
+      "tokens_out": 568804,
+      "cost_usd": 0,
+      "wall_time_s": 899.729,
+      "tool_calls": 0,
+      "tool_errors": 1,
+      "stage_success": true,
+      "started_at": "2026-08-15T00:57:01.199Z",
+      "issue_num": 41
+    }
+  ]
+}
