@@ -42,6 +42,7 @@ backups/
 .alpha-loop/auth/
 .alpha-loop/traces/
 .agent-browser/
+.alpha-loop-runtime/
 review-*.json
 # Alpha-loop ephemeral data (not shared)
 .alpha-loop/templates/*.bak
