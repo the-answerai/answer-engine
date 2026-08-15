@@ -135,6 +135,24 @@ describe('AnswerEngineClient', () => {
     );
   });
 
+  it('submits explicit organization decisions to the selected plan', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ success: true, data: { id: 'plan-1', status: 'applied' } }),
+    });
+
+    await client.applyOrganizationPlan('plan/unsafe', [
+      { suggestionId: 's-1111111111111111', decision: 'accept' },
+    ]);
+
+    expect(mockFetch.mock.calls[0][0]).toBe(
+      'http://localhost:5050/api/v1/organization-plans/plan%2Funsafe/apply',
+    );
+    expect(JSON.parse(mockFetch.mock.calls[0][1].body)).toEqual({
+      decisions: [{ suggestionId: 's-1111111111111111', decision: 'accept' }],
+    });
+  });
+
   it('deletes synced content by ID with the cli-sync surface', async () => {
     mockFetch.mockResolvedValueOnce({ ok: true, status: 204 });
 

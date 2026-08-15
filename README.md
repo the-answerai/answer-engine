@@ -145,6 +145,16 @@ Use `ae sync archive plan` for a tenant-aware, non-destructive retention preview
 Pruning requires a stopped sync service and the exact confirmation token emitted
 by an unchanged plan.
 
+The **Organize** workspace and `ae organize` commands produce an evidence-backed
+preview before changing tags, assignments, or libraries. The default analyzer
+is deterministic and local. Model-assisted proposals are explicit opt-ins and
+send at most 50 IDs, titles, 500-character summaries, source/type fields, and
+existing tag names—never full content or raw archives. Every suggestion needs
+an accept or reject decision; apply refuses a stale snapshot and records an
+audit trail. Undo removes only organization state introduced by that plan and
+never deletes imported content. An undone plan can be reviewed and applied
+again without duplicating tags, libraries, or memberships.
+
 ## API
 
 CLI, MCP, and direct requests to `/api/v1/*` require the local key in either
@@ -165,6 +175,9 @@ Core routes:
 | `POST /api/v1/first-imports/:id/approve` | Approve any subset of discovered sources before content is read |
 | `GET/POST /api/v1/folder-sources` | Preview and inspect explicitly selected local folders |
 | `POST /api/v1/folder-sources/runs/:id/approve` | Approve one exact bounded folder inventory before full-file reads |
+| `GET/POST /api/v1/organization-plans` | List or create non-mutating evidence-backed organization proposals |
+| `POST /api/v1/organization-plans/:id/apply` | Apply a complete set of individual accept/reject decisions |
+| `POST /api/v1/organization-plans/:id/undo` | Restore organization state introduced by one applied plan |
 | `GET /api/v1/content` | Browse, filter, sort, and cursor-paginate stored content |
 | `GET /api/v1/content/:id/lineage` | Inspect origin and artifact history |
 | `POST /api/v1/agent/query` | Full-text, semantic, or hybrid search |

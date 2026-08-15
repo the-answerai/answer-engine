@@ -109,6 +109,26 @@ Staging history discovery is refused unless staging `config.yaml` contains
 `--confirm-staging-history-sync`. The same confirmation is required when
 installing the staging background service.
 
+## Review and apply organization
+
+```bash
+ae organize propose
+ae organize propose --use-model --limit 50
+ae organize list
+ae organize show <plan-id>
+ae organize apply <plan-id> --accept <suggestion-id> --reject <suggestion-id>
+ae organize undo <plan-id>
+```
+
+`propose` never mutates content, taxonomy, or memberships. Its local default
+groups explicit source metadata deterministically. `--use-model` is an explicit
+opt-in that sends only bounded titles, summaries, source/type fields, existing
+tag names, and content IDs to the configured provider. `apply` requires one
+accept or reject decision for every suggestion and refuses a stale snapshot.
+`undo` reverts only tags, assignments, and libraries introduced by that plan;
+it cannot delete imported content. Run `apply` on the undone plan to review and
+reapply it without duplicate tags, libraries, or memberships.
+
 ## Evaluate retrieval
 
 ```bash

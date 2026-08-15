@@ -24,6 +24,8 @@ import type {
   LineageResult,
   LocalSettings,
   MintedAccessToken,
+  OrganizationDecision,
+  OrganizationPlan,
   PageMeta,
   Recipe,
   RecipeInput,
@@ -203,6 +205,22 @@ export function previewImport(items: ImportItem[], libraryId?: string): Promise<
 
 export function importContent(items: ImportItem[], libraryId?: string): Promise<ImportResult> {
   return request('/api/v1/content/import', json('POST', { items, ...(libraryId ? { libraryId } : {}) }));
+}
+
+export function createOrganizationProposal(input: { useModel: boolean; limit: number }): Promise<OrganizationPlan> {
+  return request('/api/v1/organization-plans', json('POST', input));
+}
+
+export function listOrganizationPlans(): Promise<OrganizationPlan[]> {
+  return request('/api/v1/organization-plans');
+}
+
+export function applyOrganizationPlan(planId: string, decisions: OrganizationDecision[]): Promise<OrganizationPlan> {
+  return request(`/api/v1/organization-plans/${encodeURIComponent(planId)}/apply`, json('POST', { decisions }));
+}
+
+export function undoOrganizationPlan(planId: string): Promise<OrganizationPlan> {
+  return request(`/api/v1/organization-plans/${encodeURIComponent(planId)}/undo`, json('POST'));
 }
 
 export function latestFirstImport(): Promise<FirstImportSession | null> {

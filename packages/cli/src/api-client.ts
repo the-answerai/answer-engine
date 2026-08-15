@@ -194,6 +194,29 @@ export class AnswerEngineClient {
     return this.request('POST', `/api/v1/folder-sources/${encodeURIComponent(sourceId)}/remove/complete`, input as unknown as Record<string, unknown>);
   }
 
+  async createOrganizationProposal(input: OrganizationProposalRequest): Promise<ApiResponse<OrganizationPlan>> {
+    return this.request('POST', '/api/v1/organization-plans', input as unknown as Record<string, unknown>);
+  }
+
+  async listOrganizationPlans(): Promise<ApiResponse<OrganizationPlan[]>> {
+    return this.request('GET', '/api/v1/organization-plans');
+  }
+
+  async getOrganizationPlan(planId: string): Promise<ApiResponse<OrganizationPlan>> {
+    return this.request('GET', `/api/v1/organization-plans/${encodeURIComponent(planId)}`);
+  }
+
+  async applyOrganizationPlan(
+    planId: string,
+    decisions: OrganizationDecision[],
+  ): Promise<ApiResponse<OrganizationPlan>> {
+    return this.request('POST', `/api/v1/organization-plans/${encodeURIComponent(planId)}/apply`, { decisions });
+  }
+
+  async undoOrganizationPlan(planId: string): Promise<ApiResponse<OrganizationPlan>> {
+    return this.request('POST', `/api/v1/organization-plans/${encodeURIComponent(planId)}/undo`, {});
+  }
+
   // Agent endpoints
   async getSchema(): Promise<ApiResponse<SchemaResponse>> {
     return this.request<SchemaResponse>('GET', '/api/v1/agent/schema');
@@ -447,4 +470,36 @@ export interface FolderSource {
 export interface FolderRemovalCompleteRequest {
   retention: FolderRetention; deletedContentIds: string[]; archivesRemoved: number;
   failures: Array<{ path: string; errorCode: string }>;
+}
+
+export type OrganizationSuggestion = {
+  id: string;
+  confidence: number;
+  rationale: string;
+  evidence: Array<{ contentId: string; title: string; source: string }>;
+  dependsOn: string[];
+} & (
+  | { type: 'tag.create'; tag: { slug: string; label: string; description: string | null; category: string | null; color: string | null } }
+  | { type: 'tag.assign'; tagSlug: string; contentIds: string[] }
+  | { type: 'library.create'; library: { slug: string; name: string; description: string | null; filter: Record<string, unknown> | null } }
+);
+export interface OrganizationDecision { suggestionId: string; decision: 'accept' | 'reject' }
+export interface OrganizationProposalRequest { useModel: boolean; limit: number }
+export interface OrganizationPlan {
+  id: string;
+  status: 'preview' | 'applied' | 'undone';
+  proposalMode: 'local' | 'model';
+  sampleLimit: number;
+  sampleCount: number;
+  sourceSnapshotSha256: string;
+  proposalSha256: string;
+  suggestions: OrganizationSuggestion[];
+  decisions: OrganizationDecision[] | null;
+  applyResult: Array<Record<string, unknown>> | null;
+  modelProvider: string | null;
+  modelId: string | null;
+  appliedAt: string | null;
+  undoneAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 }

@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
-import type { FolderSource } from './types';
+import type { FolderSource, OrganizationPlan } from './types';
 
 const contentId = '11111111-1111-4111-8111-111111111111';
 
@@ -23,6 +23,71 @@ function healthResponse() {
 describe('primary local workflows', () => {
   beforeEach(() => { vi.restoreAllMocks(); });
   afterEach(cleanup);
+
+  it('requires a decision for every organization suggestion and supports audited undo', async () => {
+    window.history.replaceState({}, '', '/organize');
+    const planId = '99999999-9999-4999-8999-999999999999';
+    const tagSuggestionId = 's-1111111111111111';
+    const assignSuggestionId = 's-2222222222222222';
+    const preview: OrganizationPlan = {
+      id: planId, status: 'preview', proposalMode: 'local', sampleLimit: 50, sampleCount: 2,
+      sourceSnapshotSha256: 'a'.repeat(64), proposalSha256: 'b'.repeat(64),
+      suggestions: [
+        {
+          id: tagSuggestionId, type: 'tag.create', confidence: 1, rationale: 'Both records came from Codex.',
+          evidence: [{ contentId, title: 'Codex decision', source: 'codex' }], dependsOn: [],
+          tag: { slug: 'codex', label: 'Codex', description: 'Codex memory', category: 'Suggested', color: '#1B3A8F' },
+        },
+        {
+          id: assignSuggestionId, type: 'tag.assign', confidence: 1, rationale: 'Assign only supported records.',
+          evidence: [{ contentId, title: 'Codex decision', source: 'codex' }], dependsOn: [tagSuggestionId],
+          tagSlug: 'codex', contentIds: [contentId],
+        },
+      ],
+      decisions: null, applyResult: null, modelProvider: null, modelId: null,
+      appliedAt: null, undoneAt: null,
+      createdAt: '2026-08-15T20:00:00.000Z', updatedAt: '2026-08-15T20:00:00.000Z',
+    };
+    let current: OrganizationPlan | undefined;
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === '/local-ui/session') return new Response(null, { status: 204 });
+      if (url === '/health') return healthResponse();
+      if (url === '/api/v1/settings') return json({ defaultPageSize: 25, defaultLibraryId: null, density: 'comfortable', defaultExportFormat: 'json' });
+      if (url === '/api/v1/organization-plans' && init?.method === 'POST') { current = preview; return json(current, undefined, 201); }
+      if (url === '/api/v1/organization-plans') return json(current ? [current] : []);
+      if (url.endsWith('/apply') && init?.method === 'POST') {
+        const decisions = (JSON.parse(String(init.body)) as { decisions: unknown[] }).decisions;
+        current = { ...preview, status: 'applied', decisions: decisions as OrganizationPlan['decisions'], appliedAt: '2026-08-15T20:01:00.000Z' };
+        return json(current);
+      }
+      if (url.endsWith('/undo') && init?.method === 'POST') {
+        current = { ...current!, status: 'undone', undoneAt: '2026-08-15T20:02:00.000Z' };
+        return json(current);
+      }
+      return json([]);
+    });
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole('button', { name: 'Create proposal' }));
+    expect(await screen.findByText('Create tag “Codex”')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Apply reviewed plan' }) as HTMLButtonElement).disabled).toBe(true);
+    for (const accept of screen.getAllByLabelText('Accept')) await user.click(accept);
+    await user.click(screen.getByRole('button', { name: 'Apply reviewed plan' }));
+
+    expect(await screen.findByText(/Applied with an audit record/)).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledWith(
+      `/api/v1/organization-plans/${planId}/apply`,
+      expect.objectContaining({ body: expect.stringContaining(assignSuggestionId) }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Undo this plan' }));
+    await user.click(await screen.findByRole('button', { name: 'Undo plan' }));
+    expect(await screen.findByText(/Undo completed/)).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Reapply reviewed plan' }));
+    expect(await screen.findByText(/Applied with an audit record/)).toBeTruthy();
+    expect(fetchMock.mock.calls.filter(([url, init]) => String(url).endsWith('/apply') && init?.method === 'POST')).toHaveLength(2);
+  });
 
   it('asks a grounded question and opens the cited content inspector', async () => {
     window.history.replaceState({}, '', '/answers');

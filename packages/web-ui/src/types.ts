@@ -17,6 +17,42 @@ export interface Tag {
   updatedAt: string;
 }
 
+export type OrganizationSuggestion = {
+  id: string;
+  confidence: number;
+  rationale: string;
+  evidence: Array<{ contentId: string; title: string; source: string }>;
+  dependsOn: string[];
+} & (
+  | { type: 'tag.create'; tag: { slug: string; label: string; description: string | null; category: string | null; color: string | null } }
+  | { type: 'tag.assign'; tagSlug: string; contentIds: string[] }
+  | { type: 'library.create'; library: { slug: string; name: string; description: string | null; filter: LibraryFilter | null } }
+);
+
+export interface OrganizationDecision {
+  suggestionId: string;
+  decision: 'accept' | 'reject';
+}
+
+export interface OrganizationPlan {
+  id: string;
+  status: 'preview' | 'applied' | 'undone';
+  proposalMode: 'local' | 'model';
+  sampleLimit: number;
+  sampleCount: number;
+  sourceSnapshotSha256: string;
+  proposalSha256: string;
+  suggestions: OrganizationSuggestion[];
+  decisions: OrganizationDecision[] | null;
+  applyResult: Array<Record<string, unknown>> | null;
+  modelProvider: string | null;
+  modelId: string | null;
+  appliedAt: string | null;
+  undoneAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ContentTag extends Pick<Tag, 'id' | 'slug' | 'label' | 'category' | 'color'> {
   confidence: number | null;
 }
