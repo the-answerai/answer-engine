@@ -62,14 +62,35 @@ Executed in the isolated issue #44 staging worktree on 2026-08-14:
   preserved the selected source after reload, reported no page errors, and
   confirmed reduced-motion emulation. At 375px, document and viewport widths
   both measured 375px after correcting the import-switch overflow.
-- Browser accessibility scan after approval — 0 violations; the mobile menu
-  contrast check remained incomplete for manual review.
+- Follow-up `pnpm browser:ui` verification used a server-side synthetic Codex
+  discovery containing one 120-byte fixture. The approval button remained
+  disabled before consent, enabled after consent, and transitioned to the
+  approved waiting state. Keyboard navigation produced a visible 3px focus
+  ring. At 375x812, viewport, document, and body widths all measured 375px;
+  the menu opened, trapped focus, closed on Escape, and returned focus to its
+  trigger. Reduced-motion emulation reduced the sidebar transition to 1ms, and
+  the page reported no browser errors.
+- Browser accessibility scan after approval — 0 violations and one incomplete
+  automated contrast result for the menu glyph because its button background
+  is transparent. Manual computed-style checks measured the glyph against its
+  header at 18.11:1 and the active menu link at 8.84:1, both above WCAG AA.
 
 The repository-scoped browser daemon's screenshot command stalled on repeated
-attempts and produced no PNG before the bounded retries were stopped. No raw
-browser CLI, Playwright CLI, or stable-channel browser was used as a substitute;
-the semantic snapshots and measured browser checks above are the retained
-evidence from the approved browser workflow.
+attempts and produced no PNG before the bounded retries were stopped. The
+failure reproduced after terminating the validated project daemon and its
+Chrome child, rerunning `pnpm browser:ui prepare`, and reopening the isolated
+page. The recorder started, but its stop RPC stalled identically and produced no
+WebM. Screenshot or recording RPCs also blocked later semantic commands until
+the daemon was reset. No raw browser CLI, Playwright CLI, or stable-channel
+browser was used as a substitute; the semantic snapshots and measured browser
+checks above are the retained evidence from the approved browser workflow.
+
+The follow-up initially invoked CLI discovery with only `CODEX_HOME` redirected
+to the synthetic fixture. Claude Code and Cowork still inventoried their real
+default paths, reading path/stat metadata only. That session was canceled before
+approval, so no transcript body was read, archived, or imported. The successful
+interaction pass then used only the server-side synthetic discovery described
+above.
 
 The disposable issue-scoped PostgreSQL and Redis volumes were removed once to
 prove a clean migration, recreated for verification, and their containers were
