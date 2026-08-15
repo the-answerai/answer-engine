@@ -58,6 +58,7 @@
     "boot-check:local": "tsx scripts/boot-check-local.ts",
     "browser:ui": "bash scripts/agent-browser.sh",
     "browser:prepare": "CI=true pnpm install --frozen-lockfile && pnpm browser:ui prepare",
+    "alpha-loop:prepare": "node scripts/prepare-alpha-loop-worktree.mjs && pnpm browser:prepare",
     "acceptance:real-history": "tsx scripts/verify-real-history.ts",
     "setup": "docker compose up -d postgres redis && ./scripts/wait-for-postgres.sh && pnpm db:migrate && pnpm init:local",
     "cli": "node packages/cli/dist/index.js",

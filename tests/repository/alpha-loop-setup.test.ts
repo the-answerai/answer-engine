@@ -61,7 +61,7 @@ describe('Alpha Loop repository posture', () => {
       label: 'ready',
       auto_merge: true,
       test_command: 'pnpm verify',
-      setup_command: 'pnpm browser:prepare',
+      setup_command: 'pnpm alpha-loop:prepare',
       batch: true,
       batch_size: 1,
       max_issues: 9,
@@ -99,6 +99,8 @@ describe('Alpha Loop repository posture', () => {
     expect(read('.alpha-loop/context.md')).not.toContain('`src/cli.ts` is the CLI entry point');
     expect(read('.alpha-loop/templates/instructions.md')).toContain('Track every change in a GitHub issue');
     expect(read('.alpha-loop/templates/instructions.md')).toContain('Run\n`pnpm verify`');
+    expect(read('.alpha-loop/templates/instructions.md')).toContain('push directly to `master`');
+    expect(read('.alpha-loop/templates/instructions.md')).toContain("omit a processed issue's `.alpha-loop/learnings/issue-*.md`");
   });
 
   it('keeps both harness outputs synchronized with project templates', () => {
@@ -135,6 +137,7 @@ describe('Alpha Loop repository posture', () => {
     expect(packageManifest.scripts).toMatchObject({
       'browser:ui': 'bash scripts/agent-browser.sh',
       'browser:prepare': 'CI=true pnpm install --frozen-lockfile && pnpm browser:ui prepare',
+      'alpha-loop:prepare': 'node scripts/prepare-alpha-loop-worktree.mjs && pnpm browser:prepare',
     });
     expect(read('AGENTS.md')).toMatch(requiredInstruction);
     expect(read('.alpha-loop/templates/instructions.md')).toMatch(requiredInstruction);
@@ -146,6 +149,149 @@ describe('Alpha Loop repository posture', () => {
     expect(browserWrapper).toContain('stop_project_daemon');
     expect(browserWrapper).not.toContain('$HOME');
     expect(read('.gitignore')).toContain('.agent-browser/');
+    expect(read('.gitignore')).toContain('.alpha-loop-runtime/');
+  });
+
+  it('replaces a colliding generated Compose identity before worktree setup continues', () => {
+    const fixtureRoot = mkdtempSync(join(root, '.alpha-loop-runtime-test-'));
+    const sourceRepository = join(fixtureRoot, 'source');
+    const worktree = join(sourceRepository, '.worktrees', 'session-epic-40-test');
+    const stableHome = join(fixtureRoot, 'stable-home');
+    const script = join(root, 'scripts/prepare-alpha-loop-worktree.mjs');
+    const git = (cwd: string, args: readonly string[]) => {
+      const result = spawnSync('git', args, { cwd, encoding: 'utf8' });
+      expect(result.status, result.stderr).toBe(0);
+    };
+
+    try {
+      mkdirSync(sourceRepository, { recursive: true });
+      git(sourceRepository, ['init', '--initial-branch=master']);
+      git(sourceRepository, ['config', 'user.name', 'Answer Engine Test']);
+      git(sourceRepository, ['config', 'user.email', 'test@example.invalid']);
+      git(sourceRepository, ['commit', '--allow-empty', '-m', 'fixture']);
+      git(sourceRepository, [
+        'worktree', 'add', '-b', 'session/epic-40-test', worktree, 'master',
+      ]);
+      writeFileSync(join(worktree, '.env'), 'COMPOSE_PROJECT_NAME=answer-engine-oss\n');
+
+      const directCheckout = spawnSync(process.execPath, [script], {
+        cwd: sourceRepository,
+        encoding: 'utf8',
+      });
+      expect(directCheckout.status).not.toBe(0);
+      expect(directCheckout.stderr).toContain('refusing to prepare non-Alpha-Loop checkout');
+
+      const environment = {
+        ...process.env,
+        AE_ALPHA_STABLE_HOMES: stableHome,
+        AE_ALPHA_STABLE_COMPOSE_PROJECTS: 'answer-engine-oss,answer-engine-local,answer-engine-stable',
+        AE_ALPHA_STABLE_PORTS: '3200,5050,5433,6380',
+      };
+      const result = spawnSync(process.execPath, [script], {
+        cwd: worktree,
+        encoding: 'utf8',
+        env: environment,
+      });
+      expect(result.status, result.stderr).toBe(0);
+
+      const prepared = Object.fromEntries(
+        readFileSync(join(worktree, '.env'), 'utf8')
+          .trim()
+          .split('\n')
+          .map((line) => line.split('=', 2) as [string, string]),
+      );
+      expect(prepared.COMPOSE_PROJECT_NAME).toMatch(/^answer-engine-alpha-[a-f0-9]{12}$/);
+      expect(prepared.COMPOSE_PROJECT_NAME).not.toBe('answer-engine-oss');
+      expect(resolve(prepared.AE_HOME)).toBe(join(worktree, '.alpha-loop-runtime', 'home'));
+      expect(prepared.AE_CHANNEL).toBe('staging');
+      expect(prepared.AE_HISTORY_SYNC_ENABLED).toBe('false');
+      expect(prepared.ANSWER_ENGINE_SYNC_ENABLED).toBe('false');
+      const composeLines = readFileSync(join(worktree, '.env.compose'), 'utf8')
+        .trim()
+        .split('\n');
+      expect(new Set(composeLines.map((line) => line.split('=', 1)[0])).size).toBe(composeLines.length);
+      const preparedCompose = Object.fromEntries(
+        composeLines.map((line) => line.split('=', 2) as [string, string]),
+      );
+      expect(preparedCompose.ANSWER_ENGINE_PORT).toBe(prepared.ANSWER_ENGINE_PORT);
+      expect(preparedCompose.DATABASE_PORT_HOST).toBe(prepared.DATABASE_PORT_HOST);
+      expect(preparedCompose.REDIS_PORT_HOST).toBe(prepared.REDIS_PORT_HOST);
+
+      const bootstrap = JSON.parse(
+        readFileSync(join(worktree, '.alpha-loop-runtime', 'bootstrap.json'), 'utf8'),
+      ) as {
+        composeProject: string;
+        stagingHome: string;
+        historySyncEnabled: boolean;
+        ports: Record<string, number>;
+      };
+      expect(bootstrap).toMatchObject({
+        composeProject: prepared.COMPOSE_PROJECT_NAME,
+        stagingHome: prepared.AE_HOME,
+        historySyncEnabled: false,
+      });
+      expect(Object.values(bootstrap.ports)).not.toContain(3200);
+      expect(Object.values(bootstrap.ports)).not.toContain(5050);
+      expect(Object.values(bootstrap.ports)).not.toContain(5433);
+      expect(Object.values(bootstrap.ports)).not.toContain(6380);
+
+      const credentialPath = join(worktree, '.alpha-loop-runtime', 'credentials.json');
+      const credentials = readFileSync(credentialPath, 'utf8');
+      const parsedCredentials = JSON.parse(credentials) as { apiKey: string };
+      expect(result.stdout).not.toContain(parsedCredentials.apiKey);
+      expect(statSync(join(worktree, '.env')).mode & 0o077).toBe(0);
+      expect(statSync(join(worktree, '.env.compose')).mode & 0o077).toBe(0);
+      expect(statSync(credentialPath).mode & 0o077).toBe(0);
+      expect(statSync(join(worktree, '.alpha-loop-runtime')).mode & 0o077).toBe(0);
+      const repeated = spawnSync(process.execPath, [script], {
+        cwd: worktree,
+        encoding: 'utf8',
+        env: environment,
+      });
+      expect(repeated.status, repeated.stderr).toBe(0);
+      expect(readFileSync(credentialPath, 'utf8')).toBe(credentials);
+
+      const collision = spawnSync(process.execPath, [script], {
+        cwd: worktree,
+        encoding: 'utf8',
+        env: {
+          ...environment,
+          AE_ALPHA_STABLE_PORTS: String(bootstrap.ports.api),
+        },
+      });
+      expect(collision.status).not.toBe(0);
+      expect(collision.stderr).toContain('staging api port collides with stable port');
+
+      const projectCollision = spawnSync(process.execPath, [script], {
+        cwd: worktree,
+        encoding: 'utf8',
+        env: {
+          ...environment,
+          AE_ALPHA_STABLE_COMPOSE_PROJECTS: bootstrap.composeProject,
+        },
+      });
+      expect(projectCollision.status).not.toBe(0);
+      expect(projectCollision.stderr).toContain('staging Compose project collides with stable project');
+
+      const homeCollision = spawnSync(process.execPath, [script], {
+        cwd: worktree,
+        encoding: 'utf8',
+        env: {
+          ...environment,
+          AE_ALPHA_STABLE_HOMES: bootstrap.stagingHome,
+        },
+      });
+      expect(homeCollision.status).not.toBe(0);
+      expect(homeCollision.stderr).toContain('staging home overlaps stable home');
+    } finally {
+      if (existsSync(worktree)) {
+        spawnSync('git', ['worktree', 'remove', '--force', worktree], {
+          cwd: sourceRepository,
+          encoding: 'utf8',
+        });
+      }
+      rmSync(fixtureRoot, { recursive: true, force: true });
+    }
   });
 
   it('replaces a daemon rooted in a prior worktree before browser preflight', async () => {
