@@ -242,10 +242,14 @@ export function manifestMatchesServer(local: FolderDiscoveryManifest, server: {
 }): boolean {
   if (!server.latestRun || local.sourceId !== server.id || local.runId !== server.latestRun.id
     || resolve(local.rootPath) !== resolve(server.rootPath)) return false;
-  const localRows = local.inventory.map((item) => JSON.stringify({ sourcePath: item.sourcePath, relativePath: item.relativePath,
+  const approvedRow = (item: {
+    sourcePath: string; relativePath: string; byteSize: number; modifiedAt?: string | null;
+    disposition: FolderDisposition; metadataFingerprint?: string | null;
+  }): string => JSON.stringify({ sourcePath: item.sourcePath, relativePath: item.relativePath,
     byteSize: item.byteSize, modifiedAt: item.modifiedAt ?? null, disposition: item.disposition,
-    metadataFingerprint: item.metadataFingerprint ?? null }));
-  const serverRows = server.latestRun.items.map((item) => JSON.stringify(item));
+    metadataFingerprint: item.metadataFingerprint ?? null });
+  const localRows = local.inventory.map(approvedRow).sort();
+  const serverRows = server.latestRun.items.map(approvedRow).sort();
   return localRows.length === serverRows.length && localRows.every((row, index) => row === serverRows[index]);
 }
 
@@ -279,7 +283,7 @@ export async function archiveApprovedFile(sourceId: string, rootPath: string, it
   } finally { await handle.close(); }
   const sha256 = hash(bytes);
   const archiveRoot = folderArchiveDir(sourceId);
-  const directory = join(archiveRoot, sha256);
+  const directory = join(archiveRoot, hash(item.relativePath), sha256);
   const archivedPath = join(directory, 'source.bin');
   const manifestPath = join(directory, 'manifest.json');
   assertInside(archiveRoot, directory);

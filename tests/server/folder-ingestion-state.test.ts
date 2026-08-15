@@ -25,6 +25,11 @@ describe('folder ingestion state', () => {
       modifiedAt: '2026-08-15T12:00:00.000Z', metadataFingerprint: 'a'.repeat(64) }] }).success).toBe(false);
     expect(FolderSourceDiscoverySchema.safeParse({ ...base, inventory: [{ sourcePath: '/selected/notes/link.md',
       relativePath: 'link.md', byteSize: 0, disposition: 'symlink', reason: 'not followed' }] }).success).toBe(true);
+    expect(FolderSourceDiscoverySchema.safeParse({ ...base, maxTotalBytes: 1_000, inventory: [{
+      sourcePath: '/selected/notes/oversized.md', relativePath: 'oversized.md', byteSize: 101,
+      disposition: 'candidate', reason: 'supported', modifiedAt: '2026-08-15T12:00:00.000Z',
+      metadataFingerprint: 'b'.repeat(64),
+    }] }).success).toBe(false);
   });
 
   it('requires complete archive lineage for applied events and reconciles every row', () => {

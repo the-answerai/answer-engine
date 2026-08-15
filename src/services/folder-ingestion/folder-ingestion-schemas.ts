@@ -49,9 +49,18 @@ export const FolderSourceDiscoverySchema = z.object({
   manifestPath: PathSchema,
   inventory: InventorySchema,
 }).strict().superRefine((value, context) => {
-  const approvedBytes = value.inventory
-    .filter((item) => item.disposition === 'candidate')
-    .reduce((sum, item) => sum + item.byteSize, 0);
+  let approvedBytes = 0;
+  for (const [index, item] of value.inventory.entries()) {
+    if (item.disposition !== 'candidate') continue;
+    approvedBytes += item.byteSize;
+    if (item.byteSize > value.maxFileBytes) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['inventory', index, 'byteSize'],
+        message: 'candidate bytes exceed maxFileBytes',
+      });
+    }
+  }
   if (approvedBytes > value.maxTotalBytes) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ['inventory'], message: 'candidate bytes exceed maxTotalBytes' });
   }

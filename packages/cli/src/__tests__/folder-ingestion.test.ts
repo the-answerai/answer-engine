@@ -8,6 +8,7 @@ import { registerFolderCommands } from '../commands/folders.js';
 import {
   archiveApprovedFile,
   diffFolderPreview,
+  manifestMatchesServer,
   previewFolder,
   readFolderManifest,
   restatApprovedCandidate,
@@ -95,5 +96,56 @@ describe('permissioned folder ingestion', () => {
     expect(Object.fromEntries(diff.inventory.map((item) => [item.relativePath, item.change]))).toEqual({
       'added.txt': 'added', 'note.md': 'changed',
     });
+  });
+
+  it('matches approved manifests against hydrated server rows without trusting response-only fields', async () => {
+    const root = await temporaryDirectory();
+    await writeFile(join(root, 'a.md'), 'alpha');
+    await writeFile(join(root, 'b.md'), 'beta');
+    const sourceId = '11111111-1111-4111-8111-111111111111';
+    const runId = '22222222-2222-4222-8222-222222222222';
+    const manifest = { ...await previewFolder(root), sourceId, runId };
+    const hydratedItems = [...manifest.inventory].reverse().map((item) => ({
+      ...item,
+      outcome: 'pending',
+      appliedSha256: null,
+      contentId: null,
+      archiveManifestPath: null,
+      errorCode: null,
+      recoveryAction: null,
+    }));
+    const server = {
+      id: sourceId,
+      rootPath: root,
+      manifestPath: '/channel/source.json',
+      latestRun: { id: runId, manifestPath: '/channel/run.json', items: hydratedItems },
+    };
+
+    expect(manifestMatchesServer(manifest, server)).toBe(true);
+    expect(manifestMatchesServer(manifest, {
+      ...server,
+      latestRun: { ...server.latestRun, items: hydratedItems.map((item, index) => (
+        index === 0 ? { ...item, byteSize: item.byteSize + 1 } : item
+      )) },
+    })).toBe(false);
+  });
+
+  it('keeps source-specific manifests when different paths have identical bytes', async () => {
+    const root = await temporaryDirectory();
+    const aeHome = await temporaryDirectory();
+    process.env.AE_HOME = aeHome;
+    await writeFile(join(root, 'a.md'), 'same bytes');
+    await writeFile(join(root, 'b.md'), 'same bytes');
+    const preview = await previewFolder(root);
+    const sourceId = '11111111-1111-4111-8111-111111111111';
+
+    const first = await archiveApprovedFile(sourceId, root, preview.inventory[0]!);
+    const second = await archiveApprovedFile(sourceId, root, preview.inventory[1]!);
+    const firstManifest = JSON.parse(await readFile(first.manifestPath, 'utf8')) as { relative_path: string };
+    const secondManifest = JSON.parse(await readFile(second.manifestPath, 'utf8')) as { relative_path: string };
+
+    expect(first.sha256).toBe(second.sha256);
+    expect(first.manifestPath).not.toBe(second.manifestPath);
+    expect([firstManifest.relative_path, secondManifest.relative_path]).toEqual(['a.md', 'b.md']);
   });
 });
