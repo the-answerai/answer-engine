@@ -59,11 +59,22 @@ ae sync once --source local_dir --path ./notes
 ae sync run --source claude-code
 ae sync install-service
 ae sync status
+ae sync archive plan --target-bytes 10737418240
+ae sync archive prune --target-bytes 10737418240 --confirm <token>
 ae sync uninstall-service
 ```
 
 Supported history sources are Claude Code, Codex, Cowork, and local directories.
-The sync cursor and raw source archive remain local under `AE_HOME`.
+The sync cursor and raw source archive remain local under `AE_HOME`. Raw archives
+are content-addressed and reused when an import is retried. Writes fail closed
+before exceeding a 256 MiB bundle limit, a 10 GiB total archive limit, or a
+10 GiB free-space reserve. Override those byte counts with
+`AE_RAW_ARCHIVE_MAX_BUNDLE_BYTES`, `AE_RAW_ARCHIVE_MAX_TOTAL_BYTES`, and
+`AE_RAW_ARCHIVE_MIN_FREE_BYTES`. Cowork archives only supported text artifacts
+explicitly named by its `mountedFiles` metadata; it never sweeps the containing
+workspace. `archive plan` fetches tenant-scoped manifest references and previews
+only unreferenced deletion candidates. `archive prune` refuses to run while the
+sync service is active and requires the exact token from an unchanged plan.
 
 ## Evaluate retrieval
 

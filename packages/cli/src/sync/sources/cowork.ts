@@ -1,6 +1,6 @@
-import { readdir, readFile, stat } from 'node:fs/promises';
+import { lstat, readdir, readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { basename, dirname, join, resolve, sep } from 'node:path';
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { attachRawArchiveManifest } from '../raw-archive.js';
 import type {
   ConversationReadResult,
@@ -26,17 +26,10 @@ import {
 
 const SOURCE_ID = 'cowork' as const;
 const SOURCE_NAME = 'Claude Cowork';
-const EXCLUDED_ARTIFACT_DIRECTORIES = new Set([
-  '.claude',
-  'Cache',
-  'Code Cache',
-  'Crashpad',
-  'GPUCache',
-  'IndexedDB',
-  'Local Storage',
-  'Session Storage',
-  'leveldb',
+const SUPPORTED_COWORK_ARTIFACT_EXTENSIONS = new Set([
+  '.csv', '.json', '.jsonl', '.md', '.markdown', '.txt',
 ]);
+const MAX_COWORK_ARTIFACT_BYTES = 25 * 1024 * 1024;
 
 interface CoworkBundlePaths {
   auditPath: string;
@@ -123,30 +116,39 @@ async function findOuterMetadata(auditDirectory: string): Promise<string | undef
   return undefined;
 }
 
-async function collectArtifactFiles(
-  root: string,
-  excludedPaths: ReadonlySet<string>,
-): Promise<string[]> {
-  let entries;
-  try {
-    entries = await readdir(root, { withFileTypes: true });
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
-    throw error;
-  }
+function inside(root: string, candidate: string): boolean {
+  const child = relative(resolve(root), resolve(candidate));
+  return child === '' || (!child.startsWith(`..${sep}`) && child !== '..' && !isAbsolute(child));
+}
 
-  const files: string[] = [];
-  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
-    const path = join(root, entry.name);
-    if (entry.isDirectory()) {
-      if (!EXCLUDED_ARTIFACT_DIRECTORIES.has(entry.name)) {
-        files.push(...await collectArtifactFiles(path, excludedPaths));
-      }
-    } else if (entry.isFile() && !excludedPaths.has(path)) {
-      files.push(path);
-    }
+async function mountedArtifactFiles(auditPath: string, outerPath: string): Promise<string[]> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readFile(outerPath, 'utf8')) as unknown;
+  } catch {
+    return [];
   }
-  return files;
+  if (!isRecord(parsed) || !Array.isArray(parsed.mountedFiles)) return [];
+
+  const sessionRoot = dirname(outerPath);
+  const runtimeRoot = dirname(auditPath);
+  const paths = new Set<string>();
+  for (const entry of parsed.mountedFiles) {
+    if (typeof entry !== 'string' || !entry.trim()) continue;
+    const segments = entry.replace(/\\/g, '/').split('/');
+    if (isAbsolute(entry) || segments.includes('..')) continue;
+    const artifactPath = resolve(runtimeRoot, entry);
+    if (!inside(sessionRoot, artifactPath)
+      || !SUPPORTED_COWORK_ARTIFACT_EXTENSIONS.has(extname(artifactPath).toLowerCase())) continue;
+    const artifactStat = await lstat(artifactPath).catch((error: unknown) => {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw error;
+    });
+    if (!artifactStat?.isFile() || artifactStat.isSymbolicLink()
+      || artifactStat.size > MAX_COWORK_ARTIFACT_BYTES) continue;
+    paths.add(artifactPath);
+  }
+  return [...paths].sort();
 }
 
 async function resolveCoworkBundlePaths(transcriptPath: string): Promise<CoworkBundlePaths> {
@@ -157,7 +159,8 @@ async function resolveCoworkBundlePaths(transcriptPath: string): Promise<CoworkB
 
   const transcriptPaths = await sourceBundlePaths(transcriptPath);
   const excludedPaths = new Set([...transcriptPaths, auditPath, outerPath]);
-  const artifactPaths = await collectArtifactFiles(dirname(outerPath), excludedPaths);
+  const artifactPaths = (await mountedArtifactFiles(auditPath, outerPath))
+    .filter((path) => !excludedPaths.has(path));
   return {
     auditPath,
     outerPath,
