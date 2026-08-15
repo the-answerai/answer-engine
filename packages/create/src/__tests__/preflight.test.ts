@@ -6,6 +6,14 @@ import { formatPreflightReport, runPreflight } from '../preflight.js';
 import type { CommandRunner } from '../process.js';
 
 const successRunner: CommandRunner = vi.fn(() => Promise.resolve({ stdout: '' }));
+const supportedHost = {
+  platform: 'darwin' as const,
+  architecture: 'arm64',
+  totalMemoryBytes: 16 * 1024 ** 3,
+  freeDiskBytes: 80 * 1024 ** 3,
+  installation: 'absent' as const,
+  modelRuntimeAvailable: true,
+};
 const tempDirs: string[] = [];
 
 afterEach(() => {
@@ -160,6 +168,7 @@ describe('runPreflight', () => {
     '23.0.0',
   ])('accepts supported Node version %s', async (nodeVersion) => {
     const result = await runPreflight({
+      ...supportedHost,
       nodeVersion,
       runCommand: successRunner,
       probePort: vi.fn(() => Promise.resolve(true)),
@@ -170,6 +179,7 @@ describe('runPreflight', () => {
 
   it('allows ports already owned by this installation on an idempotent re-run', async () => {
     const result = await runPreflight({
+      ...supportedHost,
       nodeVersion: '22.16.0',
       runCommand: successRunner,
       probePort: vi.fn(() => Promise.resolve(false)),
