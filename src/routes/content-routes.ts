@@ -49,6 +49,13 @@ export function createContentRoutes(service: ContentService): Router {
     } catch (error) { next(error); }
   });
 
+  router.get('/raw-archive-references', async (req, res, next) => {
+    try {
+      const manifestPaths = await service.rawArchiveReferences(principal(req));
+      res.json(envelope({ manifestPaths }));
+    } catch (error) { next(error); }
+  });
+
   router.get('/:id/lineage', async (req, res, next) => {
     try { res.json(envelope(await service.lineage(principal(req), IdSchema.parse(req.params.id)))); }
     catch (error) { next(error); }

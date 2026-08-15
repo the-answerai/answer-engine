@@ -121,6 +121,20 @@ describe('AnswerEngineClient', () => {
     });
   });
 
+  it('reads tenant-scoped raw archive references for retention planning', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ success: true, data: { manifestPaths: ['/archive/manifest.json'] } }),
+    });
+
+    const result = await client.getRawArchiveReferences();
+
+    expect(result.data.manifestPaths).toEqual(['/archive/manifest.json']);
+    expect(mockFetch.mock.calls[0][0]).toBe(
+      'http://localhost:5050/api/v1/content/raw-archive-references',
+    );
+  });
+
   it('deletes synced content by ID with the cli-sync surface', async () => {
     mockFetch.mockResolvedValueOnce({ ok: true, status: 204 });
 

@@ -1,14 +1,19 @@
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  RawArchiveCapacityError,
   RawArchiveManifestSchema,
+  applyRawArchiveRetention,
+  inspectRawArchive,
+  planRawArchiveRetention,
   writeRawArchive,
 } from '../sync/raw-archive.js';
 
 const tempDirs: string[] = [];
+const originalAeHome = process.env.AE_HOME;
 
 function makeTempDir(): string {
   const directory = mkdtempSync(join(tmpdir(), 'ae-raw-archive-'));
@@ -17,6 +22,8 @@ function makeTempDir(): string {
 }
 
 afterEach(() => {
+  if (originalAeHome === undefined) delete process.env.AE_HOME;
+  else process.env.AE_HOME = originalAeHome;
   for (const directory of tempDirs.splice(0)) {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -88,27 +95,119 @@ describe('writeRawArchive', () => {
     await expect(writeRawArchive([sourcePath], options)).rejects.toThrow(/already exists/i);
   });
 
-  it('reuses a complete deterministic archive for the same source fingerprint', async () => {
+  it('reuses one content-addressed archive for repeated and concurrent writes', async () => {
     const root = makeTempDir();
-    const sourcePath = join(root, 'source.jsonl');
-    const previousHome = process.env.AE_HOME;
     process.env.AE_HOME = join(root, 'ae-home');
-    writeFileSync(sourcePath, '{"type":"message"}\n');
-    try {
-      const first = await writeRawArchive([sourcePath], {
-        adapterName: 'test-adapter', adapterVersion: '1.0.0',
-        createdAt: '2026-08-10T20:00:00.000Z',
-      });
-      const resumed = await writeRawArchive([sourcePath], {
-        adapterName: 'test-adapter', adapterVersion: '1.0.0',
-        createdAt: '2026-08-11T20:00:00.000Z',
-      });
+    const sourcePath = join(root, 'source.jsonl');
+    writeFileSync(sourcePath, '{"message":"bounded"}\n');
+    const options = { adapterName: 'test-adapter', adapterVersion: '1.0.0' };
 
-      expect(resumed.archiveDir).toBe(first.archiveDir);
-      expect(resumed.manifest).toEqual(first.manifest);
-    } finally {
-      if (previousHome === undefined) delete process.env.AE_HOME;
-      else process.env.AE_HOME = previousHome;
-    }
+    const [first, second, third] = await Promise.all([
+      writeRawArchive([sourcePath], options),
+      writeRawArchive([sourcePath], options),
+      writeRawArchive([sourcePath], options),
+    ]);
+
+    expect(second.archiveDir).toBe(first.archiveDir);
+    expect(third.archiveDir).toBe(first.archiveDir);
+    expect(readdirSync(join(root, 'ae-home', 'raw-archive'))).toEqual([
+      expect.stringMatching(/^test-adapter-[a-f0-9]{64}$/),
+    ]);
+  });
+
+  it('rejects an over-limit bundle before accepting any archive', async () => {
+    const root = makeTempDir();
+    process.env.AE_HOME = join(root, 'ae-home');
+    const sourcePath = join(root, 'source.jsonl');
+    writeFileSync(sourcePath, '12345678901');
+
+    await expect(writeRawArchive([sourcePath], {
+      adapterName: 'test-adapter',
+      adapterVersion: '1.0.0',
+      limits: { maxBundleBytes: 10, maxTotalBytes: 100, minFreeBytes: 0 },
+    })).rejects.toBeInstanceOf(RawArchiveCapacityError);
+
+    expect(readdirSync(join(root, 'ae-home', 'raw-archive'))).toEqual([]);
+  });
+
+  it('counts existing archive bytes and fails closed at the total ceiling', async () => {
+    const root = makeTempDir();
+    process.env.AE_HOME = join(root, 'ae-home');
+    const archiveRoot = join(root, 'ae-home', 'raw-archive');
+    mkdirSync(join(archiveRoot, 'existing'), { recursive: true });
+    writeFileSync(join(archiveRoot, 'existing', 'payload.bin'), '1234567890');
+    const sourcePath = join(root, 'source.jsonl');
+    writeFileSync(sourcePath, 'x');
+
+    await expect(writeRawArchive([sourcePath], {
+      adapterName: 'test-adapter',
+      adapterVersion: '1.0.0',
+      limits: { maxBundleBytes: 100, maxTotalBytes: 10, minFreeBytes: 0 },
+    })).rejects.toThrow(/total limit/i);
+
+    expect(readdirSync(archiveRoot)).toEqual(['existing']);
+  });
+
+  it('preserves the configured free-space reserve without leaving a partial archive', async () => {
+    const root = makeTempDir();
+    process.env.AE_HOME = join(root, 'ae-home');
+    const sourcePath = join(root, 'source.jsonl');
+    writeFileSync(sourcePath, 'bounded');
+
+    await expect(writeRawArchive([sourcePath], {
+      adapterName: 'test-adapter',
+      adapterVersion: '1.0.0',
+      limits: {
+        maxBundleBytes: 100,
+        maxTotalBytes: 1024 * 1024,
+        minFreeBytes: Number.MAX_SAFE_INTEGER,
+      },
+    })).rejects.toThrow(/free-space reserve/i);
+
+    expect(readdirSync(join(root, 'ae-home', 'raw-archive'))).toEqual([]);
+  });
+
+  it('rejects a tampered content-addressed manifest that escapes its archive directory', async () => {
+    const root = makeTempDir();
+    process.env.AE_HOME = join(root, 'ae-home');
+    const sourcePath = join(root, 'source.jsonl');
+    writeFileSync(sourcePath, 'evidence');
+    const options = { adapterName: 'test-adapter', adapterVersion: '1.0.0' };
+    const archive = await writeRawArchive([sourcePath], options);
+    const manifest = JSON.parse(readFileSync(archive.manifestPath, 'utf8')) as {
+      files: Array<{ archive_path: string }>;
+    };
+    manifest.files[0]!.archive_path = '../../../source.jsonl';
+    writeFileSync(archive.manifestPath, `${JSON.stringify(manifest)}\n`);
+
+    await expect(writeRawArchive([sourcePath], options)).rejects.toThrow(/remain inside/i);
+  });
+
+  it('plans and applies only unreferenced archive deletion after exact confirmation', async () => {
+    const root = makeTempDir();
+    process.env.AE_HOME = join(root, 'ae-home');
+    const firstSource = join(root, 'first.jsonl');
+    const secondSource = join(root, 'second.jsonl');
+    writeFileSync(firstSource, 'first');
+    writeFileSync(secondSource, 'second');
+    const first = await writeRawArchive([firstSource], {
+      adapterName: 'test-adapter', adapterVersion: '1.0.0', createdAt: '2026-08-01T00:00:00.000Z',
+    });
+    const second = await writeRawArchive([secondSource], {
+      adapterName: 'test-adapter', adapterVersion: '1.0.0', createdAt: '2026-08-02T00:00:00.000Z',
+    });
+
+    const inventory = await inspectRawArchive();
+    const plan = planRawArchiveRetention(inventory, [first.manifestPath], 0);
+    expect(plan.candidates.map((candidate) => candidate.manifestPath)).toEqual([second.manifestPath]);
+    expect(plan.referencedManifestPaths).toEqual([first.manifestPath]);
+
+    await expect(applyRawArchiveRetention(plan, 'wrong-token')).rejects.toThrow(/confirmation/i);
+    expect(existsSync(second.archiveDir)).toBe(true);
+
+    const applied = await applyRawArchiveRetention(plan, plan.confirmationToken);
+    expect(applied.removedArchives).toBe(1);
+    expect(existsSync(first.archiveDir)).toBe(true);
+    expect(existsSync(second.archiveDir)).toBe(false);
   });
 });

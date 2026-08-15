@@ -93,6 +93,15 @@ export class AnswerEngineClient {
     );
   }
 
+  async getRawArchiveReferences(): Promise<ApiResponse<{ manifestPaths: string[] }>> {
+    return this.request<{ manifestPaths: string[] }>(
+      'GET',
+      '/api/v1/content/raw-archive-references',
+      undefined,
+      { surface: 'cli-sync' },
+    );
+  }
+
   async deleteContent(contentId: string): Promise<void> {
     await this.ensureRuntimeChannel();
     const response = await fetch(

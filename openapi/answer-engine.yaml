@@ -322,6 +322,23 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/Success' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/content/raw-archive-references:
+    get:
+      tags: [Content]
+      summary: List raw archive manifests still referenced by content
+      description: Returns tenant-scoped manifest paths, including references held by soft-deleted content, so local retention can preserve recoverable sources.
+      responses:
+        '200':
+          description: Referenced manifest paths.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/RawArchiveReferences' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /api/v1/content/{id}:
     parameters:
       - { $ref: '#/components/parameters/ContentId' }
@@ -1163,6 +1180,15 @@ components:
             code: { type: string }
             message: { type: string }
             details: {}
+    RawArchiveReferences:
+      type: object
+      additionalProperties: false
+      required: [manifestPaths]
+      properties:
+        manifestPaths:
+          type: array
+          items: { type: string }
+          uniqueItems: true
     TagInput:
       type: object
       additionalProperties: false
