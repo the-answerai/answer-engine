@@ -85,7 +85,20 @@ const BASE_CAPABILITIES: Record<AgentClientId, Omit<ClientCapability, 'detected'
 export function capabilityForClient(
   id: AgentClientId,
   coworkMode: CoworkMode = 'unknown',
+  runningInWsl = false,
 ): ClientCapability {
+  if (runningInWsl && (id === 'chatgpt-desktop' || id === 'claude-desktop')) {
+    return ClientCapabilitySchema.parse({
+      ...BASE_CAPABILITIES[id],
+      localhost: false,
+      packaging: 'none',
+      access: 'none',
+      verification: 'unavailable',
+      supported: false,
+      limitation: `${BASE_CAPABILITIES[id].label} runs on the Windows host, but this installer runs inside WSL2 and cannot safely configure or launch its Windows-host localhost integration.`,
+      detected: false,
+    });
+  }
   if (id !== 'claude-cowork' || coworkMode === 'unknown') {
     return ClientCapabilitySchema.parse({ ...BASE_CAPABILITIES[id], detected: false });
   }

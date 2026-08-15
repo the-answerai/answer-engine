@@ -139,6 +139,54 @@ describe('integration plan/apply/remove', () => {
     expect(installedCodexManifest.mcpServers).toHaveProperty('answer-engine');
   });
 
+  it('preserves an existing Codex marketplace name and installs through that marketplace', async () => {
+    const { aeHome, homeDir, templateDir } = fixture();
+    const marketplacePath = join(homeDir, '.agents', 'plugins', 'marketplace.json');
+    mkdirSync(join(homeDir, '.agents', 'plugins'), { recursive: true });
+    writeFileSync(marketplacePath, `${JSON.stringify({
+      name: 'local',
+      interface: { displayName: 'Local Plugins' },
+      plugins: [{
+        name: 'existing-plugin',
+        source: { source: 'local', path: './plugins/existing-plugin' },
+      }],
+    }, null, 2)}\n`);
+    const plan = buildIntegrationPlan({
+      channel: 'stable', aeHome, homeDir, clients: ['codex'],
+    });
+    const runCommand = vi.fn(async () => ({ stdout: '{"installed":true}', stderr: '' }));
+
+    await applyIntegrationPlan(plan, {
+      apiKey: 'ae_live_marketplace_secret', apiUrl: 'http://127.0.0.1:5050', templateDir, runCommand,
+      dockerCommand,
+    });
+
+    const marketplace = JSON.parse(readFileSync(marketplacePath, 'utf8')) as {
+      name: string;
+      plugins: Array<{ name: string }>;
+    };
+    expect(marketplace.name).toBe('local');
+    expect(marketplace.plugins.map((plugin) => plugin.name)).toEqual([
+      'existing-plugin', 'answer-engine',
+    ]);
+    expect(runCommand).toHaveBeenCalledWith('codex', [
+      'plugin', 'add', 'answer-engine@local', '--json',
+    ]);
+
+    await removeManagedIntegrations(aeHome, { runCommand });
+
+    expect(runCommand).toHaveBeenCalledWith('codex', [
+      'plugin', 'remove', 'answer-engine@local', '--json',
+    ]);
+    const restoredMarketplace = JSON.parse(readFileSync(marketplacePath, 'utf8')) as {
+      name: string;
+      plugins: Array<{ name: string }>;
+    };
+    expect(restoredMarketplace).toMatchObject({
+      name: 'local', plugins: [{ name: 'existing-plugin' }],
+    });
+  });
+
   it('wires the ChatGPT desktop Codex host while leaving hosted Work remote-only', async () => {
     const { aeHome, homeDir, templateDir } = fixture();
     const plan = buildIntegrationPlan({
@@ -173,7 +221,11 @@ describe('integration plan/apply/remove', () => {
     const cursorConfig = join(homeDir, '.cursor', 'mcp.json');
     mkdirSync(join(homeDir, '.cursor'), { recursive: true });
     writeFileSync(cursorConfig, JSON.stringify({
-      mcpServers: { notes: { command: 'notes-server' } }, theme: 'dark',
+      mcpServers: {
+        notes: { command: 'notes-server' },
+        'answer-engine': { command: 'previous-answer-engine', args: ['--read-only'] },
+      },
+      theme: 'dark',
     }, null, 2));
     const plan = buildIntegrationPlan({
       channel: 'stable', aeHome, homeDir, clients: ['cursor'],
@@ -195,7 +247,10 @@ describe('integration plan/apply/remove', () => {
     };
 
     expect(result.preserved).toContain(cursorConfig);
-    expect(restored.mcpServers).toEqual({ notes: { command: 'notes-server' } });
+    expect(restored.mcpServers).toEqual({
+      notes: { command: 'notes-server' },
+      'answer-engine': { command: 'previous-answer-engine', args: ['--read-only'] },
+    });
     expect(restored).toMatchObject({ theme: 'dark', fontSize: 15 });
     expect(existsSync(join(aeHome, 'integrations', 'ledger.json'))).toBe(false);
   });
@@ -236,6 +291,18 @@ describe('integration plan/apply/remove', () => {
     expect(() => buildIntegrationPlan({
       channel: 'staging', aeHome, homeDir, clients: ['codex'],
     })).toThrow(/staging cannot write global client integrations/i);
+  });
+
+  it('does not write Linux-home integrations for Windows desktop clients from WSL2', () => {
+    const { aeHome, homeDir } = fixture();
+    const plan = buildIntegrationPlan({
+      channel: 'stable', aeHome, homeDir, clients: ['chatgpt-desktop', 'claude-desktop'],
+      runningInWsl: true,
+    });
+
+    expect(plan.operations).toEqual([]);
+    expect(plan.clients.every((client) => !client.supported && !client.localhost)).toBe(true);
+    expect(plan.clients.map((client) => client.limitation).join(' ')).toMatch(/windows host/i);
   });
 
   it('keeps removal idempotent when a host plugin was already removed', async () => {

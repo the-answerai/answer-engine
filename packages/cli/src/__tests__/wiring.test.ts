@@ -19,6 +19,8 @@ import {
   renderClaudeCodeCommand,
   renderHttpConnection,
   resolveClientConfigPath,
+  restoreCodexToml,
+  restoreJsonClientConfig,
   unwireClient,
   wireClient,
 } from '../wiring/index.js';
@@ -112,6 +114,61 @@ describe('agent wiring config writers', () => {
       expect(statSync(`${path}.bak`).mode & 0o777).toBe(0o600);
     });
   }
+
+  it('restores a prior JSON Answer Engine entry while preserving later user edits', () => {
+    const original = JSON.stringify({
+      mcpServers: {
+        notes: { command: 'notes' },
+        'answer-engine': { command: 'previous', args: ['--read-only'] },
+      },
+      theme: 'dark',
+    }, null, 2);
+    const current = JSON.stringify({
+      mcpServers: {
+        notes: { command: 'notes' },
+        'answer-engine': { command: 'managed' },
+      },
+      theme: 'dark',
+      fontSize: 15,
+    }, null, 2);
+
+    const restored = JSON.parse(restoreJsonClientConfig(current, original)) as {
+      mcpServers: Record<string, unknown>;
+      fontSize: number;
+    };
+
+    expect(restored.mcpServers['answer-engine']).toEqual({
+      command: 'previous', args: ['--read-only'],
+    });
+    expect(restored.fontSize).toBe(15);
+  });
+
+  it('restores a prior Codex Answer Engine block while preserving later user sections', () => {
+    const original = [
+      '[mcp_servers.filesystem]',
+      'command = "node"',
+      '[mcp_servers.answer-engine]',
+      'command = "previous"',
+      'args = [ "--read-only" ]',
+      '',
+    ].join('\n');
+    const current = [
+      '[mcp_servers.filesystem]',
+      'command = "node"',
+      '[mcp_servers.answer-engine]',
+      'command = "managed"',
+      '[projects."/later-user-project"]',
+      'trust_level = "trusted"',
+      '',
+    ].join('\n');
+
+    const restored = restoreCodexToml(current, original);
+
+    expect(restored).toContain('command = "previous"');
+    expect(restored).toContain('args = [ "--read-only" ]');
+    expect(restored).toContain('[projects."/later-user-project"]');
+    expect(parseToml(restored)).toBeDefined();
+  });
 
   for (const client of FILE_WIRING_CLIENTS) {
     it(`removes only the managed ${client} MCP entry`, () => {

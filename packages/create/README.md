@@ -83,11 +83,14 @@ npx @answer-engine/create@1.1.0 remove-integrations --channel stable
 
 ChatGPT Desktop Codex shares the Personal plugin marketplace and receives MCP
 through the plugin, then requires guided plugin install/restart confirmation.
+An existing Codex marketplace name is preserved and used for install/removal.
 Hosted ChatGPT Chat/Work/web require remote MCP and cannot use this localhost
 installation directly. Cowork uses account-synced skills and policy-approved
 connectors, so the installer explains its limitation instead of claiming local
 plugin support. Guided clients are never auto-selected by `--yes`; select them
 explicitly only when the interactive check can be completed.
+Inside WSL2, Windows-host ChatGPT Desktop and Claude Desktop are reported as
+unavailable instead of receiving unusable Linux-home paths; terminal clients remain supported.
 
 Generated client entries launch the MCP server already built into the
 installer-managed runtime, so they do not fetch an unpublished package when a

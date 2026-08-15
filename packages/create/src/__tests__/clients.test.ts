@@ -48,6 +48,13 @@ describe('agent client capability matrix', () => {
       execution: 'local', localhost: true, packaging: 'none',
       verification: 'unavailable', supported: false,
     });
+    expect(capabilityForClient('claude-desktop', 'unknown', true)).toMatchObject({
+      execution: 'local', localhost: false, packaging: 'none', access: 'none',
+      verification: 'unavailable', supported: false,
+    });
+    const wslLimitation = capabilityForClient('chatgpt-desktop', 'unknown', true).limitation;
+    expect(wslLimitation).toMatch(/wsl2/i);
+    expect(wslLimitation).toMatch(/windows host/i);
   });
 
   it('automatically selects only clients that can be verified without a prompt', () => {

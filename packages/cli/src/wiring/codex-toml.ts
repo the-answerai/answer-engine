@@ -92,3 +92,18 @@ export function removeCodexToml(existing: string): string {
   parseTomlConfig(removed);
   return removed;
 }
+
+export function restoreCodexToml(existing: string, original: string): string {
+  if (original.length > 0) parseTomlConfig(original);
+  const originalSections = sectionsIn(original)
+    .filter((section) => isAnswerEngineSection(section.name));
+  if (originalSections.length === 0) return removeCodexToml(existing);
+  const base = removeCodexToml(existing);
+  const block = originalSections
+    .map((section) => original.slice(section.start, section.end).trim())
+    .join('\n');
+  const separator = base.length === 0 ? '' : base.endsWith('\n\n') ? '' : base.endsWith('\n') ? '\n' : '\n\n';
+  const restored = `${base}${separator}${block}\n`;
+  parseTomlConfig(restored);
+  return restored;
+}

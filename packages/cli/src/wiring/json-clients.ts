@@ -83,6 +83,33 @@ export function removeJsonClientConfig(existing: string): string {
   return removed;
 }
 
+export function restoreJsonClientConfig(existing: string, original: string): string {
+  const originalRoot = parseJsonConfig(original.trim().length === 0 ? '{}' : original);
+  const originalServers = originalRoot.mcpServers as Record<string, unknown> | undefined;
+  if (!originalServers || !Object.hasOwn(originalServers, 'answer-engine')) {
+    return removeJsonClientConfig(existing);
+  }
+  const source = existing.trim().length === 0 ? '{}' : existing;
+  parseJsonConfig(source);
+  const eol = source.includes('\r\n') ? '\r\n' : '\n';
+  const root = parseTree(source);
+  if (!root || root.type !== 'object') {
+    throw new Error('Invalid JSON MCP config: root must be an object');
+  }
+  const mcpServers = findNodeAtLocation(root, ['mcpServers']);
+  const restored = mcpServers
+    ? setObjectProperty(source, mcpServers, 'answer-engine', originalServers['answer-engine'], eol)
+    : setObjectProperty(
+      source,
+      root,
+      'mcpServers',
+      { 'answer-engine': originalServers['answer-engine'] },
+      eol,
+    );
+  parseJsonConfig(restored);
+  return restored.endsWith(eol) ? restored : `${restored}${eol}`;
+}
+
 function lineIndentAt(contents: string, offset: number): string {
   const lineStart = Math.max(contents.lastIndexOf('\n', offset - 1) + 1, 0);
   return contents.slice(lineStart, offset).match(/^[ \t]*/)?.[0] ?? '';

@@ -79,7 +79,10 @@ describe('verifyClientIntegrations', () => {
     const runCommand = vi.fn(async (command: string) => ({
       stdout: command === 'codex'
         ? '{"type":"item.completed","item":{"type":"mcp_tool_call","server":"answer-engine","tool":"recall","result":"marker-unique content-1"}}\n'
-        : '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"mcp__answer-engine__recall"},{"type":"text","text":"marker-unique content-1"}]}}\n',
+        : [
+          '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"tool-1","name":"mcp__answer-engine__recall"}]}}',
+          '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"tool-1","content":"marker-unique content-1"}]}}',
+        ].join('\n'),
       stderr: '',
     }));
 
@@ -112,6 +115,32 @@ describe('verifyClientIntegrations', () => {
     })).rejects.toThrow(/did not show an Answer Engine recall tool call/i);
   });
 
+  it('rejects a recall event when only unrelated output echoes the expected memory', async () => {
+    await expect(verifyClientIntegrations({
+      clients: ['codex'], marker: 'marker-unique', contentId: 'content-1',
+      runCommand: async () => ({
+        stdout: [
+          '{"type":"item.completed","item":{"type":"mcp_tool_call","server":"answer-engine","tool":"recall","result":"no matches"}}',
+          '{"type":"item.completed","item":{"type":"agent_message","text":"marker-unique content-1"}}',
+        ].join('\n'),
+        stderr: '',
+      }),
+    })).rejects.toThrow(/did not show an Answer Engine recall tool call/i);
+  });
+
+  it('rejects a Claude recall result from a different tool invocation', async () => {
+    await expect(verifyClientIntegrations({
+      clients: ['claude-code'], marker: 'marker-unique', contentId: 'content-1',
+      runCommand: async () => ({
+        stdout: [
+          '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"recall-1","name":"mcp__answer-engine__recall"}]}}',
+          '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"other-1","content":"marker-unique content-1"}]}}',
+        ].join('\n'),
+        stderr: '',
+      }),
+    })).rejects.toThrow(/did not show an Answer Engine recall tool call/i);
+  });
+
   it('requires explicit guided confirmation for GUI-only supported clients', async () => {
     await expect(verifyClientIntegrations({
       clients: ['claude-desktop'], marker: 'marker-unique', contentId: 'content-1',
@@ -133,5 +162,15 @@ describe('verifyClientIntegrations', () => {
     });
     expect(results.every((result) => result.status === 'unavailable')).toBe(true);
     expect(results.map((result) => result.detail).join(' ')).toMatch(/remote mcp|cannot reach localhost/i);
+  });
+
+  it('does not guide a false localhost check for Windows desktop clients from WSL2', async () => {
+    const results = await verifyClientIntegrations({
+      clients: ['chatgpt-desktop', 'claude-desktop'], runningInWsl: true,
+      marker: 'marker-unique', contentId: 'content-1',
+    });
+
+    expect(results.every((result) => result.status === 'unavailable')).toBe(true);
+    expect(results.map((result) => result.detail).join(' ')).toMatch(/windows host/i);
   });
 });

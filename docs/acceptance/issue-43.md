@@ -29,6 +29,8 @@ capability, or database migration is included.
   that lacks a tool event. GUI clients require restart and explicit confirmation.
 - [x] ChatGPT Desktop Codex is modeled separately from hosted ChatGPT web/Work;
   Cowork limitations are explicit and never receive false localhost wiring.
+  Windows-host desktop apps also receive an explicit limitation when installation
+  runs inside WSL2 instead of unusable Linux-home configuration.
 - [x] Changes are consented, private, idempotent, backed up, Zod-validated,
   redacted in the ledger, reversible through `remove-integrations`, and limited
   to Answer Engine-owned entries. Integration-ledger hashing invalidates stale
@@ -47,9 +49,9 @@ Executed in the isolated issue #43 worktree on 2026-08-14:
 - `pnpm verify` — passed:
   - public-boundary check, lint, and root type-check passed;
   - server: 82 passed, 1 environment-gated database integration skipped;
-  - CLI: 149 passed;
+  - CLI: 151 passed;
   - MCP server: 62 passed;
-  - installer: 114 passed;
+  - installer: 119 passed;
   - web UI: 35 passed;
   - server, CLI, MCP server, installer, and web UI builds passed.
 - Codex plugin validator — passed.

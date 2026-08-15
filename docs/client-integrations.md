@@ -9,10 +9,10 @@ chat or Cowork session actually runs in the provider cloud.
 | Client surface | Execution | Localhost | Installed package/access | Verification |
 | --- | --- | --- | --- | --- |
 | Codex | Local | Yes | Dual-host plugin, stdio MCP, CLI | Automated real recall |
-| ChatGPT Desktop Codex | Local | Yes | Shared Personal plugin with stdio MCP + CLI config | Install/restart and guided real recall |
+| ChatGPT Desktop Codex | Local macOS host | Yes | Shared Codex marketplace plugin with stdio MCP + CLI config | Install/restart and guided real recall |
 | Hosted ChatGPT Chat/Work/web | Remote service | No direct access | Remote MCP only, subject to plan/admin policy | Unavailable for this local install |
 | Claude Code | Local | Yes | Dual-host plugin, stdio MCP, CLI | Automated real recall |
-| Claude Desktop | Local | Yes | JSON stdio MCP, CLI | Restart and guided real recall |
+| Claude Desktop | Local macOS host | Yes | JSON stdio MCP, CLI | Restart and guided real recall |
 | Cowork local session | Local session, account-managed extensions | Not installer-verifiable | Account-synced skills and policy-approved connectors | Unavailable for installer verification |
 | Cowork remote session | Anthropic cloud | No direct access | Remote MCP only | Unavailable for this local install |
 | Cursor-style JSON adapter | Local | Yes | JSON stdio MCP, CLI | Restart and guided real recall |
@@ -33,6 +33,9 @@ surfaces. Sources checked 2026-08-14:
 Answer Engine does not operate a public remote MCP relay or bypass workspace
 policy. Select unsupported surfaces if you want the installer to explain the
 limitation; it will not write a false localhost configuration for them.
+On the supported Windows baseline the installer runs inside WSL2. It supports
+terminal clients there, but does not write Linux-home MCP/plugin paths for
+ChatGPT Desktop or Claude Desktop on the Windows host.
 
 ## Managed paths
 
@@ -41,7 +44,8 @@ Depending on the client selection, these include:
 
 - `~/.agents/plugins/marketplace.json` and
   `~/.agents/plugins/plugins/answer-engine` for Codex and ChatGPT Desktop Codex.
-- The Personal plugin owns the Codex/ChatGPT Desktop MCP entry; the installer
+- The Codex marketplace plugin (Personal by default, while preserving an
+  existing marketplace name) owns the Codex/ChatGPT Desktop MCP entry; the installer
   does not create a duplicate `~/.codex/config.toml` server entry.
 - `$AE_HOME/client-plugins/claude-marketplace` for the registered Claude Code
   marketplace and plugin source.
@@ -51,8 +55,8 @@ Depending on the client selection, these include:
 - `~/.codex/config.toml` and the host-managed Codex plugin cache when the Codex
   CLI installs the Personal plugin. The installer does not add a direct MCP
   server block there.
-- `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS,
-  with the platform-equivalent Claude Desktop path on Windows or Linux.
+- `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS.
+  WSL2 does not receive a false Linux-home Claude Desktop entry for the Windows app.
 - `~/.cursor/mcp.json` for a global Cursor-style adapter, or project
   `.cursor/mcp.json` when that adapter is already project-scoped.
 - `~/.config/answer-engine/config.yml` for stable CLI access.
@@ -82,7 +86,8 @@ must use `--clients none` and cannot write global integrations.
 
 Removal uses the ledger in reverse order. Unchanged managed files are restored
 from their original backups, while user-edited client files keep unrelated
-entries and lose only the Answer Engine-owned MCP/CLI/marketplace fields. A
+entries and lose only installer-owned MCP/CLI/marketplace fields. A pre-existing
+Answer Engine MCP entry is restored from the private backup. A
 modified plugin directory is preserved for manual reconciliation.
 
 ## Completion semantics

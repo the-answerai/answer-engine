@@ -141,6 +141,7 @@ export async function install(
     aeHome: home,
     clients,
     coworkMode,
+    runningInWsl: preflight.system.platform === 'windows-wsl2',
   });
   output.write('  Planned client integration changes:');
   if (integrationPlan.operations.length === 0) output.write('    No supported global client paths selected.');
@@ -218,6 +219,7 @@ export async function install(
   const clientVerification = await (dependencies.verifyClientIntegrations ?? verifyClientIntegrations)({
     clients,
     coworkMode,
+    runningInWsl: preflight.system.platform === 'windows-wsl2',
     marker,
     contentId,
     ...(prompt ? { prompt } : {}),

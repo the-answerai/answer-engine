@@ -187,6 +187,8 @@ Capability boundary:
 - Hosted ChatGPT Chat/Work/web and Cowork are not wired to localhost. Cowork
   uses account-synced skills and policy-approved connectors; this installer does
   not claim local plugin support or operate a remote relay.
+- When the installer runs inside WSL2, Windows-host ChatGPT Desktop and Claude
+  Desktop are explained as unavailable and receive no Linux-home wiring.
 
 The installer stores a redacted ownership ledger and private backups under
 `$AE_HOME/integrations`. To reverse client integration without removing memory:

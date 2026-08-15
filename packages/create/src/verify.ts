@@ -135,6 +135,7 @@ export interface ClientVerificationResult {
 export interface VerifyClientIntegrationOptions {
   clients: readonly AgentClientId[];
   coworkMode?: CoworkMode;
+  runningInWsl?: boolean;
   marker: string;
   contentId: string;
   runCommand?: CommandRunner;
@@ -163,28 +164,60 @@ function parseJsonLines(output: string): unknown[] {
     .filter((value) => value !== undefined);
 }
 
-function containsRecallToolEvent(value: unknown): boolean {
-  if (Array.isArray(value)) return value.some(containsRecallToolEvent);
-  if (typeof value !== 'object' || value === null) return false;
+function collectRecords(value: unknown, records: Record<string, unknown>[]): void {
+  if (Array.isArray(value)) {
+    for (const item of value) collectRecords(item, records);
+    return;
+  }
+  if (typeof value !== 'object' || value === null) return;
   const item = value as Record<string, unknown>;
+  records.push(item);
+  for (const child of Object.values(item)) collectRecords(child, records);
+}
+
+function isCodexRecall(item: Record<string, unknown>): boolean {
   const type = typeof item.type === 'string' ? item.type.toLowerCase() : '';
   const server = typeof item.server === 'string' ? item.server.toLowerCase() : '';
   const tool = typeof item.tool === 'string' ? item.tool.toLowerCase() : '';
-  const name = typeof item.name === 'string' ? item.name.toLowerCase() : '';
-  const codexRecall = type === 'mcp_tool_call'
+  return type === 'mcp_tool_call'
     && (server === 'answer-engine' || server === 'answer_engine')
     && tool === 'recall';
-  const claudeRecall = type === 'tool_use'
+}
+
+function isClaudeRecall(item: Record<string, unknown>): boolean {
+  const type = typeof item.type === 'string' ? item.type.toLowerCase() : '';
+  const name = typeof item.name === 'string' ? item.name.toLowerCase() : '';
+  return type === 'tool_use'
     && (name.includes('answer-engine') || name.includes('answer_engine'))
     && name.endsWith('recall');
-  return codexRecall || claudeRecall || Object.values(item).some(containsRecallToolEvent);
+}
+
+function containsExpectedMemory(
+  item: Record<string, unknown>,
+  marker: string,
+  contentId: string,
+): boolean {
+  const serialized = JSON.stringify(item);
+  return serialized.includes(marker) && serialized.includes(contentId);
 }
 
 function hasRecallToolEvidence(output: string, marker: string, contentId: string): boolean {
   const events = parseJsonLines(output);
-  if (!events.some(containsRecallToolEvent)) return false;
-  const structuredOutput = JSON.stringify(events);
-  return structuredOutput.includes(marker) && structuredOutput.includes(contentId);
+  const records: Record<string, unknown>[] = [];
+  collectRecords(events, records);
+  if (records.some((item) => isCodexRecall(item) && containsExpectedMemory(item, marker, contentId))) {
+    return true;
+  }
+  const claudeRecallIds = new Set(records
+    .filter(isClaudeRecall)
+    .map((item) => item.id)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0));
+  return records.some((item) => {
+    return item.type === 'tool_result'
+      && typeof item.tool_use_id === 'string'
+      && claudeRecallIds.has(item.tool_use_id)
+      && containsExpectedMemory(item, marker, contentId);
+  });
 }
 
 export async function verifyClientIntegrations(
@@ -193,7 +226,7 @@ export async function verifyClientIntegrations(
   const command = options.runCommand ?? defaultRunCommand;
   const results: ClientVerificationResult[] = [];
   for (const client of options.clients) {
-    const capability = capabilityForClient(client, options.coworkMode);
+    const capability = capabilityForClient(client, options.coworkMode, options.runningInWsl);
     if (!capability.supported) {
       results.push({
         client,

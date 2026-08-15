@@ -15,6 +15,8 @@ import { basename, delimiter, dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   resolveClientConfigPath,
+  restoreCodexToml,
+  restoreJsonClientConfig,
   unwireClient,
   wireClient,
   type FileWiringClient,
@@ -62,6 +64,7 @@ const LedgerEntrySchema = z.object({
   client: AgentClientIdSchema,
   kind: OperationKindSchema,
   path: z.string().min(1),
+  selector: z.string().min(1).optional(),
   created: z.boolean(),
   beforeSha256: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   afterSha256: z.string().regex(/^[a-f0-9]{64}$/),
@@ -85,7 +88,7 @@ const IntegrationLedgerSchema = z.object({
 export type IntegrationLedger = z.infer<typeof IntegrationLedgerSchema>;
 const UnknownRecordSchema = z.record(z.unknown());
 const MarketplaceSchema = z.object({
-  name: z.literal('personal'),
+  name: z.string().min(1),
   interface: z.record(z.unknown()).optional(),
   plugins: z.array(z.unknown()),
 }).passthrough();
@@ -102,6 +105,7 @@ export interface BuildIntegrationPlanInput {
   platform?: NodeJS.Platform;
   clients: readonly AgentClientId[];
   coworkMode?: CoworkMode;
+  runningInWsl?: boolean;
 }
 
 function addOperation(operations: IntegrationOperation[], operation: IntegrationOperation): void {
@@ -135,7 +139,11 @@ export function buildIntegrationPlan(input: BuildIntegrationPlanInput): Integrat
   }
   const homeDir = input.homeDir ?? homedir();
   const coworkMode = CoworkModeSchema.parse(input.coworkMode ?? 'unknown');
-  const clients = input.clients.map((client) => capabilityForClient(client, coworkMode));
+  const clients = input.clients.map((client) => capabilityForClient(
+    client,
+    coworkMode,
+    input.runningInWsl,
+  ));
   const operations: IntegrationOperation[] = [];
 
   for (const capability of clients) {
@@ -458,6 +466,7 @@ async function applyCommandOperation(
   operation: IntegrationOperation,
   command: CommandRunner,
   claudeMarketplace: string,
+  codexPluginSelector = 'answer-engine@personal',
 ): Promise<void> {
   try {
     if (operation.kind === 'marketplace-command') {
@@ -465,7 +474,7 @@ async function applyCommandOperation(
     } else if (operation.client === 'claude-code') {
       await command('claude', ['plugin', 'install', 'answer-engine@answer-engine', '--scope', 'user']);
     } else {
-      await command('codex', ['plugin', 'add', 'answer-engine@personal', '--json']);
+      await command('codex', ['plugin', 'add', codexPluginSelector, '--json']);
     }
   } catch (error) {
     if (!commandAlreadyApplied(error)) throw error;
@@ -493,19 +502,31 @@ export async function applyIntegrationPlan(
     const prior = ledger.entries.find((entry) => entry.kind === operation.kind && entry.path === operation.path);
     if (prior) {
       if (operation.kind === 'plugin-command' || operation.kind === 'marketplace-command') {
-        await applyCommandOperation(operation, command, claudeMarketplacePath(plan.aeHome));
+        await applyCommandOperation(
+          operation,
+          command,
+          claudeMarketplacePath(plan.aeHome),
+          prior.selector,
+        );
         continue;
       }
       if (existsSync(operation.path) && sha256Path(operation.path) === prior.afterSha256) continue;
       throw new Error(`Managed integration drift detected at ${operation.path}; remove or reconcile it before retrying.`);
     }
     if (operation.kind === 'plugin-command' || operation.kind === 'marketplace-command') {
+      const selector = operation.client === 'codex'
+        ? `answer-engine@${MarketplaceSchema.parse(JSON.parse(readFileSync(
+          join(plan.homeDir, '.agents', 'plugins', 'marketplace.json'),
+          'utf8',
+        ))).name}`
+        : undefined;
       const created = !existsSync(operation.path);
       const beforeSha256 = created ? undefined : sha256Path(operation.path);
       const backupPath = backupManagedPath(plan.aeHome, operation.path);
-      await applyCommandOperation(operation, command, claudeMarketplacePath(plan.aeHome));
+      await applyCommandOperation(operation, command, claudeMarketplacePath(plan.aeHome), selector);
       ledger.entries.push({
         client: operation.client, kind: operation.kind, path: operation.path, created,
+        ...(selector ? { selector } : {}),
         ...(beforeSha256 ? { beforeSha256 } : {}),
         afterSha256: existsSync(operation.path)
           ? sha256Path(operation.path)
@@ -579,6 +600,23 @@ function restoreCliOwnedKeys(path: string, backupPath?: string): void {
   writePrivateFileAtomic(path, stringifyYaml(next), 'Answer Engine CLI config');
 }
 
+function restoreMcpOwnedEntry(
+  client: AgentClientId,
+  path: string,
+  backupPath?: string,
+): void {
+  if (!backupPath || !existsSync(backupPath)) {
+    unwireClient(fileClientFor(client), { path, backup: false });
+    return;
+  }
+  const current = readFileSync(path, 'utf8');
+  const original = readFileSync(backupPath, 'utf8');
+  const restored = client === 'codex'
+    ? restoreCodexToml(current, original)
+    : restoreJsonClientConfig(current, original);
+  writePrivateFileAtomic(path, restored, 'Client MCP config');
+}
+
 export interface RemoveIntegrationOptions { runCommand?: CommandRunner }
 
 function commandAlreadyRemoved(error: unknown): boolean {
@@ -615,7 +653,7 @@ export async function removeManagedIntegrations(
         ]);
       } else {
         await runIdempotentRemoval(command, 'codex', [
-          'plugin', 'remove', 'answer-engine@personal', '--json',
+          'plugin', 'remove', entry.selector ?? 'answer-engine@personal', '--json',
         ]);
       }
       removed.push(entry.path);
@@ -648,7 +686,7 @@ export async function removeManagedIntegrations(
     }
     switch (entry.kind) {
       case 'mcp-config':
-        unwireClient(fileClientFor(entry.client), { path: entry.path, backup: false });
+        restoreMcpOwnedEntry(entry.client, entry.path, entry.backupPath);
         break;
       case 'marketplace':
         removeMarketplaceEntry(entry.path);
