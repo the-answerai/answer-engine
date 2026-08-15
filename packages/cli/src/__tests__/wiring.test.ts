@@ -31,6 +31,11 @@ const baseInput = {
   apiKey: 'ae_test_key',
   serverUrl: 'http://localhost:5050/',
   library: 'personal-memory',
+  mcpEntry: {
+    command: 'docker',
+    args: ['compose', 'exec', '-T', 'api', 'node', '/app/packages/mcp-server/dist/index.js'],
+    env: {},
+  },
 } as const;
 
 const existingFixtureByClient: Record<FileWiringClient, string> = {
@@ -174,19 +179,24 @@ describe('agent wiring config writers', () => {
 });
 
 describe('agent wiring renderers', () => {
-  it('builds the canonical stdio entry and omits an unspecified library', () => {
-    expect(buildMcpEntry({
+  it('refuses to invent a launcher for an unpublished MCP package', () => {
+    expect(() => buildMcpEntry({
       client: 'claude-code',
       apiKey: 'key',
       serverUrl: 'https://example.test',
-    })).toEqual({
-      command: 'npx',
-      args: ['-y', '@answer-engine/mcp-server@1.1.0'],
-      env: {
-        ANSWER_ENGINE_API_KEY: 'key',
-        ANSWER_ENGINE_API_URL: 'https://example.test',
-      },
-    });
+    })).toThrow(/verified Answer Engine MCP launcher/i);
+  });
+
+  it('uses an installer-owned stdio launcher when one is provided', () => {
+    const mcpEntry = {
+      command: 'docker',
+      args: ['compose', 'exec', '-T', 'api', 'node', '/app/mcp.js'],
+      env: {},
+    };
+
+    expect(buildMcpEntry({
+      client: 'codex', apiKey: 'unused', serverUrl: 'http://127.0.0.1:5050', mcpEntry,
+    })).toEqual(mcpEntry);
   });
 
   it('renders a shell-safe Claude Code command', () => {
@@ -195,8 +205,13 @@ describe('agent wiring renderers', () => {
       apiKey: 'key with spaces',
       serverUrl: 'http://localhost:5050',
       library: "agent's memory",
+      mcpEntry: {
+        command: 'docker',
+        args: ['compose', '--project-directory', '/tmp/Answer Engine', 'exec', '-T', 'api', 'node', '/app/mcp.js'],
+        env: { ANSWER_ENGINE_LIBRARY: "agent's memory" },
+      },
     })).toBe(
-      "claude mcp add answer-engine --env 'ANSWER_ENGINE_API_KEY=key with spaces' --env ANSWER_ENGINE_API_URL=http://localhost:5050 --env 'ANSWER_ENGINE_LIBRARY=agent'\"'\"'s memory' -- npx -y @answer-engine/mcp-server@1.1.0",
+      "claude mcp add answer-engine --env 'ANSWER_ENGINE_LIBRARY=agent'\"'\"'s memory' -- docker compose --project-directory '/tmp/Answer Engine' exec -T api node /app/mcp.js",
     );
   });
 

@@ -149,16 +149,42 @@ function recallPrompt(marker: string, contentId: string): string {
   ].join(' ');
 }
 
+function parseJsonLines(output: string): unknown[] {
+  return output
+    .split(/\r?\n/)
+    .filter((line) => line.trim().length > 0)
+    .map((line) => {
+      try {
+        return JSON.parse(line) as unknown;
+      } catch {
+        return undefined;
+      }
+    })
+    .filter((value) => value !== undefined);
+}
+
+function containsRecallToolEvent(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(containsRecallToolEvent);
+  if (typeof value !== 'object' || value === null) return false;
+  const item = value as Record<string, unknown>;
+  const type = typeof item.type === 'string' ? item.type.toLowerCase() : '';
+  const server = typeof item.server === 'string' ? item.server.toLowerCase() : '';
+  const tool = typeof item.tool === 'string' ? item.tool.toLowerCase() : '';
+  const name = typeof item.name === 'string' ? item.name.toLowerCase() : '';
+  const codexRecall = type === 'mcp_tool_call'
+    && (server === 'answer-engine' || server === 'answer_engine')
+    && tool === 'recall';
+  const claudeRecall = type === 'tool_use'
+    && (name.includes('answer-engine') || name.includes('answer_engine'))
+    && name.endsWith('recall');
+  return codexRecall || claudeRecall || Object.values(item).some(containsRecallToolEvent);
+}
+
 function hasRecallToolEvidence(output: string, marker: string, contentId: string): boolean {
-  const normalized = output.toLowerCase();
-  const namesAnswerEngine = normalized.includes('answer-engine') || normalized.includes('answer_engine');
-  const namesRecall = normalized.includes('recall');
-  const namesToolEvent = normalized.includes('mcp_tool_call')
-    || normalized.includes('tool_use')
-    || normalized.includes('tool.call')
-    || normalized.includes('mcp__');
-  return namesAnswerEngine && namesRecall && namesToolEvent
-    && output.includes(marker) && output.includes(contentId);
+  const events = parseJsonLines(output);
+  if (!events.some(containsRecallToolEvent)) return false;
+  const structuredOutput = JSON.stringify(events);
+  return structuredOutput.includes(marker) && structuredOutput.includes(contentId);
 }
 
 export async function verifyClientIntegrations(
@@ -198,8 +224,11 @@ export async function verifyClientIntegrations(
       if (!options.prompt?.confirm) {
         throw new Error(`${capability.label} interactive verification is required; rerun interactively or remove this client from the selection.`);
       }
+      const setup = client === 'chatgpt-desktop'
+        ? 'Restart it and install Answer Engine from the Personal plugin marketplace, then'
+        : `Restart ${capability.label}, then`;
       const confirmed = await options.prompt.confirm(
-        `Restart ${capability.label}, ask it to recall "${options.marker}", and confirm the result cites ${options.contentId}. Did it pass?`,
+        `${setup} ask it to recall "${options.marker}" and confirm the result cites ${options.contentId}. Did it pass?`,
         false,
       );
       if (!confirmed) {

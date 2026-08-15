@@ -13,6 +13,7 @@ export interface WiringInput {
   apiKey: string;
   serverUrl: string;
   library?: string;
+  mcpEntry?: McpStdioEntry;
 }
 
 export type FileWiringInput = WiringInput & { client: FileWiringClient };
@@ -24,8 +25,8 @@ export interface WiringResult {
 }
 
 export interface McpStdioEntry {
-  command: 'npx';
-  args: ['-y', '@answer-engine/mcp-server@1.1.0'];
+  command: string;
+  args: string[];
   env: Record<string, string>;
 }
 

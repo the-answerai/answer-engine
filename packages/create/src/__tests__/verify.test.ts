@@ -102,6 +102,16 @@ describe('verifyClientIntegrations', () => {
     })).rejects.toThrow(/did not show an Answer Engine recall tool call/i);
   });
 
+  it('rejects prose that merely imitates serialized tool-event vocabulary', async () => {
+    await expect(verifyClientIntegrations({
+      clients: ['codex'], marker: 'marker-unique', contentId: 'content-1',
+      runCommand: async () => ({
+        stdout: 'I saw an mcp_tool_call for answer-engine recall with marker-unique content-1.',
+        stderr: '',
+      }),
+    })).rejects.toThrow(/did not show an Answer Engine recall tool call/i);
+  });
+
   it('requires explicit guided confirmation for GUI-only supported clients', async () => {
     await expect(verifyClientIntegrations({
       clients: ['claude-desktop'], marker: 'marker-unique', contentId: 'content-1',

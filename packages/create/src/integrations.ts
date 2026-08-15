@@ -9,16 +9,16 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
-  writeFileSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { basename, delimiter, dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   resolveClientConfigPath,
   unwireClient,
   wireClient,
   type FileWiringClient,
+  type McpStdioEntry,
 } from '@answer-engine/cli/wiring';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod';
@@ -36,7 +36,7 @@ import { runCommand as defaultRunCommand } from './process.js';
 import { writePrivateFileAtomic } from './safe-file.js';
 
 const OperationKindSchema = z.enum([
-  'mcp-config', 'plugin', 'marketplace', 'cli-config', 'plugin-command',
+  'mcp-config', 'plugin', 'marketplace', 'cli-config', 'marketplace-command', 'plugin-command',
 ]);
 type OperationKind = z.infer<typeof OperationKindSchema>;
 
@@ -93,6 +93,7 @@ const ApplySecretSchema = z.object({
   apiKey: z.string().regex(/^ae_[A-Za-z0-9_-]+$/),
   apiUrl: z.string().url(),
 }).strict();
+const LOCAL_LIBRARY_ID = '00000000-0000-0000-0000-000000000002';
 
 export interface BuildIntegrationPlanInput {
   channel: 'stable' | 'staging';
@@ -108,10 +109,24 @@ function addOperation(operations: IntegrationOperation[], operation: Integration
   operations.push(IntegrationOperationSchema.parse(operation));
 }
 
-function pluginPath(homeDir: string, host: 'codex' | 'claude'): string {
-  return host === 'codex'
-    ? join(homeDir, '.agents', 'plugins', 'plugins', 'answer-engine')
-    : join(homeDir, '.claude', 'skills', 'answer-engine');
+function codexPluginPath(homeDir: string): string {
+  return join(homeDir, '.agents', 'plugins', 'plugins', 'answer-engine');
+}
+
+function claudeMarketplacePath(aeHome: string): string {
+  return join(aeHome, 'client-plugins', 'claude-marketplace');
+}
+
+function codexPluginRegistryPath(homeDir: string): string {
+  return join(homeDir, '.codex', 'config.toml');
+}
+
+function claudePluginRegistryPath(homeDir: string): string {
+  return join(homeDir, '.claude', 'plugins', 'installed_plugins.json');
+}
+
+function claudeMarketplaceRegistryPath(homeDir: string): string {
+  return join(homeDir, '.claude', 'plugins', 'known_marketplaces.json');
 }
 
 export function buildIntegrationPlan(input: BuildIntegrationPlanInput): IntegrationPlan {
@@ -133,35 +148,41 @@ export function buildIntegrationPlan(input: BuildIntegrationPlanInput): Integrat
           description: 'Register the Answer Engine plugin in the personal Codex marketplace.',
         });
         addOperation(operations, {
-          client: 'codex', kind: 'plugin', path: pluginPath(homeDir, 'codex'),
+          client: 'codex', kind: 'plugin', path: codexPluginPath(homeDir),
           description: 'Install the checksum-verified Answer Engine plugin for Codex.',
         });
         addOperation(operations, {
-          client: 'codex', kind: 'mcp-config',
-          path: resolveClientConfigPath('codex', { homeDir, platform: input.platform }),
-          description: 'Merge the Answer Engine stdio MCP entry into Codex config.',
+          client: 'codex', kind: 'plugin-command', path: codexPluginRegistryPath(homeDir),
+          description: 'Ask Codex to install the registered personal plugin and update its user registry/cache.',
+        });
+        break;
+      case 'chatgpt-desktop':
+        addOperation(operations, {
+          client: 'chatgpt-desktop', kind: 'marketplace',
+          path: join(homeDir, '.agents', 'plugins', 'marketplace.json'),
+          description: 'Register the Answer Engine plugin in the shared Personal marketplace.',
         });
         addOperation(operations, {
-          client: 'codex', kind: 'plugin-command', path: 'codex:answer-engine@personal',
-          description: 'Ask Codex to install the registered personal plugin.',
+          client: 'chatgpt-desktop', kind: 'plugin', path: codexPluginPath(homeDir),
+          description: 'Install the checksum-verified Answer Engine plugin source for ChatGPT Desktop.',
         });
         break;
       case 'claude-code':
         addOperation(operations, {
-          client: 'claude-code', kind: 'plugin', path: pluginPath(homeDir, 'claude'),
-          description: 'Install the checksum-verified Answer Engine plugin for Claude Code.',
+          client: 'claude-code', kind: 'plugin', path: claudeMarketplacePath(input.aeHome),
+          description: 'Create a checksum-verified local Answer Engine marketplace and plugin for Claude Code.',
         });
         addOperation(operations, {
-          client: 'claude-code', kind: 'mcp-config',
-          path: resolveClientConfigPath('claude-code', { homeDir, platform: input.platform }),
-          description: 'Merge the Answer Engine stdio MCP entry into Claude Code config.',
+          client: 'claude-code', kind: 'marketplace-command',
+          path: claudeMarketplaceRegistryPath(homeDir),
+          description: `Register ${claudeMarketplacePath(input.aeHome)} with Claude Code at user scope.`,
+        });
+        addOperation(operations, {
+          client: 'claude-code', kind: 'plugin-command', path: claudePluginRegistryPath(homeDir),
+          description: 'Install the Answer Engine plugin in Claude Code at user scope and update its cache.',
         });
         break;
       case 'claude-cowork':
-        addOperation(operations, {
-          client: 'claude-cowork', kind: 'plugin', path: pluginPath(homeDir, 'claude'),
-          description: 'Install the local-session Answer Engine plugin for Cowork.',
-        });
         break;
       case 'claude-desktop':
       case 'cursor':
@@ -171,7 +192,6 @@ export function buildIntegrationPlan(input: BuildIntegrationPlanInput): Integrat
           description: `Merge the Answer Engine stdio MCP entry into ${capability.label} config.`,
         });
         break;
-      case 'chatgpt-desktop':
       case 'chatgpt-work':
       case 'chatgpt-web':
         break;
@@ -209,6 +229,23 @@ export function readIntegrationLedger(aeHome: string): IntegrationLedger {
   const path = ledgerPath(aeHome);
   if (lstatSync(path).isSymbolicLink()) throw new Error('Integration ledger must not be a symbolic link.');
   return IntegrationLedgerSchema.parse(JSON.parse(readFileSync(path, 'utf8')));
+}
+
+export function integrationLedgerIsCurrent(aeHome: string): boolean {
+  const path = ledgerPath(aeHome);
+  if (!existsSync(path)) return true;
+  try {
+    const ledger = readIntegrationLedger(aeHome);
+    return ledger.entries.every((entry) => {
+      // Host plugin registries live outside installer-managed files. Re-enter
+      // the idempotent apply-and-verify flow instead of treating their ledger
+      // receipt as proof that the plugin is still registered.
+      if (entry.kind === 'plugin-command' || entry.kind === 'marketplace-command') return false;
+      return existsSync(entry.path) && sha256Path(entry.path) === entry.afterSha256;
+    });
+  } catch {
+    return false;
+  }
 }
 
 function readLedgerIfPresent(plan: IntegrationPlan): IntegrationLedger {
@@ -316,30 +353,86 @@ function writeCliConfig(path: string, apiKey: string, apiUrl: string): void {
   writePrivateFileAtomic(path, stringifyYaml({ ...config, api_key: apiKey, api_url: apiUrl }), 'Answer Engine CLI config');
 }
 
-function installPlugin(path: string, templateDir: string, apiKey: string, apiUrl: string): void {
-  if (existsSync(path)) rmSync(path, { recursive: true, force: true });
-  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  cpSync(templateDir, path, { recursive: true, errorOnExist: true });
+export function resolveDockerExecutable(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  const executable = platform === 'win32' ? 'docker.exe' : 'docker';
+  for (const directory of (env.PATH ?? '').split(delimiter)) {
+    if (!isAbsolute(directory)) continue;
+    const candidate = join(directory, executable);
+    if (existsSync(candidate)) return candidate;
+  }
+  if (platform === 'darwin') {
+    const applicationCli = '/Applications/Docker.app/Contents/Resources/bin/docker';
+    if (existsSync(applicationCli)) return applicationCli;
+  }
+  throw new Error('Docker executable path could not be resolved for client MCP configuration.');
+}
+
+function managedMcpEntry(aeHome: string, dockerCommand: string): McpStdioEntry {
+  return {
+    command: dockerCommand,
+    args: [
+      'compose',
+      '--project-directory', aeHome,
+      '--env-file', join(aeHome, '.env.compose'),
+      '--file', join(aeHome, 'docker-compose.yml'),
+      'exec', '-T',
+      '-e', 'ANSWER_ENGINE_API_URL=http://127.0.0.1:5000',
+      '-e', `ANSWER_ENGINE_LIBRARY=${LOCAL_LIBRARY_ID}`,
+      'api', 'node', '/app/packages/mcp-server/dist/index.js',
+    ],
+    env: {},
+  };
+}
+
+function configurePluginMcp(path: string, entry: McpStdioEntry): void {
   const mcpPath = join(path, '.mcp.json');
   const mcp = objectValue(JSON.parse(readFileSync(mcpPath, 'utf8')), 'Answer Engine plugin MCP config');
   const servers = objectValue(mcp.mcpServers, 'Answer Engine plugin MCP servers');
-  const answerEngine = objectValue(servers['answer-engine'], 'Answer Engine plugin server');
-  const env = objectValue(answerEngine.env, 'Answer Engine plugin environment');
   const configured = {
     ...mcp,
-    mcpServers: {
-      ...servers,
-      'answer-engine': {
-        ...answerEngine,
-        env: {
-          ...env,
-          ANSWER_ENGINE_API_KEY: apiKey,
-          ANSWER_ENGINE_API_URL: apiUrl,
-        },
-      },
-    },
+    mcpServers: { ...servers, 'answer-engine': entry },
   };
   writePrivateFileAtomic(mcpPath, `${JSON.stringify(configured, null, 2)}\n`, 'Installed Answer Engine plugin MCP config');
+  const codexManifestPath = join(path, '.codex-plugin', 'plugin.json');
+  const codexManifest = objectValue(
+    JSON.parse(readFileSync(codexManifestPath, 'utf8')),
+    'Answer Engine Codex plugin manifest',
+  );
+  writePrivateFileAtomic(
+    codexManifestPath,
+    `${JSON.stringify({ ...codexManifest, mcpServers: { 'answer-engine': entry } }, null, 2)}\n`,
+    'Installed Answer Engine Codex plugin manifest',
+  );
+}
+
+function installPlugin(path: string, templateDir: string, mcpEntry: McpStdioEntry): void {
+  if (existsSync(path)) rmSync(path, { recursive: true, force: true });
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  cpSync(templateDir, path, { recursive: true, errorOnExist: true });
+  configurePluginMcp(path, mcpEntry);
+  secureTree(path);
+}
+
+function installClaudeMarketplace(path: string, templateDir: string, mcpEntry: McpStdioEntry): void {
+  if (existsSync(path)) rmSync(path, { recursive: true, force: true });
+  const plugin = join(path, 'plugins', 'answer-engine');
+  mkdirSync(dirname(plugin), { recursive: true, mode: 0o700 });
+  cpSync(templateDir, plugin, { recursive: true, errorOnExist: true });
+  configurePluginMcp(plugin, mcpEntry);
+  const marketplacePath = join(path, '.claude-plugin', 'marketplace.json');
+  mkdirSync(dirname(marketplacePath), { recursive: true, mode: 0o700 });
+  writePrivateFileAtomic(marketplacePath, `${JSON.stringify({
+    name: 'answer-engine',
+    owner: { name: 'Answer Engine contributors' },
+    plugins: [{
+      name: 'answer-engine',
+      source: './plugins/answer-engine',
+      description: 'Local-first memory for Claude work.',
+    }],
+  }, null, 2)}\n`, 'Claude plugin marketplace');
   secureTree(path);
 }
 
@@ -353,6 +446,30 @@ export interface ApplyIntegrationOptions {
   apiUrl: string;
   templateDir?: string;
   runCommand?: CommandRunner;
+  dockerCommand?: string;
+}
+
+function commandAlreadyApplied(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /already installed|already added|already exists/i.test(message);
+}
+
+async function applyCommandOperation(
+  operation: IntegrationOperation,
+  command: CommandRunner,
+  claudeMarketplace: string,
+): Promise<void> {
+  try {
+    if (operation.kind === 'marketplace-command') {
+      await command('claude', ['plugin', 'marketplace', 'add', claudeMarketplace, '--scope', 'user']);
+    } else if (operation.client === 'claude-code') {
+      await command('claude', ['plugin', 'install', 'answer-engine@answer-engine', '--scope', 'user']);
+    } else {
+      await command('codex', ['plugin', 'add', 'answer-engine@personal', '--json']);
+    }
+  } catch (error) {
+    if (!commandAlreadyApplied(error)) throw error;
+  }
 }
 
 export async function applyIntegrationPlan(
@@ -365,21 +482,35 @@ export async function applyIntegrationPlan(
   const templateDir = options.templateDir
     ?? fileURLToPath(new URL('../templates/integrations/answer-engine', import.meta.url));
   const command = options.runCommand ?? defaultRunCommand;
+  const mcpEntry = managedMcpEntry(
+    plan.aeHome,
+    options.dockerCommand ?? resolveDockerExecutable(),
+  );
   let ledger = readLedgerIfPresent(plan);
   let changed = 0;
 
   for (const operation of plan.operations) {
     const prior = ledger.entries.find((entry) => entry.kind === operation.kind && entry.path === operation.path);
     if (prior) {
-      if (operation.kind === 'plugin-command') continue;
+      if (operation.kind === 'plugin-command' || operation.kind === 'marketplace-command') {
+        await applyCommandOperation(operation, command, claudeMarketplacePath(plan.aeHome));
+        continue;
+      }
       if (existsSync(operation.path) && sha256Path(operation.path) === prior.afterSha256) continue;
       throw new Error(`Managed integration drift detected at ${operation.path}; remove or reconcile it before retrying.`);
     }
-    if (operation.kind === 'plugin-command') {
-      await command('codex', ['plugin', 'add', 'answer-engine@personal', '--json']);
+    if (operation.kind === 'plugin-command' || operation.kind === 'marketplace-command') {
+      const created = !existsSync(operation.path);
+      const beforeSha256 = created ? undefined : sha256Path(operation.path);
+      const backupPath = backupManagedPath(plan.aeHome, operation.path);
+      await applyCommandOperation(operation, command, claudeMarketplacePath(plan.aeHome));
       ledger.entries.push({
-        client: operation.client, kind: operation.kind, path: operation.path, created: true,
-        afterSha256: sha256Bytes(operation.path),
+        client: operation.client, kind: operation.kind, path: operation.path, created,
+        ...(beforeSha256 ? { beforeSha256 } : {}),
+        afterSha256: existsSync(operation.path)
+          ? sha256Path(operation.path)
+          : sha256Bytes(`${operation.kind}:${operation.path}`),
+        ...(backupPath ? { backupPath } : {}),
       });
       writeLedger(ledger);
       changed += 1;
@@ -393,11 +524,15 @@ export async function applyIntegrationPlan(
       case 'mcp-config':
         wireClient({
           client: fileClientFor(operation.client), apiKey: secret.apiKey,
-          serverUrl: secret.apiUrl, library: '00000000-0000-0000-0000-000000000002',
+          serverUrl: secret.apiUrl, library: LOCAL_LIBRARY_ID, mcpEntry,
         }, { path: operation.path, backup: false });
         break;
       case 'plugin':
-        installPlugin(operation.path, templateDir, secret.apiKey, secret.apiUrl);
+        if (operation.client === 'claude-code') {
+          installClaudeMarketplace(operation.path, templateDir, mcpEntry);
+        } else {
+          installPlugin(operation.path, templateDir, mcpEntry);
+        }
         break;
       case 'marketplace':
         writeMarketplace(operation.path);
@@ -446,6 +581,23 @@ function restoreCliOwnedKeys(path: string, backupPath?: string): void {
 
 export interface RemoveIntegrationOptions { runCommand?: CommandRunner }
 
+function commandAlreadyRemoved(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /not installed|not found|unknown marketplace|no marketplace/i.test(message);
+}
+
+async function runIdempotentRemoval(
+  command: CommandRunner,
+  executable: string,
+  args: string[],
+): Promise<void> {
+  try {
+    await command(executable, args);
+  } catch (error) {
+    if (!commandAlreadyRemoved(error)) throw error;
+  }
+}
+
 export async function removeManagedIntegrations(
   aeHome: string,
   options: RemoveIntegrationOptions = {},
@@ -457,7 +609,22 @@ export async function removeManagedIntegrations(
   const preserved: string[] = [];
   for (const entry of [...ledger.entries].reverse()) {
     if (entry.kind === 'plugin-command') {
-      await command('codex', ['plugin', 'remove', 'answer-engine@personal', '--json']);
+      if (entry.client === 'claude-code') {
+        await runIdempotentRemoval(command, 'claude', [
+          'plugin', 'uninstall', 'answer-engine@answer-engine', '--scope', 'user',
+        ]);
+      } else {
+        await runIdempotentRemoval(command, 'codex', [
+          'plugin', 'remove', 'answer-engine@personal', '--json',
+        ]);
+      }
+      removed.push(entry.path);
+      continue;
+    }
+    if (entry.kind === 'marketplace-command') {
+      await runIdempotentRemoval(command, 'claude', [
+        'plugin', 'marketplace', 'remove', 'answer-engine', '--scope', 'user',
+      ]);
       removed.push(entry.path);
       continue;
     }

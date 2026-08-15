@@ -81,18 +81,17 @@ byte-stable no-op. Remove only installer-managed entries with:
 npx @answer-engine/create@1.1.0 remove-integrations --channel stable
 ```
 
-ChatGPT Chat/Work/web and remote Cowork require remote MCP and cannot use this
-localhost installation directly. Local Cowork is available only when desktop
-policy permits local plugin MCP servers and requires guided confirmation. GUI
-clients must be restarted and confirmed interactively; omit them from a
-non-interactive selection if that check cannot be completed.
+ChatGPT Desktop Codex shares the Personal plugin marketplace and receives MCP
+through the plugin, then requires guided plugin install/restart confirmation.
+Hosted ChatGPT Chat/Work/web require remote MCP and cannot use this localhost
+installation directly. Cowork uses account-synced skills and policy-approved
+connectors, so the installer explains its limitation instead of claiming local
+plugin support. Guided clients are never auto-selected by `--yes`; select them
+explicitly only when the interactive check can be completed.
 
-Generated client entries use exact package versions:
-
-- `@answer-engine/cli@1.1.0`
-- `@answer-engine/mcp-server@1.1.0`
-
-The runtime image is pinned to
+Generated client entries launch the MCP server already built into the
+installer-managed runtime, so they do not fetch an unpublished package when a
+client starts. The runtime image is pinned to
 `ghcr.io/the-answerai/answer-engine:1.1.0`.
 Installer containers and volumes use the isolated `answer-engine-local`
 Compose namespace so legacy enterprise state is never adopted implicitly.

@@ -9,6 +9,7 @@ import type { InstallerOptions } from './options.js';
 import type { Prompt } from './prompt.js';
 import {
   CLIENT_IDS,
+  defaultNonInteractiveClients,
   detectAgentClients,
   parseClientSelection,
   type AgentClientId,
@@ -34,9 +35,10 @@ export async function selectClients(
     coworkMode: options.coworkMode === 'local' || options.coworkMode === 'remote'
       ? options.coworkMode
       : 'unknown',
-  }).map((client) => client.id);
-  if (options.yes || !prompt) return detected;
-  const defaultValue = detected.length > 0 ? detected.join(',') : 'none';
+  });
+  if (options.yes || !prompt) return defaultNonInteractiveClients(detected);
+  const detectedIds = detected.map((client) => client.id);
+  const defaultValue = detectedIds.length > 0 ? detectedIds.join(',') : 'none';
   const answer = await prompt.input(
     `Clients to connect (comma-separated: ${CLIENT_IDS.join(',')}; or none)`,
     defaultValue,

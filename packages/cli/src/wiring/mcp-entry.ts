@@ -1,19 +1,8 @@
 import type { McpStdioEntry, WiringInput } from './types.js';
 
-export const MCP_SERVER_PACKAGE = '@answer-engine/mcp-server@1.1.0';
-
 export function buildMcpEntry(input: WiringInput): McpStdioEntry {
-  const env: Record<string, string> = {
-    ANSWER_ENGINE_API_KEY: input.apiKey,
-    ANSWER_ENGINE_API_URL: input.serverUrl,
-  };
-  if (input.library) env.ANSWER_ENGINE_LIBRARY = input.library;
-
-  return {
-    command: 'npx',
-    args: ['-y', MCP_SERVER_PACKAGE],
-    env,
-  };
+  if (input.mcpEntry) return input.mcpEntry;
+  throw new Error('A verified Answer Engine MCP launcher is required for client wiring.');
 }
 
 function shellToken(value: string): string {
@@ -26,5 +15,6 @@ export function renderClaudeCodeCommand(input: WiringInput): string {
   const envArgs = Object.entries(entry.env)
     .map(([key, value]) => `--env ${shellToken(`${key}=${value}`)}`)
     .join(' ');
-  return `claude mcp add answer-engine ${envArgs} -- npx -y ${MCP_SERVER_PACKAGE}`;
+  const launcher = [entry.command, ...entry.args].map(shellToken).join(' ');
+  return `claude mcp add answer-engine${envArgs ? ` ${envArgs}` : ''} -- ${launcher}`;
 }

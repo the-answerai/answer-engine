@@ -11,7 +11,13 @@
   "license": "Apache-2.0",
   "keywords": ["memory", "local-first", "mcp", "retrieval"],
   "skills": "./skills/",
-  "mcpServers": "./.mcp.json",
+  "mcpServers": {
+    "answer-engine": {
+      "command": "__ANSWER_ENGINE_MCP_COMMAND__",
+      "args": [],
+      "env": {}
+    }
+  },
   "interface": {
     "displayName": "Answer Engine",
     "shortDescription": "Local-first memory for agent work",

@@ -3,6 +3,7 @@ import { existsSync, lstatSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
 import type { RuntimeChannelProfile } from './runtime-channel.js';
+import { integrationLedgerIsCurrent } from './integrations.js';
 import { writePrivateFileAtomic } from './safe-file.js';
 
 const InstallationCompletionSchema = z.object({
@@ -36,7 +37,8 @@ export function installationIsComplete(profile: RuntimeChannelProfile, releaseTa
       && state.home === profile.home
       && state.releaseTag === releaseTag
       && state.ownershipSha256 === ownershipSha256(profile)
-      && state.integrationsSha256 === integrationsSha256(profile);
+      && state.integrationsSha256 === integrationsSha256(profile)
+      && integrationLedgerIsCurrent(profile.home);
   } catch {
     return false;
   }

@@ -40,10 +40,10 @@ const BASE_CAPABILITIES: Record<AgentClientId, Omit<ClientCapability, 'detected'
     packaging: 'plugin', access: 'stdio-mcp', verification: 'command', supported: true,
   },
   'chatgpt-desktop': {
-    id: 'chatgpt-desktop', label: 'ChatGPT Desktop (Chat/Work)', surface: 'chatgpt-desktop',
-    execution: 'remote', localhost: false, packaging: 'none', access: 'remote-mcp',
-    verification: 'unavailable', supported: false,
-    limitation: 'ChatGPT Chat and Work connect to remote MCP, not a localhost stdio server. Use the Codex surface for this local installation.',
+    id: 'chatgpt-desktop', label: 'ChatGPT Desktop (Codex)', surface: 'chatgpt-desktop',
+    execution: 'local', localhost: true, packaging: 'plugin', access: 'stdio-mcp',
+    verification: 'guided', supported: true,
+    limitation: 'Restart the ChatGPT desktop Codex host, install Answer Engine from the Personal plugin marketplace, and complete the guided recall check.',
   },
   'chatgpt-work': {
     id: 'chatgpt-work', label: 'ChatGPT Work', surface: 'chatgpt-work', execution: 'remote',
@@ -102,11 +102,7 @@ export function capabilityForClient(
     ...BASE_CAPABILITIES[id],
     execution: 'local',
     localhost: true,
-    packaging: 'plugin',
-    access: 'stdio-mcp',
-    verification: 'guided',
-    supported: true,
-    limitation: 'Local Cowork works only when desktop policy allows local plugin MCP servers; restart and complete the guided check.',
+    limitation: 'Local Cowork can use account-synced skills and policy-approved connectors, but this installer cannot install or verify a localhost plugin in Cowork.',
     detected: false,
   });
 }
@@ -161,4 +157,12 @@ export function parseClientSelection(value: string): AgentClientId[] {
     if (!clients.includes(parsed.data)) clients.push(parsed.data);
   }
   return clients;
+}
+
+export function defaultNonInteractiveClients(
+  detected: readonly ClientCapability[],
+): AgentClientId[] {
+  return detected
+    .filter((client) => client.supported && client.verification === 'command')
+    .map((client) => client.id);
 }

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   CLIENT_IDS,
   capabilityForClient,
+  defaultNonInteractiveClients,
   detectAgentClients,
   parseClientSelection,
 } from '../clients.js';
@@ -38,11 +39,26 @@ describe('agent client capability matrix', () => {
     expect(capabilityForClient('chatgpt-web')).toMatchObject({
       execution: 'remote', localhost: false, access: 'remote-mcp', supported: false,
     });
+    expect(capabilityForClient('chatgpt-desktop')).toMatchObject({
+      execution: 'local', localhost: true, packaging: 'plugin',
+      access: 'stdio-mcp', verification: 'guided', supported: true,
+    });
     expect(capabilityForClient('claude-cowork', 'remote').limitation).toMatch(/cannot reach localhost/i);
     expect(capabilityForClient('claude-cowork', 'local')).toMatchObject({
-      execution: 'local', localhost: true, packaging: 'plugin',
-      verification: 'guided', supported: true,
+      execution: 'local', localhost: true, packaging: 'none',
+      verification: 'unavailable', supported: false,
     });
+  });
+
+  it('automatically selects only clients that can be verified without a prompt', () => {
+    const detected = [
+      capabilityForClient('codex'),
+      capabilityForClient('chatgpt-desktop'),
+      capabilityForClient('chatgpt-web'),
+      capabilityForClient('claude-code'),
+    ];
+
+    expect(defaultNonInteractiveClients(detected)).toEqual(['codex', 'claude-code']);
   });
 
   it('detects all applicable installed surfaces without pretending web is locally detectable', () => {

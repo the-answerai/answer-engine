@@ -22,16 +22,20 @@ describe('Answer Engine plugin skills', () => {
     const codex = JSON.parse(readFileSync(join(templateRoot, '.codex-plugin', 'plugin.json'), 'utf8')) as Record<string, unknown>;
     const claude = JSON.parse(readFileSync(join(templateRoot, '.claude-plugin', 'plugin.json'), 'utf8')) as Record<string, unknown>;
     const mcp = readFileSync(join(templateRoot, '.mcp.json'), 'utf8');
-    expect(codex).toMatchObject({ name: 'answer-engine', version: '1.1.0', mcpServers: './.mcp.json' });
+    expect(codex).toMatchObject({
+      name: 'answer-engine', version: '1.1.0',
+      mcpServers: { 'answer-engine': { command: '__ANSWER_ENGINE_MCP_COMMAND__' } },
+    });
     expect(claude).toMatchObject({ name: 'answer-engine', version: '1.1.0' });
-    expect(mcp).toContain('@answer-engine/mcp-server@1.1.0');
+    expect(mcp).toContain('__ANSWER_ENGINE_MCP_COMMAND__');
+    expect(mcp).not.toContain('@answer-engine/mcp-server');
     expect(mcp).not.toMatch(/ae_live_[A-Za-z0-9]/);
     expect(readdirSync(join(templateRoot, 'skills')).sort()).toEqual([
       'install-answer-engine', 'organize-answer-engine', 'use-answer-engine',
     ]);
   });
 
-  it('defines activation and representative workflow evals for every skill', () => {
+  it('packages schema-valid activation and workflow eval fixtures for every skill', () => {
     for (const skill of ['install-answer-engine', 'use-answer-engine', 'organize-answer-engine']) {
       const body = readFileSync(join(templateRoot, 'skills', skill, 'SKILL.md'), 'utf8');
       expect(body).toMatch(new RegExp(`^---\\nname: ${skill}\\ndescription: .+\\n---`, 's'));

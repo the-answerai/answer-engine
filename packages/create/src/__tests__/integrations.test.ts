@@ -14,11 +14,14 @@ import { parse as parseYaml } from 'yaml';
 import {
   applyIntegrationPlan,
   buildIntegrationPlan,
+  integrationLedgerIsCurrent,
   readIntegrationLedger,
   removeManagedIntegrations,
+  resolveDockerExecutable,
 } from '../integrations.js';
 
 const tempDirs: string[] = [];
+const dockerCommand = '/usr/local/bin/docker';
 
 function fixture(): { aeHome: string; homeDir: string; templateDir: string } {
   const root = mkdtempSync(join(tmpdir(), 'ae-integrations-'));
@@ -34,11 +37,7 @@ function fixture(): { aeHome: string; homeDir: string; templateDir: string } {
   writeFileSync(join(templateDir, '.mcp.json'), JSON.stringify({
     mcpServers: {
       'answer-engine': {
-        command: 'npx', args: ['-y', '@answer-engine/mcp-server@1.1.0'],
-        env: {
-          ANSWER_ENGINE_API_KEY: '__ANSWER_ENGINE_API_KEY__',
-          ANSWER_ENGINE_API_URL: '__ANSWER_ENGINE_API_URL__',
-        },
+        command: '__ANSWER_ENGINE_MCP_COMMAND__', args: [], env: {},
       },
     },
   }));
@@ -60,11 +59,9 @@ describe('integration plan/apply/remove', () => {
     });
 
     expect(plan.operations.map((operation) => operation.path)).toEqual(expect.arrayContaining([
-      join(homeDir, '.codex', 'config.toml'),
       join(homeDir, '.agents', 'plugins', 'marketplace.json'),
       join(homeDir, '.agents', 'plugins', 'plugins', 'answer-engine'),
-      join(homeDir, '.claude.json'),
-      join(homeDir, '.claude', 'skills', 'answer-engine'),
+      join(aeHome, 'client-plugins', 'claude-marketplace'),
       join(homeDir, '.config', 'answer-engine', 'config.yml'),
     ]));
     expect(plan.clients.find((client) => client.id === 'chatgpt-web')?.limitation)
@@ -78,15 +75,19 @@ describe('integration plan/apply/remove', () => {
   it('applies byte-stably, stores private redacted ledger/backups, and writes CLI handoff', async () => {
     const { aeHome, homeDir, templateDir } = fixture();
     const codexConfig = join(homeDir, '.codex', 'config.toml');
+    const cliConfigPath = join(homeDir, '.config', 'answer-engine', 'config.yml');
     mkdirSync(join(homeDir, '.codex'), { recursive: true });
+    mkdirSync(join(homeDir, '.config', 'answer-engine'), { recursive: true });
     writeFileSync(codexConfig, '[mcp_servers.filesystem]\ncommand = "node"\nargs = ["fs.js"]\n');
+    writeFileSync(cliConfigPath, 'default_output: table\n');
     const plan = buildIntegrationPlan({
-      channel: 'stable', aeHome, homeDir, clients: ['codex', 'claude-code'],
+      channel: 'stable', aeHome, homeDir, clients: ['codex', 'claude-code', 'chatgpt-desktop'],
     });
     const runCommand = vi.fn(async () => ({ stdout: '{"installed":true}', stderr: '' }));
 
     const first = await applyIntegrationPlan(plan, {
       apiKey: 'ae_live_super_secret_key', apiUrl: 'http://127.0.0.1:5050', templateDir, runCommand,
+      dockerCommand,
     });
     const firstBytes = new Map(plan.operations
       .filter((operation) => operation.kind !== 'plugin-command')
@@ -94,6 +95,7 @@ describe('integration plan/apply/remove', () => {
         ? readFileSync(operation.path) : undefined]));
     const second = await applyIntegrationPlan(plan, {
       apiKey: 'ae_live_super_secret_key', apiUrl: 'http://127.0.0.1:5050', templateDir, runCommand,
+      dockerCommand,
     });
 
     expect(first.changed).toBeGreaterThan(0);
@@ -102,15 +104,68 @@ describe('integration plan/apply/remove', () => {
       if (bytes) expect(readFileSync(path)).toEqual(bytes);
     }
     expect(readFileSync(codexConfig, 'utf8')).toContain('[mcp_servers.filesystem]');
-    const cliConfig = parseYaml(readFileSync(join(homeDir, '.config', 'answer-engine', 'config.yml'), 'utf8')) as Record<string, unknown>;
+    const cliConfig = parseYaml(readFileSync(cliConfigPath, 'utf8')) as Record<string, unknown>;
     expect(cliConfig).toMatchObject({
-      api_key: 'ae_live_super_secret_key', api_url: 'http://127.0.0.1:5050',
+      default_output: 'table', api_key: 'ae_live_super_secret_key', api_url: 'http://127.0.0.1:5050',
     });
     const ledger = readIntegrationLedger(aeHome);
     expect(JSON.stringify(ledger)).not.toContain('ae_live_super_secret_key');
     expect(statSync(join(aeHome, 'integrations', 'ledger.json')).mode & 0o777).toBe(0o600);
     expect(ledger.entries.some((entry) => entry.backupPath)).toBe(true);
     expect(runCommand).toHaveBeenCalledWith('codex', ['plugin', 'add', 'answer-engine@personal', '--json']);
+    expect(runCommand).toHaveBeenCalledWith('claude', [
+      'plugin', 'marketplace', 'add', join(aeHome, 'client-plugins', 'claude-marketplace'), '--scope', 'user',
+    ]);
+    expect(runCommand).toHaveBeenCalledWith('claude', [
+      'plugin', 'install', 'answer-engine@answer-engine', '--scope', 'user',
+    ]);
+    const installedMcp = JSON.parse(readFileSync(
+      join(homeDir, '.agents', 'plugins', 'plugins', 'answer-engine', '.mcp.json'),
+      'utf8',
+    )) as { mcpServers: { 'answer-engine': { command: string; args: string[]; env: Record<string, string> } } };
+    expect(installedMcp.mcpServers['answer-engine']).toMatchObject({
+      command: dockerCommand,
+      args: expect.arrayContaining([
+        'exec', '-T', '-e', 'ANSWER_ENGINE_API_URL=http://127.0.0.1:5000',
+        'api', 'node', '/app/packages/mcp-server/dist/index.js',
+      ]),
+      env: {},
+    });
+    expect(JSON.stringify(installedMcp)).not.toContain('ae_live_super_secret_key');
+    const installedCodexManifest = JSON.parse(readFileSync(
+      join(homeDir, '.agents', 'plugins', 'plugins', 'answer-engine', '.codex-plugin', 'plugin.json'),
+      'utf8',
+    )) as { mcpServers: Record<string, unknown> };
+    expect(installedCodexManifest.mcpServers).toHaveProperty('answer-engine');
+  });
+
+  it('wires the ChatGPT desktop Codex host while leaving hosted Work remote-only', async () => {
+    const { aeHome, homeDir, templateDir } = fixture();
+    const plan = buildIntegrationPlan({
+      channel: 'stable', aeHome, homeDir,
+      clients: ['chatgpt-desktop', 'chatgpt-work'],
+    });
+
+    expect(plan.clients.find((client) => client.id === 'chatgpt-desktop')).toMatchObject({
+      supported: true, localhost: true, verification: 'guided',
+    });
+    expect(plan.clients.find((client) => client.id === 'chatgpt-work')).toMatchObject({
+      supported: false, localhost: false,
+    });
+    expect(plan.operations.map((operation) => operation.path)).not.toContain(
+      join(homeDir, '.codex', 'config.toml'),
+    );
+
+    await applyIntegrationPlan(plan, {
+      apiKey: 'ae_live_desktop_secret', apiUrl: 'http://127.0.0.1:5050', templateDir,
+      runCommand: vi.fn(async () => ({ stdout: '', stderr: '' })),
+      dockerCommand,
+    });
+    const manifest = readFileSync(join(
+      homeDir, '.agents', 'plugins', 'plugins', 'answer-engine', '.codex-plugin', 'plugin.json',
+    ), 'utf8');
+    expect(manifest).toContain('docker');
+    expect(manifest).not.toContain('ae_live_desktop_secret');
   });
 
   it('removes only managed entries and preserves unrelated config', async () => {
@@ -126,6 +181,7 @@ describe('integration plan/apply/remove', () => {
     await applyIntegrationPlan(plan, {
       apiKey: 'ae_live_remove_secret', apiUrl: 'http://127.0.0.1:5050', templateDir,
       runCommand: vi.fn(async () => ({ stdout: '', stderr: '' })),
+      dockerCommand,
     });
     const withUserEdit = JSON.parse(readFileSync(cursorConfig, 'utf8')) as Record<string, unknown>;
     withUserEdit.fontSize = 15;
@@ -144,10 +200,70 @@ describe('integration plan/apply/remove', () => {
     expect(existsSync(join(aeHome, 'integrations', 'ledger.json'))).toBe(false);
   });
 
+  it('invalidates completion when a managed integration path drifts', async () => {
+    const { aeHome, homeDir, templateDir } = fixture();
+    const plan = buildIntegrationPlan({
+      channel: 'stable', aeHome, homeDir, clients: ['cursor'],
+    });
+    await applyIntegrationPlan(plan, {
+      apiKey: 'ae_live_integrity_secret', apiUrl: 'http://127.0.0.1:5050', templateDir,
+      runCommand: vi.fn(async () => ({ stdout: '', stderr: '' })),
+      dockerCommand,
+    });
+    expect(integrationLedgerIsCurrent(aeHome)).toBe(true);
+
+    writeFileSync(join(homeDir, '.cursor', 'mcp.json'), '{"mcpServers":{}}\n');
+
+    expect(integrationLedgerIsCurrent(aeHome)).toBe(false);
+  });
+
+  it('does not trust a ledger receipt for externally managed plugin registration', async () => {
+    const { aeHome, homeDir, templateDir } = fixture();
+    const plan = buildIntegrationPlan({
+      channel: 'stable', aeHome, homeDir, clients: ['codex'],
+    });
+    await applyIntegrationPlan(plan, {
+      apiKey: 'ae_live_registry_secret', apiUrl: 'http://127.0.0.1:5050', templateDir,
+      runCommand: vi.fn(async () => ({ stdout: '', stderr: '' })),
+      dockerCommand,
+    });
+
+    expect(integrationLedgerIsCurrent(aeHome)).toBe(false);
+  });
+
   it('rejects global integration writes from staging', () => {
     const { aeHome, homeDir } = fixture();
     expect(() => buildIntegrationPlan({
       channel: 'staging', aeHome, homeDir, clients: ['codex'],
     })).toThrow(/staging cannot write global client integrations/i);
+  });
+
+  it('keeps removal idempotent when a host plugin was already removed', async () => {
+    const { aeHome, homeDir, templateDir } = fixture();
+    const plan = buildIntegrationPlan({
+      channel: 'stable', aeHome, homeDir, clients: ['codex'],
+    });
+    await applyIntegrationPlan(plan, {
+      apiKey: 'ae_live_remove_secret', apiUrl: 'http://127.0.0.1:5050', templateDir,
+      runCommand: vi.fn(async () => ({ stdout: '', stderr: '' })),
+      dockerCommand,
+    });
+
+    await expect(removeManagedIntegrations(aeHome, {
+      runCommand: vi.fn(async () => { throw new Error('plugin is not installed'); }),
+    })).resolves.toMatchObject({
+      removed: expect.arrayContaining([join(homeDir, '.codex', 'config.toml')]),
+    });
+    expect(existsSync(join(aeHome, 'integrations'))).toBe(false);
+  });
+
+  it('resolves an absolute Docker path for GUI-launched MCP clients', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'ae-docker-bin-'));
+    tempDirs.push(directory);
+    const executable = join(directory, 'docker');
+    writeFileSync(executable, 'fixture');
+
+    expect(resolveDockerExecutable({ PATH: directory }, 'darwin')).toBe(executable);
+    expect(() => resolveDockerExecutable({ PATH: '' }, 'linux')).toThrow(/could not be resolved/i);
   });
 });

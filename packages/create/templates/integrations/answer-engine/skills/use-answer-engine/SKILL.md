@@ -12,6 +12,6 @@ Read `../../references/safety.md` and `../../references/tools.md` before calling
 3. Answer from the recalled evidence, name uncertainty, and separate inference from stored content.
 4. Use `remember` only when the user asks to retain information or the workflow clearly requests durable storage; summarize what will be stored.
 5. Use `forget` only for an exact, user-approved target.
-6. If MCP is unavailable in a supported local terminal client, use the configured `ae search` and `ae get` CLI fallback without exposing credentials.
+6. If MCP is unavailable in a supported local terminal client, first confirm that the `ae` executable is already installed and `ae auth status` can read the installer-managed configuration. Only then use the `ae search` and `ae get` fallback without exposing credentials. If the executable is absent, repair MCP instead of claiming CLI access is ready.
 
 An empty result is a valid outcome. Refine the query or explain that the memory was not found instead of inventing one.

@@ -23,11 +23,11 @@
     },
     {
       "path": "integrations/answer-engine/.codex-plugin/plugin.json",
-      "sha256": "2344a511565d7cafda3cda03ef625c5d7f22b7b8c1223fa9e6012b6aa4d3008f"
+      "sha256": "eac9279f19797b5fcb10631f0f496f29619b9915c2335fb16f310a90e73df8b8"
     },
     {
       "path": "integrations/answer-engine/.mcp.json",
-      "sha256": "cef84f127ea099fd17abd8d402a6c1c553a1c605a1910f3b50ed1602eed2320a"
+      "sha256": "dc981cff0e7d6eff743251a38ca98fe524d0804a9315c32d6934c73d59536463"
     },
     {
       "path": "integrations/answer-engine/evals/install-answer-engine.json",
@@ -43,7 +43,7 @@
     },
     {
       "path": "integrations/answer-engine/references/capabilities.md",
-      "sha256": "b861880c8b478fd514b7e28f2af48a728fe2f16bc2590fc262ccd8788f1e3124"
+      "sha256": "27dc3d5d5abc14a910b64bfed4363f9b8e0429342643f3e3f222654748038d69"
     },
     {
       "path": "integrations/answer-engine/references/safety.md",
@@ -51,7 +51,7 @@
     },
     {
       "path": "integrations/answer-engine/references/tools.md",
-      "sha256": "5df43d584dcf65474889014dd26c474eecc9457410a669a447fa020f86e281c1"
+      "sha256": "021860b65447f7efa0be0ef7b0838fc80ea65779355910fb6797080723a78ad5"
     },
     {
       "path": "integrations/answer-engine/skills/install-answer-engine/SKILL.md",
@@ -63,7 +63,7 @@
     },
     {
       "path": "integrations/answer-engine/skills/use-answer-engine/SKILL.md",
-      "sha256": "f82fe0476fd7f57a6542c227aaf9ccb5c6801b18845369070f025eb936dac922"
+      "sha256": "47365bcc36224a46575f6f5ed27468113103db6ca7785f6035bd0043fcb01ce1"
     }
   ]
 }

@@ -106,9 +106,9 @@ agent is driving it, ask these questions in one batch and wait for the answers:
 1. Use the default `~/.answer-engine`, or another local home?
 2. Use LM Studio, OpenAI, or Anthropic? Collect exact model IDs. For LM Studio,
    also collect the embedding width. Have the user enter keys locally.
-3. Which client surfaces are used: Codex, ChatGPT Desktop Chat/Work, ChatGPT
-   web, Claude Code, Claude Desktop, Claude Cowork, or a Cursor-style JSON MCP
-   adapter? For Cowork, are sessions local or remote?
+3. Which client surfaces are used: Codex, ChatGPT Desktop Codex, hosted ChatGPT
+   Chat/Work or web, Claude Code, Claude Desktop, Claude Cowork, or a
+   Cursor-style JSON MCP adapter? For Cowork, are sessions local or remote?
 
 The installer performs supported client wiring and verification. History import,
 document ingestion, organization mutation, and the cross-chat tutorial remain
@@ -177,14 +177,16 @@ continue unless all six installer stages pass.
 
 Capability boundary:
 
-- Codex and Claude Code receive the dual-host plugin, stdio MCP, CLI handoff,
-  and a non-interactive real recall verification.
+- Codex receives the Personal marketplace plugin; Claude Code receives the same
+  skills through a local Claude marketplace plugin. Both launch stdio MCP from
+  the installer-managed runtime and complete a non-interactive real recall.
+- ChatGPT Desktop Codex receives the shared Personal plugin source with its
+  bundled MCP configuration, then requires plugin install/restart and guided confirmation.
 - Claude Desktop and Cursor-style JSON adapters receive local stdio MCP plus
   CLI handoff and require restart with guided recall confirmation.
-- Local Cowork receives the plugin only when local MCP policy is confirmed and
-  requires guided confirmation.
-- ChatGPT Chat/Work/web and remote Cowork require remote MCP. This installer
-  does not claim localhost support or operate a relay for them.
+- Hosted ChatGPT Chat/Work/web and Cowork are not wired to localhost. Cowork
+  uses account-synced skills and policy-approved connectors; this installer does
+  not claim local plugin support or operate a remote relay.
 
 The installer stores a redacted ownership ledger and private backups under
 `$AE_HOME/integrations`. To reverse client integration without removing memory:

@@ -74,8 +74,8 @@ describe('stable channel adoption', () => {
     })).rejects.toThrow('cancelled before any changes');
 
     expect(readdirSync(home)).toEqual([]);
-    expect(messages.join('\n')).toContain('.codex/config.toml');
     expect(messages.join('\n')).toContain('.agents/plugins/marketplace.json');
+    expect(messages.join('\n')).toContain('.agents/plugins/plugins/answer-engine');
     expect(prompt.confirm).toHaveBeenCalledOnce();
   });
 
