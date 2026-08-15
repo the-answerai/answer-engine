@@ -1,0 +1,26 @@
+{
+  "recall": {
+    "query": "onboarding launch scope",
+    "results": [
+      {
+        "id": "11111111-1111-4111-8111-111111111111",
+        "content": "For the onboarding launch, ship the installer and supported client wiring first. Keep history import in issue #44 and the cross-chat tutorial in issue #47.",
+        "source": "claude-code",
+        "score": 0.97
+      }
+    ]
+  },
+  "inspect_memory": {
+    "contentId": "11111111-1111-4111-8111-111111111111",
+    "source": "claude-code",
+    "origin": {
+      "externalId": "claude-code:project-answer-engine:conversation-43",
+      "sourceMetadata": {
+        "project": "answer-engine",
+        "session": "conversation-43"
+      }
+    },
+    "lineage": [],
+    "currentArtifacts": []
+  }
+}

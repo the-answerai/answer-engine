@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "answer-engine": {
+      "command": "__ANSWER_ENGINE_MCP_COMMAND__",
+      "args": [],
+      "env": {}
+    }
+  }
+}

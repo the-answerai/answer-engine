@@ -1,8 +1,7 @@
 import { z } from 'zod';
+import type { AgentClientId } from './clients.js';
 import type { PreflightResult } from './preflight.js';
 import type { Prompt } from './prompt.js';
-
-type InstallAgentClient = 'claude-code' | 'codex' | 'cursor' | 'claude-desktop';
 
 export const ModelProfileSchema = z.object({
   id: z.enum(['full-local', 'reduced-local', 'cloud-backed']),
@@ -34,7 +33,7 @@ export function recommendModelProfile(report: PreflightResult): ModelProfile {
 export interface InstallConsentSummary {
   home: string;
   profile: ModelProfile['id'];
-  agents: readonly InstallAgentClient[];
+  agents: readonly AgentClientId[];
 }
 
 export async function requireInstallConsent(prompt: Prompt, summary: InstallConsentSummary): Promise<void> {

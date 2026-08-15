@@ -25,20 +25,24 @@ Translate every pass, warning, or unsupported result into plain language. Never
 install Docker, WSL2, LM Studio, drivers, or another privileged prerequisite
 without asking me. Recommend full-local only for supported hardware,
 reduced-local for constrained Apple Silicon, or cloud-backed only after explicit
-opt-in. Ask me in one short interview for the install folder, model route, and
-agent clients. Never ask me to paste a secret into chat.
+opt-in. Ask me in one short interview for the install folder, model route, every
+agent client surface I use, and whether Cowork sessions are local or remote.
+Never ask me to paste a secret into chat.
 
 Before executing the installer, verify the bundled release manifest, immutable
-version/tag, and SHA-256 checksums, show exactly what will change, and ask for
-confirmation. Cancel without changing files if I decline. Use the stable channel,
-preserve any existing data and credentials, and retry safely if setup is partial.
-Do not ask me to create or copy a local Answer Engine API key; the installer must
-capture and store it automatically.
+version/tag, and SHA-256 checksums. Show the exact runtime, plugin, skill, MCP,
+CLI, ledger, and backup paths plus every unsupported client limitation, then ask
+for one confirmation. Cancel without changing files if I decline. Use the stable
+channel, preserve existing data and unrelated client configuration, and retry
+safely if setup is partial. Do not ask me to create or copy a local Answer Engine
+API key; the installer must capture and store it automatically.
 
-Finish only when the health endpoint and local UI are ready. Report any no-op,
-repair, upgrade, rollback, or uninstall action clearly. Client integration,
-history import, folder ingestion, organization, and the cross-chat tutorial are
-separate guided handoffs; do not silently perform them during this installer.
+Finish only when health, the local UI, the direct memory round trip, and a real
+Answer Engine recall in every selected supported client pass. Explain that
+ChatGPT web/Work and remote Cowork cannot connect directly to localhost; do not
+claim or create a remote relay. Report no-op, repair, removal, and rollback paths
+clearly. History import, folder ingestion, organization mutation, and the
+cross-chat tutorial remain separate consented handoffs.
 ```
 <!-- INSTALL_PROMPT:END -->
 
@@ -48,7 +52,8 @@ Setup is complete only when:
 
 1. `http://127.0.0.1:5050/health` returns healthy.
 2. `http://127.0.0.1:5050` opens ready to use without API-key entry.
-3. Every selected local agent client is wired to the MCP server.
+3. Every selected supported client has its skill/plugin and tool configuration,
+   and completes its automated or guided real recall check.
 4. `$AE_HOME/config.yaml` validates.
 5. At least one selected history or document source has been imported.
 6. A full-text recall returns one of those real records and its lineage endpoint
@@ -68,7 +73,7 @@ it does not replace the user's-data check in steps 5 and 6.
 - Never use `--uninstall --purge` without explicit confirmation because it
   deletes the local database and Answer Engine home.
 - This runbook installs `stable`. Never point staging at `$AE_HOME`; staging
-  defaults to `~/.answer-engine-staging` and must use `--agents none`.
+  defaults to `~/.answer-engine-staging` and must use `--clients none`.
 
 ## 1. Check prerequisites
 
@@ -95,17 +100,19 @@ Anthropic chat with OpenAI embeddings are also supported.
 
 ## 2. Interview the user
 
-The installer asks for the issue-#42 choices in one concise interview. If an
+The installer asks for setup and issue-#43 client choices in one concise interview. If an
 agent is driving it, ask these questions in one batch and wait for the answers:
 
 1. Use the default `~/.answer-engine`, or another local home?
 2. Use LM Studio, OpenAI, or Anthropic? Collect exact model IDs. For LM Studio,
    also collect the embedding width. Have the user enter keys locally.
-3. Which clients will be handed to the client-integration guide after install?
+3. Which client surfaces are used: Codex, ChatGPT Desktop Codex, hosted ChatGPT
+   Chat/Work or web, Claude Code, Claude Desktop, Claude Cowork, or a
+   Cursor-style JSON MCP adapter? For Cowork, are sessions local or remote?
 
-Client wiring, history import, document ingestion, organization, and the
-cross-chat tutorial are implemented by issues #43 through #47. Record the
-choices, but do not silently perform those downstream steps here.
+The installer performs supported client wiring and verification. History import,
+document ingestion, organization mutation, and the cross-chat tutorial remain
+separate downstream steps; do not silently perform them here.
 
 Default history discovery:
 
@@ -130,7 +137,7 @@ npx @answer-engine/create@1.1.0 --yes \
   --home "$AE_HOME" \
   --models chat=<loaded-chat-id>,embedding=<loaded-embedding-id> \
   --embedding-dimension <actual-width> \
-  --agents claude-code,codex
+  --clients claude-code,codex
 ```
 
 OpenAI example (the user enters the key in the local shell):
@@ -145,7 +152,7 @@ npx @answer-engine/create@1.1.0 --yes \
   --embedding-provider openai \
   --embedding-key "$OPENAI_API_KEY" \
   --embedding-model text-embedding-3-small \
-  --agents claude-code,codex
+  --clients claude-code,codex
 ```
 
 Anthropic chat with OpenAI embeddings:
@@ -160,11 +167,36 @@ npx @answer-engine/create@1.1.0 --yes \
   --embedding-provider openai \
   --embedding-key "$OPENAI_API_KEY" \
   --embedding-model text-embedding-3-small \
-  --agents claude-code,codex
+  --clients claude-code,codex
 ```
 
-Use only the clients selected by the user; `--agents none` is valid. Do not
+Use only the clients selected by the user; `--clients none` is valid and
+`--agents` remains a compatibility alias. Use `--cowork-mode local` only after
+the user confirms local sessions and applicable desktop policy. Do not
 continue unless all six installer stages pass.
+
+Capability boundary:
+
+- Codex receives the Personal marketplace plugin; Claude Code receives the same
+  skills through a local Claude marketplace plugin. Both launch stdio MCP from
+  the installer-managed runtime and complete a non-interactive real recall.
+- ChatGPT Desktop Codex receives the shared Personal plugin source with its
+  bundled MCP configuration, then requires plugin install/restart and guided confirmation.
+- Claude Desktop and Cursor-style JSON adapters receive local stdio MCP plus
+  CLI handoff and require restart with guided recall confirmation.
+- Hosted ChatGPT Chat/Work/web and Cowork are not wired to localhost. Cowork
+  uses account-synced skills and policy-approved connectors; this installer does
+  not claim local plugin support or operate a remote relay.
+- When the installer runs inside WSL2, Windows-host ChatGPT Desktop and Claude
+  Desktop are explained as unavailable and receive no Linux-home wiring.
+
+The installer stores a redacted ownership ledger and private backups under
+`$AE_HOME/integrations`. To reverse client integration without removing memory:
+
+```bash
+npx @answer-engine/create@1.1.0 remove-integrations \
+  --channel stable --home "$AE_HOME"
+```
 
 ## 4. Add the selected sources
 
@@ -224,9 +256,9 @@ ae config gen-env
 
 ## 5. Import and prove real recall
 
-Issue #43 owns verified client/CLI authentication handoff. Never ask the user to
-copy the installer-managed local API key into the UI or paste it into chat. Once
-that handoff is available, continue with:
+The installer-managed client/CLI authentication handoff is available. Never ask
+the user to copy the local API key into the UI or paste it into chat. Continue
+with:
 
 ```bash
 ae auth status

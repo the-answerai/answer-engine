@@ -17,6 +17,7 @@ COPY scripts ./scripts
 COPY src ./src
 RUN pnpm build \
   && pnpm --filter @answer-engine/web-ui build \
+  && pnpm --filter @answer-engine/mcp-server build \
   && pnpm exec tsc \
     --target ES2022 \
     --module NodeNext \
@@ -52,6 +53,7 @@ RUN pnpm install --frozen-lockfile --prod
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/database ./database
 COPY --from=build /app/packages/web-ui/dist ./web-ui
+COPY --from=build /app/packages/mcp-server/dist ./packages/mcp-server/dist
 
 ENV WEB_UI_DIR=/app/web-ui
 

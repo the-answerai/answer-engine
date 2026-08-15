@@ -92,20 +92,24 @@ Translate every pass, warning, or unsupported result into plain language. Never
 install Docker, WSL2, LM Studio, drivers, or another privileged prerequisite
 without asking me. Recommend full-local only for supported hardware,
 reduced-local for constrained Apple Silicon, or cloud-backed only after explicit
-opt-in. Ask me in one short interview for the install folder, model route, and
-agent clients. Never ask me to paste a secret into chat.
+opt-in. Ask me in one short interview for the install folder, model route, every
+agent client surface I use, and whether Cowork sessions are local or remote.
+Never ask me to paste a secret into chat.
 
 Before executing the installer, verify the bundled release manifest, immutable
-version/tag, and SHA-256 checksums, show exactly what will change, and ask for
-confirmation. Cancel without changing files if I decline. Use the stable channel,
-preserve any existing data and credentials, and retry safely if setup is partial.
-Do not ask me to create or copy a local Answer Engine API key; the installer must
-capture and store it automatically.
+version/tag, and SHA-256 checksums. Show the exact runtime, plugin, skill, MCP,
+CLI, ledger, and backup paths plus every unsupported client limitation, then ask
+for one confirmation. Cancel without changing files if I decline. Use the stable
+channel, preserve existing data and unrelated client configuration, and retry
+safely if setup is partial. Do not ask me to create or copy a local Answer Engine
+API key; the installer must capture and store it automatically.
 
-Finish only when the health endpoint and local UI are ready. Report any no-op,
-repair, upgrade, rollback, or uninstall action clearly. Client integration,
-history import, folder ingestion, organization, and the cross-chat tutorial are
-separate guided handoffs; do not silently perform them during this installer.
+Finish only when health, the local UI, the direct memory round trip, and a real
+Answer Engine recall in every selected supported client pass. Explain that
+ChatGPT web/Work and remote Cowork cannot connect directly to localhost; do not
+claim or create a remote relay. Report no-op, repair, removal, and rollback paths
+clearly. History import, folder ingestion, organization mutation, and the
+cross-chat tutorial remain separate consented handoffs.
 ```
 <!-- INSTALL_PROMPT:END -->
 
@@ -118,11 +122,13 @@ npx @answer-engine/create@1.1.0
 
 For an agent-led installation, use [INSTALL_AGENT.md](./INSTALL_AGENT.md). The
 installer is idempotent and keeps its editable configuration under `AE_HOME`
-(default `~/.answer-engine`). It records completion only after agent wiring and
-the final memory round trip pass, allowing interrupted healthy installs to
+(default `~/.answer-engine`). It records completion only after managed client
+integration and real recall verification pass, allowing interrupted healthy installs to
 resume instead of being reported as complete.
 
 Installer and CLI operations accept explicit `stable` and `staging` channels.
+See [client integrations](docs/client-integrations.md) for the maintained
+capability matrix, managed paths, verification rules, and reversible removal.
 Their homes, credentials, ports, Compose projects, volumes, logs, archives, and
 sync services are isolated; staging history sync is disabled by default. See
 [Local runtime channels](./docs/local-runtime-channels.md) for lifecycle

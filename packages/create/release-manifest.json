@@ -16,6 +16,62 @@
     {
       "path": "env.compose.tmpl",
       "sha256": "7819ac70ba3ec78801bd1a3bb5e892234445b7118afde357342cd995b94ba71e"
+    },
+    {
+      "path": "integrations/answer-engine/.claude-plugin/plugin.json",
+      "sha256": "c923fd19be16f3074a69c6438b50a6a5d0bdf84ef6685580d3d565b4f51079ed"
+    },
+    {
+      "path": "integrations/answer-engine/.codex-plugin/plugin.json",
+      "sha256": "eac9279f19797b5fcb10631f0f496f29619b9915c2335fb16f310a90e73df8b8"
+    },
+    {
+      "path": "integrations/answer-engine/.mcp.json",
+      "sha256": "dc981cff0e7d6eff743251a38ca98fe524d0804a9315c32d6934c73d59536463"
+    },
+    {
+      "path": "integrations/answer-engine/evals/install-answer-engine.json",
+      "sha256": "37de00055edcdbaa38cbaaf8333300b07dd106fcca0233eadc0f36b78754b3dc"
+    },
+    {
+      "path": "integrations/answer-engine/evals/organize-answer-engine.json",
+      "sha256": "4fb0a745b30ae79f3946b381d282dfabafce8f6c6c73de342883c21773bcae43"
+    },
+    {
+      "path": "integrations/answer-engine/evals/use-answer-engine.json",
+      "sha256": "df631a27b46719cc47b0f06a05410f2dbf96fc5bca13423a32cc4ba5178048dc"
+    },
+    {
+      "path": "integrations/answer-engine/evals/fixtures/duplicate-project-memories.json",
+      "sha256": "e40d447427ee9775bb6caea84593f3d93453a3edd924c9c73cc8b31a4044b340"
+    },
+    {
+      "path": "integrations/answer-engine/evals/fixtures/onboarding-scope.json",
+      "sha256": "f97c430b1b0aea96aadb2915ee5331a1fe7ca47f1f6cc5195cf85d7629c851c4"
+    },
+    {
+      "path": "integrations/answer-engine/references/capabilities.md",
+      "sha256": "816232c9cad8bb016d9da42fabb4b0b4838702dc580cd1ba7653cd8baa6a14eb"
+    },
+    {
+      "path": "integrations/answer-engine/references/safety.md",
+      "sha256": "ebf520b8d64a8dac131b67eb478f63f49dfb97161cbb9df59c7f91a94ded0beb"
+    },
+    {
+      "path": "integrations/answer-engine/references/tools.md",
+      "sha256": "021860b65447f7efa0be0ef7b0838fc80ea65779355910fb6797080723a78ad5"
+    },
+    {
+      "path": "integrations/answer-engine/skills/install-answer-engine/SKILL.md",
+      "sha256": "f5d7f91050e621ef1ad46b31afa93b2ae7753dc68f645212580d589ac2df704f"
+    },
+    {
+      "path": "integrations/answer-engine/skills/organize-answer-engine/SKILL.md",
+      "sha256": "b5dbfe21c3649749b039b2cb7e2b5d945ba31ab177e22c063a3a3a4896431991"
+    },
+    {
+      "path": "integrations/answer-engine/skills/use-answer-engine/SKILL.md",
+      "sha256": "47365bcc36224a46575f6f5ed27468113103db6ca7785f6035bd0043fcb01ce1"
     }
   ]
 }

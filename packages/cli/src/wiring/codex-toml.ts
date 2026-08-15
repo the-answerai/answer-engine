@@ -75,3 +75,35 @@ export function mergeCodexToml(existing: string, input: WiringInput): string {
   parseTomlConfig(merged);
   return merged;
 }
+
+export function removeCodexToml(existing: string): string {
+  if (existing.length === 0) return existing;
+  parseTomlConfig(existing);
+  const answerSections = sectionsIn(existing).filter((section) => isAnswerEngineSection(section.name));
+  if (answerSections.length === 0) return existing;
+  let cursor = 0;
+  const chunks: string[] = [];
+  for (const section of answerSections) {
+    chunks.push(existing.slice(cursor, section.start));
+    cursor = section.end;
+  }
+  chunks.push(existing.slice(cursor));
+  const removed = chunks.join('').replace(/\n{3,}/g, '\n\n');
+  parseTomlConfig(removed);
+  return removed;
+}
+
+export function restoreCodexToml(existing: string, original: string): string {
+  if (original.length > 0) parseTomlConfig(original);
+  const originalSections = sectionsIn(original)
+    .filter((section) => isAnswerEngineSection(section.name));
+  if (originalSections.length === 0) return removeCodexToml(existing);
+  const base = removeCodexToml(existing);
+  const block = originalSections
+    .map((section) => original.slice(section.start, section.end).trim())
+    .join('\n');
+  const separator = base.length === 0 ? '' : base.endsWith('\n\n') ? '' : base.endsWith('\n') ? '\n' : '\n\n';
+  const restored = `${base}${separator}${block}\n`;
+  parseTomlConfig(restored);
+  return restored;
+}

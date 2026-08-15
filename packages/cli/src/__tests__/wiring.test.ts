@@ -19,6 +19,9 @@ import {
   renderClaudeCodeCommand,
   renderHttpConnection,
   resolveClientConfigPath,
+  restoreCodexToml,
+  restoreJsonClientConfig,
+  unwireClient,
   wireClient,
 } from '../wiring/index.js';
 import type { FileWiringClient, WiringInput } from '../wiring/index.js';
@@ -30,6 +33,11 @@ const baseInput = {
   apiKey: 'ae_test_key',
   serverUrl: 'http://localhost:5050/',
   library: 'personal-memory',
+  mcpEntry: {
+    command: 'docker',
+    args: ['compose', 'exec', '-T', 'api', 'node', '/app/packages/mcp-server/dist/index.js'],
+    env: {},
+  },
 } as const;
 
 const existingFixtureByClient: Record<FileWiringClient, string> = {
@@ -107,6 +115,79 @@ describe('agent wiring config writers', () => {
     });
   }
 
+  it('restores a prior JSON Answer Engine entry while preserving later user edits', () => {
+    const original = JSON.stringify({
+      mcpServers: {
+        notes: { command: 'notes' },
+        'answer-engine': { command: 'previous', args: ['--read-only'] },
+      },
+      theme: 'dark',
+    }, null, 2);
+    const current = JSON.stringify({
+      mcpServers: {
+        notes: { command: 'notes' },
+        'answer-engine': { command: 'managed' },
+      },
+      theme: 'dark',
+      fontSize: 15,
+    }, null, 2);
+
+    const restored = JSON.parse(restoreJsonClientConfig(current, original)) as {
+      mcpServers: Record<string, unknown>;
+      fontSize: number;
+    };
+
+    expect(restored.mcpServers['answer-engine']).toEqual({
+      command: 'previous', args: ['--read-only'],
+    });
+    expect(restored.fontSize).toBe(15);
+  });
+
+  it('restores a prior Codex Answer Engine block while preserving later user sections', () => {
+    const original = [
+      '[mcp_servers.filesystem]',
+      'command = "node"',
+      '[mcp_servers.answer-engine]',
+      'command = "previous"',
+      'args = [ "--read-only" ]',
+      '',
+    ].join('\n');
+    const current = [
+      '[mcp_servers.filesystem]',
+      'command = "node"',
+      '[mcp_servers.answer-engine]',
+      'command = "managed"',
+      '[projects."/later-user-project"]',
+      'trust_level = "trusted"',
+      '',
+    ].join('\n');
+
+    const restored = restoreCodexToml(current, original);
+
+    expect(restored).toContain('command = "previous"');
+    expect(restored).toContain('args = [ "--read-only" ]');
+    expect(restored).toContain('[projects."/later-user-project"]');
+    expect(parseToml(restored)).toBeDefined();
+  });
+
+  for (const client of FILE_WIRING_CLIENTS) {
+    it(`removes only the managed ${client} MCP entry`, () => {
+      const fixture = readFileSync(join(fixturesDir, existingFixtureByClient[client]), 'utf8');
+      const extension = client === 'codex' ? 'toml' : 'json';
+      const path = createTempPath(`remove.${extension}`);
+      writeFileSync(path, fixture, { encoding: 'utf8', mode: 0o600 });
+      wireClient(inputFor(client), { path, backup: false });
+
+      unwireClient(client, { path, backup: false });
+
+      const contents = readFileSync(path, 'utf8');
+      expect(contents).toContain(preservedTextByClient[client]);
+      expect(contents).not.toContain('answer-engine');
+      expect(existsSync(`${path}.bak`)).toBe(false);
+      parseWritten(client, contents);
+    });
+  }
+
   for (const client of FILE_WIRING_CLIENTS) {
     it(`re-wiring a fresh ${client} config is a byte-stable no-op`, () => {
       const extension = client === 'codex' ? 'toml' : 'json';
@@ -155,19 +236,24 @@ describe('agent wiring config writers', () => {
 });
 
 describe('agent wiring renderers', () => {
-  it('builds the canonical stdio entry and omits an unspecified library', () => {
-    expect(buildMcpEntry({
+  it('refuses to invent a launcher for an unpublished MCP package', () => {
+    expect(() => buildMcpEntry({
       client: 'claude-code',
       apiKey: 'key',
       serverUrl: 'https://example.test',
-    })).toEqual({
-      command: 'npx',
-      args: ['-y', '@answer-engine/mcp-server@1.1.0'],
-      env: {
-        ANSWER_ENGINE_API_KEY: 'key',
-        ANSWER_ENGINE_API_URL: 'https://example.test',
-      },
-    });
+    })).toThrow(/verified Answer Engine MCP launcher/i);
+  });
+
+  it('uses an installer-owned stdio launcher when one is provided', () => {
+    const mcpEntry = {
+      command: 'docker',
+      args: ['compose', 'exec', '-T', 'api', 'node', '/app/mcp.js'],
+      env: {},
+    };
+
+    expect(buildMcpEntry({
+      client: 'codex', apiKey: 'unused', serverUrl: 'http://127.0.0.1:5050', mcpEntry,
+    })).toEqual(mcpEntry);
   });
 
   it('renders a shell-safe Claude Code command', () => {
@@ -176,8 +262,13 @@ describe('agent wiring renderers', () => {
       apiKey: 'key with spaces',
       serverUrl: 'http://localhost:5050',
       library: "agent's memory",
+      mcpEntry: {
+        command: 'docker',
+        args: ['compose', '--project-directory', '/tmp/Answer Engine', 'exec', '-T', 'api', 'node', '/app/mcp.js'],
+        env: { ANSWER_ENGINE_LIBRARY: "agent's memory" },
+      },
     })).toBe(
-      "claude mcp add answer-engine --env 'ANSWER_ENGINE_API_KEY=key with spaces' --env ANSWER_ENGINE_API_URL=http://localhost:5050 --env 'ANSWER_ENGINE_LIBRARY=agent'\"'\"'s memory' -- npx -y @answer-engine/mcp-server@1.1.0",
+      "claude mcp add answer-engine --env 'ANSWER_ENGINE_LIBRARY=agent'\"'\"'s memory' -- docker compose --project-directory '/tmp/Answer Engine' exec -T api node /app/mcp.js",
     );
   });
 
