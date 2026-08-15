@@ -21,6 +21,9 @@ export interface SyncImportOptions {
 export interface SyncImportSummary {
   requestedItems: number;
   importedItems: number;
+  createdItems: number;
+  updatedItems: number;
+  duplicateItems: number;
   failedItems: number;
   contentIds: string[];
   failures: Array<{ rowIndex?: number; error?: string; reason?: string }>;
@@ -325,6 +328,9 @@ export async function importTurns(
   const summary: SyncImportSummary = {
     requestedItems: turns.length,
     importedItems: 0,
+    createdItems: 0,
+    updatedItems: 0,
+    duplicateItems: 0,
     failedItems: 0,
     contentIds: [],
     failures: [],
@@ -337,6 +343,9 @@ export async function importTurns(
     );
     const data = response.data;
     summary.importedItems += data.completedItems ?? data.contentIds?.length ?? batch.length;
+    summary.createdItems += data.createdItems ?? data.items?.filter((item) => item.outcome === 'created').length ?? 0;
+    summary.updatedItems += data.updatedItems ?? data.items?.filter((item) => item.outcome === 'updated').length ?? 0;
+    summary.duplicateItems += data.duplicateItems ?? data.items?.filter((item) => item.outcome === 'duplicate').length ?? 0;
     summary.failedItems += data.failedItems ?? data.failures?.length ?? 0;
     if (data.contentIds?.length) summary.contentIds.push(...data.contentIds);
     if (data.failures?.length) summary.failures.push(...data.failures);
@@ -352,6 +361,9 @@ export async function importConversations(
   const summary: SyncImportSummary = {
     requestedItems: conversations.length,
     importedItems: 0,
+    createdItems: 0,
+    updatedItems: 0,
+    duplicateItems: 0,
     failedItems: 0,
     contentIds: [],
     failures: [],
@@ -364,6 +376,9 @@ export async function importConversations(
     const response = await options.client.submitSyncImport(buildRequest(batch, options));
     const data = response.data;
     summary.importedItems += data.completedItems ?? data.contentIds?.length ?? batch.length;
+    summary.createdItems += data.createdItems ?? data.items?.filter((item) => item.outcome === 'created').length ?? 0;
+    summary.updatedItems += data.updatedItems ?? data.items?.filter((item) => item.outcome === 'updated').length ?? 0;
+    summary.duplicateItems += data.duplicateItems ?? data.items?.filter((item) => item.outcome === 'duplicate').length ?? 0;
     summary.failedItems += data.failedItems ?? data.failures?.length ?? 0;
     if (data.contentIds?.length) summary.contentIds.push(...data.contentIds);
     if (data.failures?.length) summary.failures.push(...data.failures);
@@ -379,6 +394,9 @@ export async function importDocuments(
   const summary: SyncImportSummary = {
     requestedItems: documents.length,
     importedItems: 0,
+    createdItems: 0,
+    updatedItems: 0,
+    duplicateItems: 0,
     failedItems: 0,
     contentIds: [],
     failures: [],
@@ -389,6 +407,9 @@ export async function importDocuments(
     const response = await options.client.submitSyncImport(buildRequest(batch, options));
     const data = response.data;
     summary.importedItems += data.completedItems ?? data.contentIds?.length ?? batch.length;
+    summary.createdItems += data.createdItems ?? data.items?.filter((item) => item.outcome === 'created').length ?? 0;
+    summary.updatedItems += data.updatedItems ?? data.items?.filter((item) => item.outcome === 'updated').length ?? 0;
+    summary.duplicateItems += data.duplicateItems ?? data.items?.filter((item) => item.outcome === 'duplicate').length ?? 0;
     summary.failedItems += data.failedItems ?? data.failures?.length ?? 0;
     if (data.contentIds?.length) summary.contentIds.push(...data.contentIds);
     if (data.failures?.length) summary.failures.push(...data.failures);

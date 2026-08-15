@@ -150,6 +150,8 @@ Core routes:
 |---|---|
 | `GET /health` | Local health check |
 | `POST /api/v1/content/import` | Import or update content idempotently |
+| `GET/POST /api/v1/first-imports` | Register and inspect consent-first agent-history imports |
+| `POST /api/v1/first-imports/:id/approve` | Approve any subset of discovered sources before content is read |
 | `GET /api/v1/content` | Browse, filter, sort, and cursor-paginate stored content |
 | `GET /api/v1/content/:id/lineage` | Inspect origin and artifact history |
 | `POST /api/v1/agent/query` | Full-text, semantic, or hybrid search |
@@ -200,6 +202,18 @@ contract.
 | `@answer-engine/create` | Local installer and client wiring |
 | `@answer-engine/web-ui` | Standalone local interface plus non-published composition library |
 
+## First agent-history import
+
+After installer wiring succeeds, run `ae sync first-import` in the stable
+channel, open `/import`, review the discovered Claude Code, Codex, and Cowork
+paths/counts/sizes/exclusions, and approve any subset. The command waits for
+approval, preserves unrelated `config.yaml` source settings, verifies each
+complete history bundle still matches the approved metadata fingerprint,
+imports one source-backed history at a time, and reconciles imported,
+duplicate, failed, and skipped outcomes. Resume an interruption with
+`ae sync first-import --resume <session-id>`. See
+[First agent-history import](./docs/first-agent-history-import.md).
+
 ## Development
 
 ```bash
@@ -232,7 +246,8 @@ enterprise-composition execution record for the final product-parity run is in
 
 The immutable fresh database baseline lives in
 [`database/migrations/001_local_core.sql`](./database/migrations/001_local_core.sql),
-with the neutral application foundation in the paired `002` up/down migrations.
+with the neutral application foundation in the paired `002` up/down migrations
+and the reusable first-import lifecycle in the paired `003` migrations.
 Use `pnpm db:migrate` to apply pending migrations and `pnpm db:rollback` to roll
 back the latest migration.
 Set `EMBEDDING_DIMENSION` before the first migration. Changing it later requires

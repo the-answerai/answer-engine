@@ -33,6 +33,18 @@ import {
 import { loadUserConfig, UserConfigError } from '../user-config.js';
 import { assertHistorySyncAllowed, HistorySyncPolicyError } from '../sync/channel-policy.js';
 import { resolveRuntimeChannel } from '../channel.js';
+import { configYamlPath } from '../home.js';
+import {
+  assertFirstImportManifestMatchesSession,
+  mergeApprovedHistorySources,
+  firstImportItemMatchesDiscovery,
+  registerFirstImportDiscovery,
+} from '../sync/first-import.js';
+import type {
+  AnswerEngineClient,
+  FirstImportEventRequest,
+  FirstImportSession,
+} from '../api-client.js';
 
 const DEFAULT_SYNC_BATCH_SIZE = 25;
 const DEFAULT_POLL_INTERVAL_SECONDS = 15;
@@ -44,6 +56,13 @@ interface SyncCommandOptions {
   batchSize: string;
   concurrency: string;
   pollInterval: string;
+  cursorFile?: string;
+  confirmStagingHistorySync?: boolean;
+}
+
+interface FirstImportCommandOptions {
+  resume?: string;
+  batchSize: string;
   cursorFile?: string;
   confirmStagingHistorySync?: boolean;
 }
@@ -104,6 +123,174 @@ function printLoopSummary(summary: SyncRunSummary): void {
     `found=${summary.turnsFound} imported=${summary.turnsImported} ` +
     `failed=${summary.failedItems} parseErrors=${summary.parseErrors}`
   );
+}
+
+function waitForNextApprovalCheck(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 1_000));
+}
+
+async function waitForFirstImportApproval(
+  client: Pick<AnswerEngineClient, 'getFirstImport'>,
+  initial: FirstImportSession,
+): Promise<FirstImportSession> {
+  let session = initial;
+  while (session.status === 'discovered') {
+    await waitForNextApprovalCheck();
+    session = (await client.getFirstImport(session.id)).data;
+  }
+  return session;
+}
+
+function recoveryAction(sessionId: string): string {
+  return `Open /import, choose Retry, then run ae sync first-import --resume ${sessionId}`;
+}
+
+async function recordSafeFailure(
+  client: Pick<AnswerEngineClient, 'recordFirstImportEvent'>,
+  sessionId: string,
+  item: FirstImportSession['items'][number],
+  errorCode: string,
+  action: string = recoveryAction(sessionId),
+): Promise<void> {
+  await client.recordFirstImportEvent(sessionId, {
+    sourceId: item.sourceId,
+    fingerprint: item.fingerprint,
+    outcome: 'failed',
+    errorCode,
+    recoveryAction: action,
+  });
+}
+
+async function runFirstImportItem(
+  client: AnswerEngineClient,
+  sessionId: string,
+  item: FirstImportSession['items'][number],
+  options: Pick<FirstImportCommandOptions, 'batchSize' | 'cursorFile'>,
+): Promise<void> {
+  let summary: SyncRunSummary;
+  try {
+    if (!await firstImportItemMatchesDiscovery(item)) {
+      await recordSafeFailure(
+        client,
+        sessionId,
+        item,
+        'SOURCE_CHANGED_SINCE_APPROVAL',
+        'Run ae sync first-import to review and approve a fresh source inventory.',
+      );
+      return;
+    }
+    summary = await runSyncOnce({
+      sourceId: item.sourceId,
+      paths: [item.sourcePath],
+      cursorFile: options.cursorFile,
+      batchSize: parseBatchSize(options.batchSize),
+      concurrency: 1,
+      client,
+      onWarning: () => undefined,
+      inventoryOnly: true,
+    });
+  } catch {
+    await recordSafeFailure(client, sessionId, item, 'SOURCE_READ_FAILED');
+    return;
+  }
+  let event: FirstImportEventRequest;
+  if (summary.filesScanned === 0) {
+    event = {
+      sourceId: item.sourceId, fingerprint: item.fingerprint, outcome: 'failed',
+      errorCode: 'SOURCE_UNAVAILABLE', recoveryAction: recoveryAction(sessionId),
+    };
+  } else if (summary.failedItems > 0 || summary.parseErrors > 0) {
+    event = {
+      sourceId: item.sourceId, fingerprint: item.fingerprint, outcome: 'failed',
+      errorCode: summary.failedItems > 0 ? 'IMPORT_REJECTED' : 'SOURCE_PARSE_FAILED',
+      recoveryAction: recoveryAction(sessionId),
+    };
+  } else if (summary.turnsImported > 0) {
+    const [archiveManifestPath] = summary.archiveManifestPaths;
+    if (!archiveManifestPath || summary.contentIds.length === 0) {
+      event = {
+        sourceId: item.sourceId, fingerprint: item.fingerprint, outcome: 'failed',
+        errorCode: 'ARCHIVE_INTEGRITY_FAILED', recoveryAction: recoveryAction(sessionId),
+      };
+    } else {
+      event = {
+        sourceId: item.sourceId, fingerprint: item.fingerprint, outcome: 'imported',
+        contentIds: summary.contentIds, archiveManifestPath,
+      };
+    }
+  } else if (summary.duplicateItems > 0) {
+    event = { sourceId: item.sourceId, fingerprint: item.fingerprint, outcome: 'duplicate' };
+  } else {
+    event = { sourceId: item.sourceId, fingerprint: item.fingerprint, outcome: 'skipped' };
+  }
+  await client.recordFirstImportEvent(sessionId, event);
+}
+
+async function runFirstImportCommand(opts: FirstImportCommandOptions): Promise<void> {
+  try {
+    assertCommandHistorySync(opts.confirmStagingHistorySync ?? false);
+    const client = createClient();
+    let session = opts.resume
+      ? (await client.getFirstImport(opts.resume)).data
+      : await registerFirstImportDiscovery(client);
+    try {
+      assertFirstImportManifestMatchesSession(session);
+    } catch {
+      throw new UserInputError(
+        'The local first-import discovery manifest is missing or does not match this session. Run ae sync first-import to create and approve a fresh inventory.',
+      );
+    }
+    printHeader('First agent-history import');
+    if (session.status === 'discovered'
+      && !session.sources.some((source) => source.availability === 'available')) {
+      printJson({ data: session });
+      throw new UserInputError('No supported agent history is currently available. Review source status on /import, then retry discovery.');
+    }
+    if (session.status === 'discovered') {
+      printJson({ data: {
+        sessionId: session.id,
+        status: session.status,
+        approveAt: '/import',
+        message: 'Review source paths and exclusions in Answer Engine, then approve the sources to import.',
+      } });
+      session = await waitForFirstImportApproval(client, session);
+    }
+    if (session.status === 'canceled' || session.status === 'completed') {
+      printJson({ data: session });
+      return;
+    }
+    if (session.status === 'failed') {
+      throw new UserInputError(recoveryAction(session.id));
+    }
+    if (!session.approvedAt || session.selectedSourceIds.length === 0) {
+      throw new UserInputError('First import has not been approved. Open /import and select at least one source.');
+    }
+    mergeApprovedHistorySources(configYamlPath(), session.selectedSourceIds);
+    if (session.status === 'approved') session = (await client.startFirstImport(session.id)).data;
+    for (const item of session.items.filter((candidate) => (
+      candidate.outcome === 'pending' && session.selectedSourceIds.includes(candidate.sourceId)
+    ))) {
+      const latest = (await client.getFirstImport(session.id)).data;
+      if (latest.status === 'cancel_requested') {
+        await client.recordFirstImportEvent(session.id, {
+          sourceId: item.sourceId, fingerprint: item.fingerprint, outcome: 'skipped',
+        });
+        continue;
+      }
+      await runFirstImportItem(client, session.id, item, opts);
+    }
+    session = (await client.completeFirstImport(session.id)).data;
+    printJson({ data: session });
+    if (session.status === 'failed') process.exitCode = 1;
+    else printSuccess(`First import reconciled ${session.counts.discovered} discovered histories`);
+  } catch (error) {
+    if (error instanceof UserInputError || error instanceof UserConfigError || error instanceof HistorySyncPolicyError) {
+      printError(error.message);
+      process.exitCode = 1;
+      return;
+    }
+    handleApiError(error);
+  }
 }
 
 function resolveCommandSources(opts: SyncCommandOptions): ConfiguredSyncSource[] {
@@ -319,6 +506,15 @@ export function registerSyncCommands(program: Command): void {
   const sync = program
     .command('sync')
     .description('Continuously capture configured local sources into Answer Engine');
+
+  sync
+    .command('first-import')
+    .description('Discover, approve, resumably import, and reconcile supported agent history')
+    .option('--resume <session-id>', 'Resume an approved or interrupted first-import session')
+    .option('--batch-size <n>', `Items per synchronous import request (max ${SYNC_IMPORT_MAX_BATCH_SIZE})`, String(DEFAULT_SYNC_BATCH_SIZE))
+    .option('--cursor-file <path>', 'Cursor JSON file override')
+    .option('--confirm-staging-history-sync', 'Confirm access to real local history from staging')
+    .action((opts: FirstImportCommandOptions) => runFirstImportCommand(opts));
 
   addSyncOptions(
     sync

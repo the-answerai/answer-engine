@@ -1,4 +1,5 @@
-import { appendFileSync, cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { appendFileSync, cpSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -9,6 +10,10 @@ import type { AnswerEngineClient, ImportRequest } from '../api-client.js';
 import { createClient } from '../client.js';
 import { registerSyncCommands } from '../commands/sync.js';
 import { printJson, printSuccess } from '../output.js';
+import {
+  assertFirstImportManifestMatchesSession,
+  writeFirstImportManifest,
+} from '../sync/first-import.js';
 import {
   installService,
   queryServiceStatus,
@@ -62,6 +67,20 @@ function makeTempDir(): string {
   const dir = mkdtempSync(join(tmpdir(), 'ae-sync-command-'));
   tempDirs.push(dir);
   return dir;
+}
+
+function discoveryFingerprint(sourceId: string, path: string): string {
+  const stats = statSync(path);
+  const hash = createHash('sha256');
+  hash.update(sourceId);
+  hash.update('\0');
+  hash.update([
+    path,
+    `${stats.dev}:${stats.ino}`,
+    String(stats.size),
+    String(stats.mtimeMs),
+  ].join('\0'));
+  return hash.digest('hex');
 }
 
 function mockClient() {
@@ -238,6 +257,145 @@ sources:
     ]);
 
     expect(client.submitSyncImport).not.toHaveBeenCalled();
+  });
+
+  it('resumes an approved first import from durable item and cursor state', async () => {
+    const dir = makeTempDir();
+    const transcript = join(dir, 'resume.jsonl');
+    const cursorFile = join(dir, 'cursor.json');
+    const home = join(dir, 'home');
+    process.env.AE_HOME = home;
+    mkdirSync(home, { recursive: true });
+    writeFileSync(join(home, 'config.yaml'), `models:\n  chat: local-chat\n  embedding: local-embedding\n  chat_provider: lmstudio\n  embedding_provider: lmstudio\n  embedding_dimension: 768\nsources: []\nconnectors: {}\nserver:\n  port: 5050\n  bind: 127.0.0.1\n`);
+    writeFileSync(transcript, `${JSON.stringify({
+      type: 'user', sessionId: 'resume-session', uuid: 'resume-user',
+      timestamp: '2026-06-01T12:00:00.000Z',
+      message: { role: 'user', content: 'Resume this durable memory.' },
+    })}\n`);
+    const session = {
+      id: '11111111-1111-4111-8111-111111111111', status: 'running' as const,
+      manifestPath: join(home, 'data', 'first-import', 'manifest.json'),
+      selectedSourceIds: ['claude-code' as const], approvedAt: '2026-08-14T12:00:00.000Z',
+      counts: { discovered: 0, imported: 0, duplicate: 0, failed: 0, skipped: 0 }, pending: 1,
+      sources: [{
+        sourceId: 'claude-code' as const, label: 'Claude Code', paths: [dir],
+        estimatedCount: 1, estimatedBytes: statSync(transcript).size,
+        privacyPosture: 'Metadata only before approval.', exclusions: ['prompt history'],
+        availability: 'available' as const, availabilityNote: 'Local source history is available for selection.',
+        status: 'running', errorCode: null, recoveryAction: null,
+      }],
+      items: [{
+        sourceId: 'claude-code' as const, fingerprint: discoveryFingerprint('claude-code', transcript), sourcePath: transcript,
+        byteSize: 100, modifiedAt: '2026-08-14T12:00:00.000Z', outcome: 'pending' as const,
+        contentIds: [], archiveManifestPath: null, errorCode: null, recoveryAction: null,
+      }],
+    };
+    writeFirstImportManifest(session.manifestPath, session.id, [{
+      sourceId: session.sources[0].sourceId,
+      label: session.sources[0].label,
+      paths: session.sources[0].paths,
+      estimatedCount: session.sources[0].estimatedCount,
+      estimatedBytes: session.sources[0].estimatedBytes,
+      privacyPosture: session.sources[0].privacyPosture,
+      exclusions: session.sources[0].exclusions,
+      availability: session.sources[0].availability,
+      availabilityNote: session.sources[0].availabilityNote,
+      items: session.items.map(({ fingerprint, sourcePath, byteSize, modifiedAt }) => ({
+        fingerprint, sourcePath, byteSize, modifiedAt,
+      })),
+    }]);
+    expect(() => assertFirstImportManifestMatchesSession(session)).not.toThrow();
+    const submitSyncImport = vi.fn(async (request: ImportRequest) => ({ data: {
+      totalItems: request.items.length, completedItems: request.items.length,
+      createdItems: request.items.length, updatedItems: 0, duplicateItems: 0,
+      failedItems: 0, contentIds: ['22222222-2222-4222-8222-222222222222'], failures: [],
+    } }));
+    const recordFirstImportEvent = vi.fn().mockResolvedValue({ data: session });
+    const completeFirstImport = vi.fn().mockResolvedValue({
+      data: { ...session, status: 'completed', pending: 0, counts: { discovered: 1, imported: 1, duplicate: 0, failed: 0, skipped: 0 } },
+    });
+    vi.mocked(createClient).mockReturnValue({
+      submitSyncImport,
+      getFirstImport: vi.fn().mockResolvedValue({ data: session }),
+      recordFirstImportEvent,
+      completeFirstImport,
+    } as unknown as AnswerEngineClient);
+
+    await makeProgram().parseAsync([
+      'node', 'ae', 'sync', 'first-import', '--resume', session.id,
+      '--cursor-file', cursorFile,
+    ]);
+
+    expect(recordFirstImportEvent).toHaveBeenCalledWith(session.id, expect.objectContaining({
+      outcome: 'imported',
+      contentIds: ['22222222-2222-4222-8222-222222222222'],
+      archiveManifestPath: expect.stringContaining('manifest.json'),
+    }));
+    expect(completeFirstImport).toHaveBeenCalledWith(session.id);
+  });
+
+  it('does not read or import a history bundle that changed after approval', async () => {
+    const dir = makeTempDir();
+    const transcript = join(dir, 'changed.jsonl');
+    const home = join(dir, 'home');
+    process.env.AE_HOME = home;
+    mkdirSync(home, { recursive: true });
+    writeFileSync(join(home, 'config.yaml'), `models:\n  chat: local-chat\n  embedding: local-embedding\n  chat_provider: lmstudio\n  embedding_provider: lmstudio\n  embedding_dimension: 768\nsources: []\nconnectors: {}\nserver:\n  port: 5050\n  bind: 127.0.0.1\n`);
+    writeFileSync(transcript, '{"type":"user"}\n');
+    const approvedFingerprint = discoveryFingerprint('claude-code', transcript);
+    appendFileSync(transcript, '{"type":"assistant"}\n');
+    const session = {
+      id: '11111111-1111-4111-8111-111111111112', status: 'running' as const,
+      manifestPath: join(home, 'data', 'first-import', 'manifest.json'),
+      selectedSourceIds: ['claude-code' as const], approvedAt: '2026-08-14T12:00:00.000Z',
+      counts: { discovered: 0, imported: 0, duplicate: 0, failed: 0, skipped: 0 }, pending: 1,
+      sources: [{
+        sourceId: 'claude-code' as const, label: 'Claude Code', paths: [dir],
+        estimatedCount: 1, estimatedBytes: 16,
+        privacyPosture: 'Metadata only before approval.', exclusions: ['prompt history'],
+        availability: 'available' as const, availabilityNote: 'Local source history is available for selection.',
+        status: 'running', errorCode: null, recoveryAction: null,
+      }],
+      items: [{
+        sourceId: 'claude-code' as const, fingerprint: approvedFingerprint, sourcePath: transcript,
+        byteSize: 16, modifiedAt: '2026-08-14T12:00:00.000Z', outcome: 'pending' as const,
+        contentIds: [], archiveManifestPath: null, errorCode: null, recoveryAction: null,
+      }],
+    };
+    writeFirstImportManifest(session.manifestPath, session.id, [{
+      sourceId: session.sources[0].sourceId,
+      label: session.sources[0].label,
+      paths: session.sources[0].paths,
+      estimatedCount: session.sources[0].estimatedCount,
+      estimatedBytes: session.sources[0].estimatedBytes,
+      privacyPosture: session.sources[0].privacyPosture,
+      exclusions: session.sources[0].exclusions,
+      availability: session.sources[0].availability,
+      availabilityNote: session.sources[0].availabilityNote,
+      items: session.items.map(({ fingerprint, sourcePath, byteSize, modifiedAt }) => ({
+        fingerprint, sourcePath, byteSize, modifiedAt,
+      })),
+    }]);
+    expect(() => assertFirstImportManifestMatchesSession(session)).not.toThrow();
+    const submitSyncImport = vi.fn();
+    const recordFirstImportEvent = vi.fn().mockResolvedValue({ data: session });
+    vi.mocked(createClient).mockReturnValue({
+      submitSyncImport,
+      getFirstImport: vi.fn().mockResolvedValue({ data: session }),
+      recordFirstImportEvent,
+      completeFirstImport: vi.fn().mockResolvedValue({
+        data: { ...session, status: 'failed', pending: 0, counts: { discovered: 1, imported: 0, duplicate: 0, failed: 1, skipped: 0 } },
+      }),
+    } as unknown as AnswerEngineClient);
+
+    await makeProgram().parseAsync(['node', 'ae', 'sync', 'first-import', '--resume', session.id]);
+
+    expect(submitSyncImport).not.toHaveBeenCalled();
+    expect(recordFirstImportEvent).toHaveBeenCalledWith(session.id, expect.objectContaining({
+      outcome: 'failed',
+      errorCode: 'SOURCE_CHANGED_SINCE_APPROVAL',
+      recoveryAction: expect.stringContaining('fresh source inventory'),
+    }));
   });
 
   it('does not advance the cursor when synchronous import reports row failures', async () => {

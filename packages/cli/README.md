@@ -56,6 +56,8 @@ CSV and JSON imports are normalized and previewed before being saved. Stable
 ## Sync agent history
 
 ```bash
+ae sync first-import
+ae sync first-import --resume <session-id>
 ae sync once --source claude-code
 ae sync once --source codex
 ae sync once --source cowork
@@ -66,6 +68,11 @@ ae sync status
 ae sync uninstall-service
 ```
 
+`first-import` performs metadata-only discovery, waits for source-by-source
+approval in the `/import` web surface, merges only approved transcript sources
+into `config.yaml`, verifies the full bundle fingerprint again before reading,
+and records a resumable reconciled inventory. Changed bundles require a fresh
+preview and approval; inaccessible sources receive safe permission guidance.
 Supported history sources are Claude Code, Codex, Cowork, and local directories.
 The sync cursor and raw source archive remain local under `AE_HOME`.
 

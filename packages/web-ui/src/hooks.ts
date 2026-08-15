@@ -23,6 +23,10 @@ import {
   getRecipeRun,
   getSettings,
   importContent,
+  latestFirstImport,
+  approveFirstImport,
+  cancelFirstImport,
+  retryFirstImport,
   inspectLineage,
   listArtifacts,
   listAccessTokens,
@@ -56,7 +60,7 @@ import {
   updateAccessToken,
   updateTag,
 } from './api';
-import type { BatchJob, ContentFilters, Dashboard, ImportItem, LibraryFilter, LocalSettings, RecipeInput, ReportInput, Tag } from './types';
+import type { BatchJob, ContentFilters, Dashboard, FirstImportSourceId, ImportItem, LibraryFilter, LocalSettings, RecipeInput, ReportInput, Tag } from './types';
 
 const isActive = (status?: string) => status === 'queued' || status === 'running';
 
@@ -200,6 +204,29 @@ export function useImportContent() {
     ({ items, libraryId }: { items: ImportItem[]; libraryId?: string }) => importContent(items, libraryId),
     [['content'], ['libraries']],
   );
+}
+
+export function useLatestFirstImport() {
+  return useQuery({
+    queryKey: ['first-import'],
+    queryFn: latestFirstImport,
+    refetchInterval: (query) => ['approved', 'running', 'cancel_requested'].includes(query.state.data?.status ?? '') ? 1_000 : false,
+  });
+}
+
+export function useApproveFirstImport() {
+  return useInvalidatingMutation(
+    ({ sessionId, sourceIds }: { sessionId: string; sourceIds: FirstImportSourceId[] }) => approveFirstImport(sessionId, sourceIds),
+    [['first-import']],
+  );
+}
+
+export function useCancelFirstImport() {
+  return useInvalidatingMutation(cancelFirstImport, [['first-import']]);
+}
+
+export function useRetryFirstImport() {
+  return useInvalidatingMutation(retryFirstImport, [['first-import']]);
 }
 
 export function useRecipes(libraryId: string) {

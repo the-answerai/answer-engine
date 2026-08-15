@@ -359,7 +359,10 @@ export class ContentService {
     const scope = await this.resolveLibrary(principal, input.libraryId, input.librarySlug);
     const fallbackLibrary = scope ?? await this.resolveLibrary(principal, undefined, 'personal-memory');
     const client = await this.database.connect();
-    const items: Array<{ rowIndex: number; id: string; contentType: string; sourceIdentifier: string; title: string }> = [];
+    const items: Array<{
+      rowIndex: number; id: string; contentType: string; sourceIdentifier: string;
+      title: string; outcome: 'created' | 'updated';
+    }> = [];
     const failures: Array<{ rowIndex: number; sourceIdentifier: string; error: string }> = [];
     try {
       await client.query('BEGIN');
@@ -417,7 +420,7 @@ export class ContentService {
               : `${item.title}\n\n${boundedModelContext(item.content)}`;
             try { embedding = await this.language.embed(embeddingText); } catch { embedding = null; }
           }
-          const result = await client.query<{ id: string }>(
+          const result = await client.query<{ id: string; created: boolean }>(
             `INSERT INTO content_items (
                tenant_id, library_id, content_type, source, source_identifier, title, content,
                source_data, metadata, analysis_data, raw_archive_manifest, external_url, primary_text_kind, embedding,
@@ -436,7 +439,7 @@ export class ContentService {
                turn_timestamp = EXCLUDED.turn_timestamp, turn_metadata = EXCLUDED.turn_metadata,
                summary = COALESCE(EXCLUDED.summary, content_items.summary),
                status = EXCLUDED.status, updated_at = NOW()
-             RETURNING id`,
+             RETURNING id,(xmax = 0) AS created`,
             [
               principal.tenantId, fallbackLibrary?.libraryId ?? null, item.contentType, item.source,
               item.sourceIdentifier, item.title, item.content, item.sourceData, item.metadata,
@@ -449,7 +452,11 @@ export class ContentService {
           if (!contentId) throw new Error('Content insert returned no ID');
           await this.recordRawArtifact(client, principal.tenantId, contentId, item.content, item.sourceData);
           await client.query('RELEASE SAVEPOINT import_row');
-          items.push({ rowIndex: index, id: contentId, contentType: item.contentType, sourceIdentifier: item.sourceIdentifier, title: item.title });
+          items.push({
+            rowIndex: index, id: contentId, contentType: item.contentType,
+            sourceIdentifier: item.sourceIdentifier, title: item.title,
+            outcome: result.rows[0]?.created ? 'created' : 'updated',
+          });
         } catch (error) {
           await client.query('ROLLBACK TO SAVEPOINT import_row');
           await client.query('RELEASE SAVEPOINT import_row');
@@ -467,7 +474,11 @@ export class ContentService {
       { completedItems: items.length, failedItems: failures.length });
     return {
       contentIds: items.map((item) => item.id), items, totalItems: input.items.length,
-      completedItems: items.length, failedItems: failures.length, failures,
+      completedItems: items.length,
+      createdItems: items.filter((item) => item.outcome === 'created').length,
+      updatedItems: items.filter((item) => item.outcome === 'updated').length,
+      duplicateItems: 0,
+      failedItems: failures.length, failures,
       ...(fallbackLibrary ? { scope: fallbackLibrary } : {}), parseErrors: [], requiresIdForIdempotency: false,
     };
   }

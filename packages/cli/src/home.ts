@@ -34,6 +34,10 @@ export function rawArchiveDir(): string {
   return join(resolveAeHome(), 'raw-archive');
 }
 
+export function firstImportDir(): string {
+  return join(resolveAeHome(), 'data', 'first-import');
+}
+
 export function logsDir(): string {
   return join(resolveAeHome(), 'logs');
 }
@@ -68,6 +72,7 @@ export function ensureAeHomeLayout(): void {
     redisDataDir(),
     blobsDir(),
     rawArchiveDir(),
+    firstImportDir(),
     logsDir(),
     evalSetsDir(),
     evalResultsDir(),

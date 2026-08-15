@@ -93,6 +93,54 @@ describeDatabase('neutral application real-database workflows', () => {
     const authenticated = (method: 'get' | 'post' | 'put' | 'delete' | 'patch', path: string) =>
       request(app)[method](path).set('X-API-Key', apiKey);
 
+    const firstImportContentId = randomUUID();
+    const firstImportManifestPath = `/archive/integration-${randomUUID()}/manifest.json`;
+    await pool.query(
+      `INSERT INTO content_items (
+         id,tenant_id,library_id,content_type,source,source_identifier,title,summary,raw_archive_manifest
+       ) VALUES ($1,$2,$3,'chat','codex',$4,'Imported integration history',
+                 'A source-backed integration summary.',jsonb_build_object('manifest_path',$5::text))`,
+      [firstImportContentId, tenantId, systemLibraryId, `codex:${randomUUID()}`, firstImportManifestPath],
+    );
+    const firstImportDiscovery = await authenticated('post', '/api/v1/first-imports').send({
+      manifestPath: `/private/${randomUUID()}.json`,
+      sources: [{
+        sourceId: 'codex', label: 'Codex', paths: ['/private/codex'],
+        estimatedCount: 1, estimatedBytes: 128,
+        privacyPosture: 'Metadata only before approval.', exclusions: ['prompt history'],
+        availability: 'available', availabilityNote: 'Local source history is available for selection.',
+        items: [{
+          fingerprint: createHash('sha256').update(randomUUID()).digest('hex'),
+          sourcePath: '/private/codex/rollout.jsonl', byteSize: 128,
+          modifiedAt: '2026-08-14T12:00:00.000Z',
+        }],
+      }],
+    });
+    expect(firstImportDiscovery.status).toBe(201);
+    const firstImportId = firstImportDiscovery.body.data.id as string;
+    const firstImportItem = firstImportDiscovery.body.data.items[0] as { fingerprint: string };
+    const prematureProgress = await authenticated('post', `/api/v1/first-imports/${firstImportId}/events`).send({
+      sourceId: 'codex', fingerprint: firstImportItem.fingerprint, outcome: 'duplicate',
+    });
+    expect(prematureProgress.status).toBe(409);
+    await authenticated('post', `/api/v1/first-imports/${firstImportId}/approve`).send({ sourceIds: ['codex'] });
+    await authenticated('post', `/api/v1/first-imports/${firstImportId}/start`);
+    const invalidIntegrity = await authenticated('post', `/api/v1/first-imports/${firstImportId}/events`).send({
+      sourceId: 'codex', fingerprint: firstImportItem.fingerprint, outcome: 'imported',
+      contentIds: [firstImportContentId], archiveManifestPath: '/archive/wrong/manifest.json',
+    });
+    expect(invalidIntegrity.status).toBe(409);
+    const progress = await authenticated('post', `/api/v1/first-imports/${firstImportId}/events`).send({
+      sourceId: 'codex', fingerprint: firstImportItem.fingerprint, outcome: 'imported',
+      contentIds: [firstImportContentId], archiveManifestPath: firstImportManifestPath,
+    });
+    expect(progress.status).toBe(200);
+    const completedFirstImport = await authenticated('post', `/api/v1/first-imports/${firstImportId}/complete`);
+    expect(completedFirstImport.body.data).toMatchObject({
+      status: 'completed',
+      counts: { discovered: 1, imported: 1, duplicate: 0, failed: 0, skipped: 0 },
+    });
+
     const tagResponse = await authenticated('post', '/api/v1/tags')
       .send({ slug: 'architecture', label: 'Architecture' });
     expect(tagResponse.status).toBe(201);

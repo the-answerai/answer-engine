@@ -66,6 +66,8 @@ Examples:
   ae import json ./items.json --type document Import rows from a JSON array
 
   ae sync once --source claude-code           Import changed Claude Code conversations once
+  ae sync first-import                        Preview, approve, import, and reconcile agent history
+  ae sync first-import --resume <session-id>  Resume an interrupted approved first import
   ae sync run --source claude-code            Poll Claude Code conversations continuously
   ae sync once --source local_dir --path .    Import changed local documents once
   ae sync install-service                     Start sync now and automatically after login

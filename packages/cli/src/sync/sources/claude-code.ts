@@ -15,6 +15,7 @@ import type {
   FileCursor,
   TranscriptDiscoverOptions,
   TranscriptFile,
+  TranscriptInventoryFile,
   TranscriptReadError,
   TranscriptReadResult,
   TranscriptSource,
@@ -134,6 +135,21 @@ async function transcriptFileFromPath(filePath: string): Promise<TranscriptFile 
     size: stats.size,
     mtimeMs: stats.mtimeMs,
   };
+}
+
+export async function inventoryFilesForPaths(
+  paths: readonly string[],
+): Promise<TranscriptInventoryFile[]> {
+  return Promise.all([...paths].sort().map(async (path) => {
+    const stats = await stat(path);
+    if (!stats.isFile()) throw new Error(`History inventory source is not a file: ${path}`);
+    return {
+      path,
+      identity: `${stats.dev}:${stats.ino}`,
+      size: stats.size,
+      mtimeMs: stats.mtimeMs,
+    };
+  }));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -640,6 +656,16 @@ export const claudeCodeSource: TranscriptSource = {
 
     const files = await Promise.all([...paths].sort().map(transcriptFileFromPath));
     const discovered = files.filter((file): file is TranscriptFile => file !== null);
+    if (options.inventoryOnly) {
+      return Promise.all(discovered.map(async (file) => ({
+        ...file,
+        inventoryFiles: await inventoryFilesForPaths(await sourceBundlePaths(file.path)),
+        // Mapping Claude Desktop launch metadata requires reading JSON bodies.
+        // Consent discovery therefore excludes that optional sidecar, and the
+        // approved import must retain the same boundary.
+        includeOptionalMetadata: false,
+      })));
+    }
     const launchMetadata = await loadLaunchMetadataIndex();
     for (const file of discovered) {
       launchMetadataByTranscriptPath.set(
@@ -651,7 +677,9 @@ export const claudeCodeSource: TranscriptSource = {
   },
 
   async fingerprint(file: TranscriptFile): Promise<string> {
-    const launchMetadata = await launchMetadataForTranscript(file.path);
+    const launchMetadata = file.includeOptionalMetadata === false
+      ? null
+      : await launchMetadataForTranscript(file.path);
     return sourceBundleFingerprint(
       file.path,
       launchMetadata ? [launchMetadata.path] : [],
@@ -659,7 +687,9 @@ export const claudeCodeSource: TranscriptSource = {
   },
 
   async readConversations(file: TranscriptFile): Promise<ConversationReadResult> {
-    const launchMetadata = await launchMetadataForTranscript(file.path);
+    const launchMetadata = file.includeOptionalMetadata === false
+      ? null
+      : await launchMetadataForTranscript(file.path);
     const bundle = await readClaudeCodeSessionBundle(file.path, {
       adapterName: CLAUDE_CODE_ADAPTER_NAME,
       adapterVersion: CLAUDE_CODE_ADAPTER_VERSION,

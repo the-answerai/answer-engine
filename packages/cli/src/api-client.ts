@@ -121,6 +121,30 @@ export class AnswerEngineClient {
     );
   }
 
+  async registerFirstImport(input: FirstImportDiscoveryRequest): Promise<ApiResponse<FirstImportSession>> {
+    return this.request('POST', '/api/v1/first-imports', input as unknown as Record<string, unknown>);
+  }
+
+  async latestFirstImport(): Promise<ApiResponse<FirstImportSession | null>> {
+    return this.request('GET', '/api/v1/first-imports/latest');
+  }
+
+  async getFirstImport(sessionId: string): Promise<ApiResponse<FirstImportSession>> {
+    return this.request('GET', `/api/v1/first-imports/${encodeURIComponent(sessionId)}`);
+  }
+
+  async startFirstImport(sessionId: string): Promise<ApiResponse<FirstImportSession>> {
+    return this.request('POST', `/api/v1/first-imports/${encodeURIComponent(sessionId)}/start`, {});
+  }
+
+  async recordFirstImportEvent(sessionId: string, event: FirstImportEventRequest): Promise<ApiResponse<FirstImportSession>> {
+    return this.request('POST', `/api/v1/first-imports/${encodeURIComponent(sessionId)}/events`, event as unknown as Record<string, unknown>);
+  }
+
+  async completeFirstImport(sessionId: string): Promise<ApiResponse<FirstImportSession>> {
+    return this.request('POST', `/api/v1/first-imports/${encodeURIComponent(sessionId)}/complete`, {});
+  }
+
   // Agent endpoints
   async getSchema(): Promise<ApiResponse<SchemaResponse>> {
     return this.request<SchemaResponse>('GET', '/api/v1/agent/schema');
@@ -262,6 +286,75 @@ export interface ImportSubmitResult {
   parseErrors?: ImportParseError[];
   contentIds?: string[];
   completedItems?: number;
+  createdItems?: number;
+  updatedItems?: number;
+  duplicateItems?: number;
   failedItems?: number;
+  items?: Array<{
+    rowIndex: number;
+    id: string;
+    outcome?: 'created' | 'updated' | 'duplicate';
+  }>;
   failures?: Array<{ rowIndex?: number; error?: string; reason?: string }>;
+}
+
+export type FirstImportSourceId = 'claude-code' | 'codex' | 'cowork';
+export type FirstImportOutcome = 'pending' | 'imported' | 'duplicate' | 'failed' | 'skipped';
+
+export interface FirstImportDiscoveryItem {
+  fingerprint: string;
+  sourcePath: string;
+  byteSize: number;
+  modifiedAt: string;
+}
+
+export interface FirstImportDiscoverySource {
+  sourceId: FirstImportSourceId;
+  label: string;
+  paths: string[];
+  estimatedCount: number;
+  estimatedBytes: number;
+  privacyPosture: string;
+  exclusions: string[];
+  availability: 'available' | 'not_found' | 'unsupported_platform' | 'unavailable';
+  availabilityNote: string;
+  items: FirstImportDiscoveryItem[];
+}
+
+export interface FirstImportDiscoveryRequest {
+  manifestPath: string;
+  sources: FirstImportDiscoverySource[];
+}
+
+export interface FirstImportSessionItem extends FirstImportDiscoveryItem {
+  sourceId: FirstImportSourceId;
+  outcome: FirstImportOutcome;
+  contentIds: string[];
+  archiveManifestPath: string | null;
+  errorCode: string | null;
+  recoveryAction: string | null;
+}
+
+export interface FirstImportSession {
+  id: string;
+  status: 'discovered' | 'approved' | 'running' | 'cancel_requested' | 'canceled' | 'completed' | 'failed';
+  manifestPath: string;
+  selectedSourceIds: FirstImportSourceId[];
+  approvedAt: string | null;
+  counts: { discovered: number; imported: number; duplicate: number; failed: number; skipped: number };
+  pending: number;
+  sources: Array<Omit<FirstImportDiscoverySource, 'items'> & {
+    status: string; errorCode: string | null; recoveryAction: string | null;
+  }>;
+  items: FirstImportSessionItem[];
+}
+
+export interface FirstImportEventRequest {
+  sourceId: FirstImportSourceId;
+  fingerprint: string;
+  outcome: Exclude<FirstImportOutcome, 'pending'>;
+  contentIds?: string[];
+  archiveManifestPath?: string;
+  errorCode?: string;
+  recoveryAction?: string;
 }

@@ -262,9 +262,17 @@ with:
 
 ```bash
 ae auth status
-ae sync once
+ae sync first-import
 ae sync status
 ```
+
+The command performs metadata-only discovery and waits. Have the user open the
+local `/import` page, review the paths, estimated counts and sizes, privacy
+posture, and exclusions, then explicitly approve any subset. Nothing is read or
+imported before approval except file names and statistics needed for the preview.
+The approved bundle fingerprint is checked again before transcript bodies are
+read. If it changed, run a fresh discovery and approval. If the command is interrupted, use the recovery
+command shown by the page: `ae sync first-import --resume <session-id>`.
 
 Choose a distinctive phrase from one imported conversation or document and run:
 
@@ -297,8 +305,11 @@ same phrase.
   matches the value selected before the first migration.
 - Authentication fails: confirm the key begins with `ae_live_` and re-run
   `ae auth login` without sharing the key.
-- A source imports nothing: run `ae sync once --source <type> --path <path>` and
-  inspect the reported discovery and parse errors.
+- A first import is interrupted or fails: open `/import`, use Retry when
+  offered, and run `ae sync first-import --resume <session-id>`. Safe errors
+  identify the source and recovery action without transcript content.
+- A source discovers nothing: confirm the displayed default path, then use
+  `ae sync once --source <type> --path <path>` for manual diagnosis.
 
 ## Uninstall
 
