@@ -93,6 +93,15 @@ export class AnswerEngineClient {
     );
   }
 
+  async getRawArchiveReferences(): Promise<ApiResponse<{ manifestPaths: string[] }>> {
+    return this.request<{ manifestPaths: string[] }>(
+      'GET',
+      '/api/v1/content/raw-archive-references',
+      undefined,
+      { surface: 'cli-sync' },
+    );
+  }
+
   async deleteContent(contentId: string): Promise<void> {
     await this.ensureRuntimeChannel();
     const response = await fetch(
@@ -143,6 +152,46 @@ export class AnswerEngineClient {
 
   async completeFirstImport(sessionId: string): Promise<ApiResponse<FirstImportSession>> {
     return this.request('POST', `/api/v1/first-imports/${encodeURIComponent(sessionId)}/complete`, {});
+  }
+
+  async registerFolderSource(input: FolderSourceDiscoveryRequest): Promise<ApiResponse<FolderSource>> {
+    return this.request('POST', '/api/v1/folder-sources', input as unknown as Record<string, unknown>);
+  }
+
+  async listFolderSources(): Promise<ApiResponse<FolderSource[]>> {
+    return this.request('GET', '/api/v1/folder-sources');
+  }
+
+  async getFolderSource(sourceId: string): Promise<ApiResponse<FolderSource>> {
+    return this.request('GET', `/api/v1/folder-sources/${encodeURIComponent(sourceId)}`);
+  }
+
+  async approveFolderRun(runId: string): Promise<ApiResponse<FolderSource>> {
+    return this.request('POST', `/api/v1/folder-sources/runs/${encodeURIComponent(runId)}/approve`, {});
+  }
+
+  async startFolderRun(runId: string): Promise<ApiResponse<FolderSource>> {
+    return this.request('POST', `/api/v1/folder-sources/runs/${encodeURIComponent(runId)}/start`, {});
+  }
+
+  async recordFolderEvent(runId: string, event: FolderIngestionEventRequest): Promise<ApiResponse<FolderSource>> {
+    return this.request('POST', `/api/v1/folder-sources/runs/${encodeURIComponent(runId)}/events`, event as unknown as Record<string, unknown>);
+  }
+
+  async completeFolderRun(runId: string): Promise<ApiResponse<FolderSource>> {
+    return this.request('POST', `/api/v1/folder-sources/runs/${encodeURIComponent(runId)}/complete`, {});
+  }
+
+  async refreshFolderSource(sourceId: string, input: FolderRefreshRequest): Promise<ApiResponse<FolderSource>> {
+    return this.request('POST', `/api/v1/folder-sources/${encodeURIComponent(sourceId)}/refresh`, input as unknown as Record<string, unknown>);
+  }
+
+  async prepareFolderRemoval(sourceId: string, retention: FolderRetention): Promise<ApiResponse<FolderSource>> {
+    return this.request('POST', `/api/v1/folder-sources/${encodeURIComponent(sourceId)}/remove`, { retention });
+  }
+
+  async completeFolderRemoval(sourceId: string, input: FolderRemovalCompleteRequest): Promise<ApiResponse<FolderSource>> {
+    return this.request('POST', `/api/v1/folder-sources/${encodeURIComponent(sourceId)}/remove/complete`, input as unknown as Record<string, unknown>);
   }
 
   // Agent endpoints
@@ -357,4 +406,45 @@ export interface FirstImportEventRequest {
   archiveManifestPath?: string;
   errorCode?: string;
   recoveryAction?: string;
+}
+
+export type FolderDisposition = 'candidate' | 'excluded' | 'hidden' | 'unsupported' | 'binary'
+  | 'too_large' | 'access_denied' | 'symlink' | 'aggregate_limit' | 'missing';
+export type FolderOutcome = 'pending' | 'imported' | 'updated' | 'duplicate' | 'excluded'
+  | 'changed' | 'failed' | 'skipped' | 'missing';
+export type FolderRetention = 'keep' | 'delete';
+
+export interface FolderInventoryRequestItem {
+  sourcePath: string; relativePath: string; fileType?: string; byteSize: number;
+  modifiedAt?: string; disposition: FolderDisposition; reason: string;
+  metadataFingerprint?: string; change?: 'added' | 'changed' | 'unchanged' | 'missing' | 'excluded';
+}
+export interface FolderSourceDiscoveryRequest {
+  rootPath: string; libraryId?: string; includePatterns: string[]; excludePatterns: string[];
+  maxFileBytes: number; maxTotalBytes: number; symlinkPolicy: 'no_follow'; manifestPath: string;
+  inventory: FolderInventoryRequestItem[];
+}
+export interface FolderRefreshRequest { manifestPath: string; inventory: FolderInventoryRequestItem[]; }
+export interface FolderIngestionEventRequest {
+  relativePath: string; outcome: Exclude<FolderOutcome, 'pending'>; appliedSha256?: string;
+  contentId?: string; archiveManifestPath?: string; errorCode?: string; recoveryAction?: string;
+}
+export interface FolderRun {
+  id: string; sourceId: string; kind: 'initial' | 'refresh' | 'removal';
+  status: 'previewed' | 'approved' | 'running' | 'cancel_requested' | 'canceled' | 'completed' | 'failed';
+  manifestPath: string; approvedAt: string | null; inventoryCounts: Record<string, number>;
+  counts: Record<FolderOutcome | 'previewed', number>;
+  items: Array<FolderInventoryRequestItem & { outcome: FolderOutcome; appliedSha256: string | null;
+    contentId: string | null; archiveManifestPath: string | null; errorCode: string | null; recoveryAction: string | null }>;
+}
+export interface FolderSource {
+  id: string; rootPath: string; libraryId: string | null; includePatterns: string[]; excludePatterns: string[];
+  maxFileBytes: number; maxTotalBytes: number; symlinkPolicy: 'no_follow'; manifestPath: string;
+  status: 'previewed' | 'approved' | 'active' | 'paused' | 'removal_pending' | 'removed';
+  retention: FolderRetention | null; approvedAt: string | null; removedAt: string | null;
+  runs: FolderRun[]; latestRun: FolderRun | null;
+}
+export interface FolderRemovalCompleteRequest {
+  retention: FolderRetention; deletedContentIds: string[]; archivesRemoved: number;
+  failures: Array<{ path: string; errorCode: string }>;
 }

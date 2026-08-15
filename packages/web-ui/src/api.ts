@@ -17,6 +17,7 @@ import type {
   ImportResult,
   FirstImportSession,
   FirstImportSourceId,
+  FolderSource,
   Library,
   LibraryFilter,
   LibraryMemberPage,
@@ -218,6 +219,22 @@ export function cancelFirstImport(sessionId: string): Promise<FirstImportSession
 
 export function retryFirstImport(sessionId: string): Promise<FirstImportSession> {
   return request(`/api/v1/first-imports/${encodeURIComponent(sessionId)}/retry`, json('POST'));
+}
+
+export function latestFolderSource(): Promise<FolderSource | null> {
+  return request('/api/v1/folder-sources/latest');
+}
+export function approveFolderRun(runId: string): Promise<FolderSource> {
+  return request(`/api/v1/folder-sources/runs/${encodeURIComponent(runId)}/approve`, json('POST'));
+}
+export function cancelFolderRun(runId: string): Promise<FolderSource> {
+  return request(`/api/v1/folder-sources/runs/${encodeURIComponent(runId)}/cancel`, json('POST'));
+}
+export function retryFolderRun(runId: string): Promise<FolderSource> {
+  return request(`/api/v1/folder-sources/runs/${encodeURIComponent(runId)}/retry`, json('POST'));
+}
+export function prepareFolderRemoval(sourceId: string, retention: 'keep' | 'delete'): Promise<FolderSource> {
+  return request(`/api/v1/folder-sources/${encodeURIComponent(sourceId)}/remove`, json('POST', { retention }));
 }
 
 export async function importMemory(input: { title: string; content: string }): Promise<void> {

@@ -134,6 +134,17 @@ sync services are isolated; staging history sync is disabled by default. See
 [Local runtime channels](./docs/local-runtime-channels.md) for lifecycle
 commands and the non-destructive existing-install migration.
 
+Background history sync stores immutable, content-addressed source evidence
+under `AE_HOME/raw-archive`. It reuses identical bundles and fails closed before
+crossing its default 256 MiB per-bundle limit, 10 GiB total limit, or 10 GiB
+free-space reserve. The byte ceilings can be overridden with
+`AE_RAW_ARCHIVE_MAX_BUNDLE_BYTES`, `AE_RAW_ARCHIVE_MAX_TOTAL_BYTES`, and
+`AE_RAW_ARCHIVE_MIN_FREE_BYTES`. Cowork only archives supported text artifacts
+explicitly listed in session metadata; it does not recursively copy a workspace.
+Use `ae sync archive plan` for a tenant-aware, non-destructive retention preview.
+Pruning requires a stopped sync service and the exact confirmation token emitted
+by an unchanged plan.
+
 ## API
 
 CLI, MCP, and direct requests to `/api/v1/*` require the local key in either
@@ -152,6 +163,8 @@ Core routes:
 | `POST /api/v1/content/import` | Import or update content idempotently |
 | `GET/POST /api/v1/first-imports` | Register and inspect consent-first agent-history imports |
 | `POST /api/v1/first-imports/:id/approve` | Approve any subset of discovered sources before content is read |
+| `GET/POST /api/v1/folder-sources` | Preview and inspect explicitly selected local folders |
+| `POST /api/v1/folder-sources/runs/:id/approve` | Approve one exact bounded folder inventory before full-file reads |
 | `GET /api/v1/content` | Browse, filter, sort, and cursor-paginate stored content |
 | `GET /api/v1/content/:id/lineage` | Inspect origin and artifact history |
 | `POST /api/v1/agent/query` | Full-text, semantic, or hybrid search |
@@ -213,6 +226,16 @@ imports one source-backed history at a time, and reconciles imported,
 duplicate, failed, and skipped outcomes. Resume an interruption with
 `ae sync first-import --resume <session-id>`. See
 [First agent-history import](./docs/first-agent-history-import.md).
+
+## Local-folder ingestion
+
+Run `ae folders add <exact-folder-path>`, then open `/import` and select
+**Local folder**. Review the root, patterns, limits, types, exclusions, symlink
+reports, and estimated work before approval. Apply-time restats prevent changed
+or new files from being read under stale consent; approved snapshots retain
+SHA-256 lineage. Use `ae folders resume --source <id>`, `ae folders refresh
+--source <id>`, or `ae folders remove <id> --retention keep|delete`. Direct
+`local_dir` sync is fail-closed. See [Permissioned local-folder ingestion](./docs/local-folder-ingestion.md).
 
 ## Development
 

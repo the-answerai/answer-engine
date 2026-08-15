@@ -165,6 +165,138 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/Success' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/folder-sources:
+    get:
+      tags: [Workflows]
+      summary: List explicitly selected local folder sources
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Workflows]
+      summary: Register a bounded local folder preview before full-file reads
+      description: Never imports file content. Every path, exclusion, warning, limit, and fixed no-follow symlink policy is recorded for approval.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FolderSourceDiscovery' }
+      responses:
+        '201': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/folder-sources/latest:
+    get:
+      tags: [Workflows]
+      summary: Read the latest selected folder and inventory run
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/v1/folder-sources/{sourceId}:
+    parameters:
+      - { in: path, name: sourceId, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Workflows]
+      summary: Inspect a folder source, all runs, and reconciled items
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/folder-sources/{sourceId}/refresh:
+    parameters:
+      - { in: path, name: sourceId, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Workflows]
+      summary: Register an added/changed/unchanged/missing/excluded refresh preview
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FolderRefreshDiscovery' }
+      responses:
+        '201': { $ref: '#/components/responses/Success' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/folder-sources/{sourceId}/remove:
+    parameters:
+      - { in: path, name: sourceId, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Workflows]
+      summary: Prepare source removal with explicit keep or delete retention
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FolderRemoval' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/folder-sources/{sourceId}/remove/complete:
+    parameters:
+      - { in: path, name: sourceId, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Workflows]
+      summary: Reconcile content/archive retention and complete audited removal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FolderRemovalComplete' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/folder-sources/runs/{runId}/approve:
+    parameters:
+      - { in: path, name: runId, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Workflows]
+      summary: Approve one exact folder inventory before any full file read
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/folder-sources/runs/{runId}/start:
+    parameters:
+      - { in: path, name: runId, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Workflows]
+      summary: Start an approved folder run
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/folder-sources/runs/{runId}/events:
+    parameters:
+      - { in: path, name: runId, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Workflows]
+      summary: Reconcile one preview row with integrity-checked lineage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FolderIngestionEvent' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/folder-sources/runs/{runId}/cancel:
+    parameters:
+      - { in: path, name: runId, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Workflows]
+      summary: Request cancellation at the next file boundary
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/v1/folder-sources/runs/{runId}/retry:
+    parameters:
+      - { in: path, name: runId, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Workflows]
+      summary: Reset failed or interrupted candidate rows
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/v1/folder-sources/runs/{runId}/complete:
+    parameters:
+      - { in: path, name: runId, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Workflows]
+      summary: Complete only after every preview row has an explained outcome
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /api/v1/content:
     get:
       tags: [Content]
@@ -189,6 +321,23 @@ paths:
         - { in: query, name: sortDirection, schema: { enum: [asc, desc], default: desc } }
       responses:
         '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/content/raw-archive-references:
+    get:
+      tags: [Content]
+      summary: List raw archive manifests still referenced by content
+      description: Returns tenant-scoped manifest paths, including references held by soft-deleted content, so local retention can preserve recoverable sources.
+      responses:
+        '200':
+          description: Referenced manifest paths.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/SuccessEnvelope' }
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/RawArchiveReferences' }
         '401': { $ref: '#/components/responses/Unauthorized' }
   /api/v1/content/{id}:
     parameters:
@@ -943,6 +1092,75 @@ components:
         archiveManifestPath: { type: string, minLength: 1 }
         errorCode: { type: string, pattern: '^[A-Z0-9_]{2,80}$' }
         recoveryAction: { type: string, minLength: 1 }
+    FolderInventoryItem:
+      type: object
+      additionalProperties: false
+      required: [sourcePath, relativePath, byteSize, disposition, reason]
+      properties:
+        sourcePath: { type: string, minLength: 1 }
+        relativePath: { type: string, minLength: 1 }
+        fileType: { type: string }
+        byteSize: { type: integer, minimum: 0 }
+        modifiedAt: { type: string, format: date-time }
+        disposition: { enum: [candidate, excluded, hidden, unsupported, binary, too_large, access_denied, symlink, aggregate_limit, missing] }
+        reason: { type: string, minLength: 1 }
+        metadataFingerprint: { type: string, pattern: '^[a-f0-9]{64}$' }
+        change: { enum: [added, changed, unchanged, missing, excluded] }
+    FolderSourceDiscovery:
+      type: object
+      additionalProperties: false
+      required: [rootPath, includePatterns, excludePatterns, maxFileBytes, maxTotalBytes, symlinkPolicy, manifestPath, inventory]
+      properties:
+        rootPath: { type: string, minLength: 1 }
+        libraryId: { type: string, format: uuid }
+        includePatterns: { type: array, minItems: 1, items: { type: string, minLength: 1 } }
+        excludePatterns: { type: array, items: { type: string, minLength: 1 } }
+        maxFileBytes: { type: integer, minimum: 1 }
+        maxTotalBytes: { type: integer, minimum: 1 }
+        symlinkPolicy: { type: string, const: no_follow }
+        manifestPath: { type: string, minLength: 1 }
+        inventory: { type: array, items: { $ref: '#/components/schemas/FolderInventoryItem' } }
+    FolderRefreshDiscovery:
+      type: object
+      additionalProperties: false
+      required: [manifestPath, inventory]
+      properties:
+        manifestPath: { type: string, minLength: 1 }
+        inventory: { type: array, items: { $ref: '#/components/schemas/FolderInventoryItem' } }
+    FolderIngestionEvent:
+      type: object
+      additionalProperties: false
+      required: [relativePath, outcome]
+      properties:
+        relativePath: { type: string, minLength: 1 }
+        outcome: { enum: [imported, updated, duplicate, excluded, changed, failed, skipped, missing] }
+        appliedSha256: { type: string, pattern: '^[a-f0-9]{64}$' }
+        contentId: { type: string, format: uuid }
+        archiveManifestPath: { type: string, minLength: 1 }
+        errorCode: { type: string, pattern: '^[A-Z0-9_]{2,80}$' }
+        recoveryAction: { type: string, minLength: 1 }
+    FolderRemoval:
+      type: object
+      additionalProperties: false
+      required: [retention]
+      properties:
+        retention: { enum: [keep, delete] }
+    FolderRemovalComplete:
+      allOf:
+        - { $ref: '#/components/schemas/FolderRemoval' }
+        - type: object
+          required: [deletedContentIds, archivesRemoved, failures]
+          properties:
+            deletedContentIds: { type: array, items: { type: string, format: uuid } }
+            archivesRemoved: { type: integer, minimum: 0 }
+            failures:
+              type: array
+              items:
+                type: object
+                required: [path, errorCode]
+                properties:
+                  path: { type: string }
+                  errorCode: { type: string }
     SuccessEnvelope:
       type: object
       required: [success, data]
@@ -962,6 +1180,15 @@ components:
             code: { type: string }
             message: { type: string }
             details: {}
+    RawArchiveReferences:
+      type: object
+      additionalProperties: false
+      required: [manifestPaths]
+      properties:
+        manifestPaths:
+          type: array
+          items: { type: string }
+          uniqueItems: true
     TagInput:
       type: object
       additionalProperties: false

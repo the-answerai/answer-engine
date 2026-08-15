@@ -207,6 +207,31 @@ describe('ContentService tenant boundaries', () => {
     expect(result.origin.rawArchiveManifest).toEqual(manifest);
   });
 
+  it('lists tenant-scoped raw archive references including soft-deleted content', async () => {
+    const tenantId = randomUUID();
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [
+        { manifest_path: '/archive/first/manifest.json' },
+        { manifest_path: '/archive/second/manifest.json' },
+      ] })
+      .mockResolvedValueOnce({ rows: [] });
+    const service = new ContentService(
+      { query } as unknown as Database,
+      { embed: vi.fn(), complete: vi.fn() },
+    );
+
+    const result = await service.rawArchiveReferences({ tenantId, apiKeyId: randomUUID() });
+
+    const [sql, parameters] = query.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain('tenant_id = $1');
+    expect(sql).not.toContain("status <> 'deleted'");
+    expect(parameters).toEqual([tenantId]);
+    expect(result).toEqual([
+      '/archive/first/manifest.json',
+      '/archive/second/manifest.json',
+    ]);
+  });
+
   it('lists a lightweight summary projection without loading large lineage payloads', async () => {
     const contentId = randomUUID();
     const createdAt = new Date('2026-08-12T13:00:00.000Z');

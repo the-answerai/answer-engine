@@ -45,6 +45,13 @@ import type {
   FirstImportEventRequest,
   FirstImportSession,
 } from '../api-client.js';
+import {
+  applyRawArchiveRetention,
+  DEFAULT_RAW_ARCHIVE_MAX_TOTAL_BYTES,
+  inspectRawArchive,
+  planRawArchiveRetention,
+  type RawArchiveRetentionPlan,
+} from '../sync/raw-archive.js';
 
 const DEFAULT_SYNC_BATCH_SIZE = 25;
 const DEFAULT_POLL_INTERVAL_SECONDS = 15;
@@ -66,6 +73,7 @@ interface FirstImportCommandOptions {
   cursorFile?: string;
   confirmStagingHistorySync?: boolean;
 }
+interface ArchiveCommandOptions { targetBytes: string; confirm?: string; }
 
 class UserInputError extends Error {
   constructor(message: string) {
@@ -92,6 +100,14 @@ function parsePositiveInteger(raw: string, name: string): number {
   const value = Number.parseInt(raw, 10);
   if (!Number.isInteger(value) || value <= 0) {
     throw new UserInputError(`${name} must be a positive integer`);
+  }
+  return value;
+}
+
+function parseNonNegativeInteger(raw: string, name: string): number {
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new UserInputError(`${name} must be a non-negative integer`);
   }
   return value;
 }
@@ -296,14 +312,22 @@ async function runFirstImportCommand(opts: FirstImportCommandOptions): Promise<v
 function resolveCommandSources(opts: SyncCommandOptions): ConfiguredSyncSource[] {
   const hasExplicitPaths = opts.path !== undefined && opts.path.length > 0;
   if (opts.source !== undefined || hasExplicitPaths) {
+    const sourceId = parseSource(opts.source ?? 'claude-code');
+    if (sourceId === 'local_dir') {
+      throw new UserInputError('Direct local_dir sync is disabled. Use ae folders add <root> so the inventory is approved before content is read.');
+    }
     return [{
-      sourceId: parseSource(opts.source ?? 'claude-code'),
+      sourceId,
       ...(hasExplicitPaths ? { paths: opts.path } : {}),
       ...(opts.library ? { librarySlug: opts.library } : {}),
     }];
   }
 
-  return resolveSyncSourcesFromConfig().map((source) => ({
+  const configured = resolveSyncSourcesFromConfig();
+  if (configured.some((source) => source.sourceId === 'local_dir')) {
+    throw new UserInputError('Configured local_dir sync requires migration to ae folders add <root>; implicit folder reads are disabled.');
+  }
+  return configured.map((source) => ({
     ...source,
     ...(opts.library ? { librarySlug: opts.library } : {}),
   }));
@@ -487,6 +511,56 @@ function runUninstallServiceCommand(): void {
   }
 }
 
+async function buildArchiveRetentionPlan(options: ArchiveCommandOptions): Promise<RawArchiveRetentionPlan> {
+  const targetBytes = parseNonNegativeInteger(options.targetBytes, '--target-bytes');
+  const references = (await createClient().getRawArchiveReferences()).data.manifestPaths;
+  return planRawArchiveRetention(await inspectRawArchive(), references, targetBytes);
+}
+
+async function runArchivePlanCommand(options: ArchiveCommandOptions): Promise<void> {
+  try {
+    printJson({ data: await buildArchiveRetentionPlan(options) });
+  } catch (error) {
+    if (error instanceof UserInputError) {
+      printError(error.message);
+      process.exitCode = 1;
+      return;
+    }
+    handleApiError(error);
+  }
+}
+
+async function runArchivePruneCommand(options: ArchiveCommandOptions): Promise<void> {
+  try {
+    const service = queryServiceStatus();
+    if (service.running) {
+      throw new UserInputError('Stop the background sync service before pruning raw archives');
+    }
+    const plan = await buildArchiveRetentionPlan(options);
+    if (plan.candidates.length === 0) {
+      printJson({ data: { plan, removedArchives: 0, removedBytes: 0 } });
+      printSuccess('No unreferenced raw archives need removal');
+      return;
+    }
+    if (!options.confirm || options.confirm !== plan.confirmationToken) {
+      printJson({ data: plan });
+      throw new UserInputError(
+        'Review this plan, then rerun archive prune with --confirm <confirmationToken>',
+      );
+    }
+    const result = await applyRawArchiveRetention(plan, options.confirm);
+    printJson({ data: { plan, ...result } });
+    printSuccess(`Removed ${result.removedArchives} unreferenced raw archive${result.removedArchives === 1 ? '' : 's'}`);
+  } catch (error) {
+    if (error instanceof UserInputError) {
+      printError(error.message);
+      process.exitCode = 1;
+      return;
+    }
+    handleApiError(error);
+  }
+}
+
 function addSyncOptions(command: Command, includePolling: boolean): Command {
   command
     .option('--source <source>', `Sync source override: ${SUPPORTED_SYNC_SOURCES.join(', ')}`)
@@ -547,4 +621,19 @@ export function registerSyncCommands(program: Command): void {
     .option('--source <source>', `Limit cursor status to: ${SUPPORTED_SYNC_SOURCES.join(', ')}`)
     .option('--cursor-file <path>', 'Cursor JSON file override')
     .action((opts: Pick<SyncCommandOptions, 'cursorFile' | 'source'>) => runStatusCommand(opts));
+
+  const archive = sync
+    .command('archive')
+    .description('Inspect and explicitly prune unreferenced raw source archives');
+  archive
+    .command('plan')
+    .description('Preview reference-aware raw archive retention without deleting files')
+    .option('--target-bytes <bytes>', 'Desired maximum archive size after pruning', String(DEFAULT_RAW_ARCHIVE_MAX_TOTAL_BYTES))
+    .action((opts: ArchiveCommandOptions) => runArchivePlanCommand(opts));
+  archive
+    .command('prune')
+    .description('Apply an unchanged retention plan after stopping sync and confirming its token')
+    .option('--target-bytes <bytes>', 'Desired maximum archive size after pruning', String(DEFAULT_RAW_ARCHIVE_MAX_TOTAL_BYTES))
+    .option('--confirm <token>', 'Exact confirmation token printed by archive plan')
+    .action((opts: ArchiveCommandOptions) => runArchivePruneCommand(opts));
 }

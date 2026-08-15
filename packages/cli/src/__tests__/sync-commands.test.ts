@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { appendFileSync, cpSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -19,6 +19,7 @@ import {
   queryServiceStatus,
   uninstallService,
 } from '../sync/service.js';
+import { writeRawArchive } from '../sync/raw-archive.js';
 
 vi.mock('../client.js', () => ({
   createClient: vi.fn(),
@@ -93,12 +94,16 @@ function mockClient() {
       failures: [] as Array<{ rowIndex?: number; error?: string; reason?: string }>,
     },
   }));
+  const getRawArchiveReferences = vi.fn(async () => ({
+    data: { manifestPaths: [] as string[] },
+  }));
 
   vi.mocked(createClient).mockReturnValue({
     submitSyncImport,
+    getRawArchiveReferences,
   } as unknown as AnswerEngineClient);
 
-  return { submitSyncImport };
+  return { submitSyncImport, getRawArchiveReferences };
 }
 
 describe('sync commands', () => {
@@ -549,10 +554,15 @@ sources:
     const client = mockClient();
     let active = 0;
     let maxActive = 0;
+    let releaseConcurrentImports: (() => void) | undefined;
+    const concurrentImports = new Promise<void>((resolve) => {
+      releaseConcurrentImports = resolve;
+    });
     client.submitSyncImport.mockImplementation(async (request) => {
       active += 1;
       maxActive = Math.max(maxActive, active);
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      if (active === 2) releaseConcurrentImports?.();
+      await concurrentImports;
       active -= 1;
       return {
         data: {
@@ -783,6 +793,50 @@ sources:
         }],
       }),
     });
+  });
+
+  it('previews and explicitly confirms deletion of only unreferenced raw archives', async () => {
+    const home = makeTempDir();
+    process.env.AE_HOME = home;
+    const firstSource = join(home, 'first.jsonl');
+    const secondSource = join(home, 'second.jsonl');
+    writeFileSync(firstSource, 'first');
+    writeFileSync(secondSource, 'second');
+    const first = await writeRawArchive([firstSource], {
+      adapterName: 'test-adapter', adapterVersion: '1.0.0', createdAt: '2026-08-01T00:00:00.000Z',
+    });
+    const second = await writeRawArchive([secondSource], {
+      adapterName: 'test-adapter', adapterVersion: '1.0.0', createdAt: '2026-08-02T00:00:00.000Z',
+    });
+    const client = mockClient();
+    client.getRawArchiveReferences.mockResolvedValue({
+      data: { manifestPaths: [first.manifestPath] },
+    });
+
+    await makeProgram().parseAsync([
+      'node', 'ae', 'sync', 'archive', 'plan', '--target-bytes', '0',
+    ]);
+    const preview = vi.mocked(printJson).mock.calls.at(-1)?.[0] as {
+      data: { confirmationToken: string; candidates: Array<{ manifestPath: string }> };
+    };
+    expect(preview.data.candidates.map((candidate) => candidate.manifestPath)).toEqual([
+      second.manifestPath,
+    ]);
+    expect(existsSync(second.archiveDir)).toBe(true);
+
+    vi.mocked(queryServiceStatus).mockReturnValue({
+      platform: 'darwin', installed: true, running: false, enabled: false,
+      unitPath: '/Users/test/Library/LaunchAgents/ai.answer-engine.sync.plist',
+      detail: 'stopped',
+    });
+    await makeProgram().parseAsync([
+      'node', 'ae', 'sync', 'archive', 'prune', '--target-bytes', '0',
+      '--confirm', preview.data.confirmationToken,
+    ]);
+
+    expect(existsSync(first.archiveDir)).toBe(true);
+    expect(existsSync(second.archiveDir)).toBe(false);
+    expect(printSuccess).toHaveBeenCalledWith(expect.stringContaining('1 unreferenced raw archive'));
   });
 
   it('installs and uninstalls the background service through sync subcommands', async () => {

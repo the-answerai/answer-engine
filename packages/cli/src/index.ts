@@ -10,6 +10,7 @@ import { registerContentCommands } from './commands/content.js';
 import { registerSystemCommands } from './commands/system.js';
 import { registerImportCommands } from './commands/import.js';
 import { registerSyncCommands } from './commands/sync.js';
+import { registerFolderCommands } from './commands/folders.js';
 import { registerConfigCommands } from './commands/config.js';
 import { registerEvalCommands } from './commands/eval.js';
 import { setOutputMode } from './output.js';
@@ -44,6 +45,7 @@ registerSystemCommands(program);
 registerConfigCommands(program);
 registerImportCommands(program);
 registerSyncCommands(program);
+registerFolderCommands(program);
 registerEvalCommands(program);
 
 // Add full usage reference to help output
@@ -69,7 +71,8 @@ Examples:
   ae sync first-import                        Preview, approve, import, and reconcile agent history
   ae sync first-import --resume <session-id>  Resume an interrupted approved first import
   ae sync run --source claude-code            Poll Claude Code conversations continuously
-  ae sync once --source local_dir --path .    Import changed local documents once
+  ae folders add ./notes                     Preview a selected folder and wait for approval
+  ae folders refresh --source <source-id>    Preview folder changes before reading them
   ae sync install-service                     Start sync now and automatically after login
   ae sync status                              Show service health and per-source cursors
   ae sync uninstall-service                   Stop and remove the background service

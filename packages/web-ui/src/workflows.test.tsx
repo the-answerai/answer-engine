@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
+import type { FolderSource } from './types';
 
 const contentId = '11111111-1111-4111-8111-111111111111';
 
@@ -233,5 +234,56 @@ describe('primary local workflows', () => {
         body: expect.stringContaining(`"contentIds":["${contentId}"]`),
       }),
     ));
+  });
+
+  it('requires consent for an exact folder preview and an explicit removal retention choice', async () => {
+    window.history.replaceState({}, '', '/import');
+    const runId = '44444444-4444-4444-8444-444444444444';
+    const sourceId = '55555555-5555-4555-8555-555555555555';
+    const source: FolderSource = {
+      id: sourceId, libraryId: null, rootPath: '/Users/local/Documents/notes',
+      includePatterns: ['**/*.md'], excludePatterns: ['private/**'], maxFileBytes: 5_242_880,
+      maxTotalBytes: 104_857_600, symlinkPolicy: 'no_follow', manifestPath: '/channel/preview.json',
+      status: 'previewed', retention: null, approvedAt: null, removedAt: null, runs: [],
+      latestRun: {
+        id: runId, sourceId, kind: 'initial', status: 'previewed', manifestPath: '/channel/preview.json',
+        approvedAt: null, inventoryCounts: { total: 2, candidate: 1, symlink: 1, bytes: 12 },
+        counts: { previewed: 2, pending: 1, imported: 0, updated: 0, duplicate: 0, excluded: 1, changed: 0, failed: 0, skipped: 0, missing: 0 },
+        items: [
+          { sourcePath: '/Users/local/Documents/notes/decision.md', relativePath: 'decision.md', fileType: '.md', byteSize: 12, modifiedAt: '2026-08-15T12:00:00.000Z', disposition: 'candidate', reason: 'Supported text file within configured limits', change: 'added', metadataFingerprint: 'a'.repeat(64), outcome: 'pending', appliedSha256: null, contentId: null, archiveManifestPath: null, errorCode: null, recoveryAction: null },
+          { sourcePath: '/Users/local/Documents/notes/latest.md', relativePath: 'latest.md', fileType: null, byteSize: 0, modifiedAt: null, disposition: 'symlink', reason: 'Symlinks are never followed', change: null, metadataFingerprint: null, outcome: 'excluded', appliedSha256: null, contentId: null, archiveManifestPath: null, errorCode: null, recoveryAction: null },
+        ],
+      },
+    };
+    source.runs = [source.latestRun!];
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === '/local-ui/session') return new Response(null, { status: 204 });
+      if (url === '/health') return healthResponse();
+      if (url === '/api/v1/libraries') return json([]);
+      if (url === '/api/v1/first-imports/latest') return json(null);
+      if (url === '/api/v1/folder-sources/latest') return json(source);
+      if (url.endsWith(`/runs/${runId}/approve`) && init?.method === 'POST') return json(source);
+      if (url.endsWith(`/${sourceId}/remove`) && init?.method === 'POST') return json({ ...source, status: 'removal_pending', retention: 'delete' });
+      return json([]);
+    });
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole('button', { name: 'Local folder' }));
+    expect(await screen.findByText('/Users/local/Documents/notes')).toBeTruthy();
+    const approve = screen.getByRole('button', { name: 'Approve 1 document' });
+    expect((approve as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole('button', { name: 'Cancel preview' })).toBeTruthy();
+    await user.click(screen.getByLabelText('I approve this exact folder root, inventory, and safety policy'));
+    await user.click(approve);
+    await user.click(screen.getByText('Remove this folder source'));
+    await user.click(screen.getByLabelText('Delete mapped memories and source-owned archives'));
+    expect((screen.getByRole('button', { name: 'Prepare delete removal' }) as HTMLButtonElement).disabled).toBe(true);
+    await user.click(screen.getByLabelText('I understand this choice will be recorded in the local audit log'));
+    await user.click(screen.getByRole('button', { name: 'Prepare delete removal' }));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(`/api/v1/folder-sources/runs/${runId}/approve`, expect.objectContaining({ method: 'POST' }));
+      expect(fetchMock).toHaveBeenCalledWith(`/api/v1/folder-sources/${sourceId}/remove`, expect.objectContaining({ body: '{"retention":"delete"}' }));
+    });
   });
 });

@@ -645,6 +645,22 @@ export class ContentService {
     await this.audit(principal, 'content.delete', 'content', id, scope?.libraryId ?? null);
   }
 
+  async rawArchiveReferences(principal: Principal): Promise<string[]> {
+    const result = await this.database.query<{ manifest_path: string }>(
+      `SELECT DISTINCT raw_archive_manifest->>'manifest_path' AS manifest_path
+         FROM content_items
+        WHERE tenant_id = $1
+          AND jsonb_typeof(raw_archive_manifest) = 'object'
+          AND NULLIF(BTRIM(raw_archive_manifest->>'manifest_path'), '') IS NOT NULL
+        ORDER BY manifest_path`,
+      [principal.tenantId],
+    );
+    await this.audit(principal, 'raw_archive.references.read', 'raw_archive', null, null, {
+      referenceCount: result.rows.length,
+    });
+    return result.rows.map((row) => row.manifest_path);
+  }
+
   async lineage(principal: Principal, id: string) {
     const scope = await this.resolveLibrary(principal);
     const parameters = this.scopeParameters(principal, scope);

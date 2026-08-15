@@ -8,6 +8,11 @@ import {
   useLibraries,
   usePreviewImport,
   useRetryFirstImport,
+  useApproveFolderRun,
+  useCancelFolderRun,
+  useLatestFolderSource,
+  usePrepareFolderRemoval,
+  useRetryFolderRun,
 } from '../hooks';
 import type { ContentType, FirstImportSourceId, ImportItem, ImportResult } from '../types';
 import { CONTENT_TYPES } from '../types';
@@ -16,6 +21,87 @@ function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function LocalFolderImport() {
+  const latest = useLatestFolderSource();
+  const approve = useApproveFolderRun();
+  const cancel = useCancelFolderRun();
+  const retry = useRetryFolderRun();
+  const remove = usePrepareFolderRemoval();
+  const source = latest.data;
+  const [consented, setConsented] = useState(false);
+  const [retention, setRetention] = useState<'keep' | 'delete'>('keep');
+  const [removeConfirmed, setRemoveConfirmed] = useState(false);
+  if (latest.isLoading) return <div className="panel first-import-empty"><LoadingState label="Looking for selected folders" /></div>;
+  if (latest.error) return <Notice kind="error">{errorMessage(latest.error, 'Unable to load local folder status.')}</Notice>;
+  if (!source || !source.latestRun) return <div className="panel first-import-empty folder-empty">
+    <span className="figure">LOCAL FOLDER / EXPLICIT ACCESS</span><h2>Choose a folder on this computer</h2>
+    <p>Run <code>ae folders add &lt;exact-folder-path&gt;</code>. The command records file names, types, sizes, exclusions, and a small binary-classification sample, then pauses here.</p>
+    <Notice kind="info">No full document bytes are archived or ingested until you approve the displayed root and policy.</Notice>
+  </div>;
+  const run = source.latestRun;
+  const candidates = run.items.filter((item) => item.disposition === 'candidate');
+  const warnings = run.items.filter((item) => item.disposition !== 'candidate');
+  const reconciled = run.items.filter((item) => item.outcome !== 'pending').length;
+  const active = ['approved', 'running', 'cancel_requested'].includes(run.status);
+  const final = ['completed', 'failed', 'canceled'].includes(run.status);
+  const dispositionCounts = Object.entries(run.inventoryCounts)
+    .filter(([key, value]) => !['total', 'bytes'].includes(key) && value > 0);
+  return <div className="first-import-layout">
+    <section className="panel first-import-main folder-import-main">
+      <header className="panel-head"><div><span className="figure">PREVIEW-FIRST FOLDER</span><h2>Local folder</h2></div><span className={`status-pill ${run.status}`}>{run.status.replace('_', ' ')}</span></header>
+      <p className="first-import-lede">Review the exact selected root and limits. Symlinks are reported and never followed.</p>
+      <dl className="folder-policy">
+        <div><dt>Selected root</dt><dd><code>{source.rootPath}</code></dd></div>
+        <div><dt>Includes</dt><dd>{source.includePatterns.join(', ')}</dd></div>
+        <div><dt>Ignores</dt><dd>{source.excludePatterns.length ? source.excludePatterns.join(', ') : 'None configured'}</dd></div>
+        <div><dt>Limits</dt><dd>{formatBytes(source.maxFileBytes)} per file · {formatBytes(source.maxTotalBytes)} total</dd></div>
+        <div><dt>Symlinks</dt><dd>Do not follow</dd></div>
+      </dl>
+      <div className="folder-summary" role="group" aria-label="Folder inventory summary">
+        <div><strong>{candidates.length}</strong><span>approved candidates</span></div>
+        <div><strong>{formatBytes(candidates.reduce((sum, item) => sum + item.byteSize, 0))}</strong><span>estimated work</span></div>
+        <div><strong>{warnings.length}</strong><span>warnings / exclusions</span></div>
+      </div>
+      <div className="folder-dispositions">{dispositionCounts.map(([key, value]) => <span key={key}><strong>{value}</strong> {key.replace('_', ' ')}</span>)}</div>
+      <details className="folder-inventory"><summary>Inspect all {run.items.length} preview rows</summary>
+        <div className="folder-inventory-list">{run.items.map((item) => <article key={item.relativePath}>
+          <div><strong>{item.relativePath}</strong><small>{item.fileType ?? 'path'} · {formatBytes(item.byteSize)}</small></div>
+          <span className={`status-pill ${item.change ?? item.disposition}`}>{(item.change ?? item.disposition).replace('_', ' ')}</span><p>{item.reason}</p>
+        </article>)}</div>
+      </details>
+      {run.status === 'previewed' ? <div className="consent-box">
+        <label><input type="checkbox" checked={consented} onChange={(event) => setConsented(event.target.checked)} /> I approve this exact folder root, inventory, and safety policy</label>
+        <p>Only candidate rows in this preview may be read. New or changed files require a fresh preview.</p>
+        <Button disabled={!consented || candidates.length === 0 || approve.isPending} onClick={() => approve.mutate(run.id)}>{approve.isPending ? 'Approving…' : `Approve ${candidates.length} document${candidates.length === 1 ? '' : 's'}`}</Button>
+        <Button variant="secondary" disabled={cancel.isPending} onClick={() => cancel.mutate(run.id)}>Cancel preview</Button>
+      </div> : null}
+      {approve.error ? <Notice kind="error">{errorMessage(approve.error, 'Folder approval failed.')}</Notice> : null}
+      {active ? <div className="import-progress" aria-live="polite">
+        <div><strong>{run.status === 'approved' ? 'Approved — waiting for the local importer' : run.status === 'cancel_requested' ? 'Stopping between files…' : 'Archiving and importing approved files…'}</strong><span>{reconciled} / {run.items.length} reconciled</span></div>
+        <progress aria-label="Local folder ingestion progress" max={Math.max(run.items.length, 1)} value={reconciled} />
+        <p>Resume safely with <code>ae folders resume --source {source.id}</code>. Changed or new files are never read in this run.</p>
+        <Button variant="secondary" disabled={cancel.isPending || run.status === 'cancel_requested'} onClick={() => cancel.mutate(run.id)}>Cancel safely</Button>
+      </div> : null}
+      {cancel.error ? <Notice kind="error">{errorMessage(cancel.error, 'Unable to cancel folder ingestion.')}</Notice> : null}
+      {final ? <div className="reconciliation" aria-live="polite"><h3>{run.status === 'completed' ? 'Inventory reconciled' : run.status === 'canceled' ? 'Folder ingestion canceled safely' : 'Folder ingestion needs attention'}</h3>
+        <div className="reconciliation-grid">{(['previewed', 'imported', 'updated', 'duplicate', 'excluded', 'changed', 'failed', 'skipped', 'missing'] as const).map((key) => <div key={key}><strong>{run.counts[key] ?? 0}</strong><span>{key}</span></div>)}</div>
+        <p>Run <code>ae folders refresh --source {source.id}</code> to preview added, changed, unchanged, missing, and excluded paths.</p>
+        {run.status !== 'completed' ? <Button variant="secondary" disabled={retry.isPending} onClick={() => retry.mutate(run.id)}>{retry.isPending ? 'Preparing…' : 'Retry failed or interrupted files'}</Button> : null}
+      </div> : null}
+      {retry.data ? <Notice kind="info">Retry prepared. Run <code>ae folders resume --source {source.id}</code>.</Notice> : null}
+      {retry.error ? <Notice kind="error">{errorMessage(retry.error, 'Unable to prepare folder retry.')}</Notice> : null}
+      {source.status !== 'removed' ? <details className="folder-removal"><summary>Remove this folder source</summary>
+        <fieldset><legend>Retention choice</legend><label><input type="radio" name="retention" checked={retention === 'keep'} onChange={() => setRetention('keep')} /> Keep imported memories and local archives</label><label><input type="radio" name="retention" checked={retention === 'delete'} onChange={() => setRetention('delete')} /> Delete mapped memories and source-owned archives</label></fieldset>
+        <label><input type="checkbox" checked={removeConfirmed} onChange={(event) => setRemoveConfirmed(event.target.checked)} /> I understand this choice will be recorded in the local audit log</label>
+        <Button variant="secondary" disabled={!removeConfirmed || remove.isPending} onClick={() => remove.mutate({ sourceId: source.id, retention })}>{remove.isPending ? 'Preparing removal…' : `Prepare ${retention} removal`}</Button>
+        {remove.data ? <Notice kind="info">Removal prepared. Complete local archive handling with <code>ae folders remove {source.id} --retention {retention}</code>.</Notice> : null}
+        {remove.error ? <Notice kind="error">{errorMessage(remove.error, 'Unable to prepare folder removal.')}</Notice> : null}
+      </details> : <Notice kind="success">Folder source removed with {source.retention} retention.</Notice>}
+    </section>
+    <aside className="panel first-import-trust"><span className="figure">LOCAL TRUST BOUNDARY</span><ol><li>You pass one exact root to the local CLI.</li><li>Metadata and a bounded binary sample explain every path.</li><li>Approval unlocks only unchanged candidates.</li><li>Archives preserve bytes and SHA-256 lineage.</li><li>Refresh and removal require another explicit choice.</li></ol></aside>
+  </div>;
 }
 
 function AgentHistoryImport() {
@@ -122,13 +208,14 @@ function ManualImport({ mode }: { mode: 'text' | 'json' }) {
 }
 
 export function ImportPage() {
-  const [mode, setMode] = useState<'agent' | 'text' | 'json'>('agent');
-  return <section className="workspace-page"><PageHeader eyebrow="FIG. 02 / INGEST" title="Import" description="Start with a consent-first agent history import, or preview a manual text or JSON batch." />
+  const [mode, setMode] = useState<'agent' | 'folder' | 'text' | 'json'>('agent');
+  return <section className="workspace-page"><PageHeader eyebrow="FIG. 02 / INGEST" title="Import" description="Preview local history, selected folders, or manual content before it becomes memory." />
     <div className="panel mode-switch import-mode-switch" role="group" aria-label="Import source">
       <button type="button" className={mode === 'agent' ? 'active' : ''} onClick={() => setMode('agent')}>Agent history</button>
+      <button type="button" className={mode === 'folder' ? 'active' : ''} onClick={() => setMode('folder')}>Local folder</button>
       <button type="button" className={mode === 'text' ? 'active' : ''} onClick={() => setMode('text')}>Manual text</button>
       <button type="button" className={mode === 'json' ? 'active' : ''} onClick={() => setMode('json')}>JSON / file batch</button>
     </div>
-    {mode === 'agent' ? <AgentHistoryImport /> : <ManualImport key={mode} mode={mode} />}
+    {mode === 'agent' ? <AgentHistoryImport /> : mode === 'folder' ? <LocalFolderImport /> : <ManualImport key={mode} mode={mode} />}
   </section>;
 }

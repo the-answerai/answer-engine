@@ -434,3 +434,30 @@ export interface FirstImportSession {
     recoveryAction: string | null;
   }>;
 }
+
+export type FolderDisposition = 'candidate' | 'excluded' | 'hidden' | 'unsupported' | 'binary'
+  | 'too_large' | 'access_denied' | 'symlink' | 'aggregate_limit' | 'missing';
+export type FolderOutcome = 'pending' | 'imported' | 'updated' | 'duplicate' | 'excluded'
+  | 'changed' | 'failed' | 'skipped' | 'missing';
+export interface FolderInventoryItem {
+  sourcePath: string; relativePath: string; fileType: string | null; byteSize: number;
+  modifiedAt: string | null; disposition: FolderDisposition; reason: string;
+  change: 'added' | 'changed' | 'unchanged' | 'missing' | 'excluded' | null;
+  metadataFingerprint: string | null; outcome: FolderOutcome; appliedSha256: string | null;
+  contentId: string | null; archiveManifestPath: string | null; errorCode: string | null;
+  recoveryAction: string | null;
+}
+export interface FolderIngestionRun {
+  id: string; sourceId: string; kind: 'initial' | 'refresh' | 'removal';
+  status: 'previewed' | 'approved' | 'running' | 'cancel_requested' | 'canceled' | 'completed' | 'failed';
+  manifestPath: string; inventoryCounts: Record<string, number>; approvedAt: string | null;
+  counts: Record<FolderOutcome | 'previewed', number>; items: FolderInventoryItem[];
+}
+export interface FolderSource {
+  id: string; libraryId: string | null; rootPath: string; includePatterns: string[];
+  excludePatterns: string[]; maxFileBytes: number; maxTotalBytes: number;
+  symlinkPolicy: 'no_follow'; manifestPath: string;
+  status: 'previewed' | 'approved' | 'active' | 'paused' | 'removal_pending' | 'removed';
+  retention: 'keep' | 'delete' | null; approvedAt: string | null; removedAt: string | null;
+  runs: FolderIngestionRun[]; latestRun: FolderIngestionRun | null;
+}

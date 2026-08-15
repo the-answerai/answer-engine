@@ -2,10 +2,13 @@ import { createHash } from 'node:crypto';
 import {
   appendFileSync,
   cpSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
   rmSync,
+  truncateSync,
+  writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -131,13 +134,12 @@ describe('Cowork conversation normalization', () => {
         result_count: 1,
       },
     });
-    expect(parent?.provider_metadata_json.cowork_artifacts).toEqual(expect.arrayContaining([
+    expect(parent?.provider_metadata_json.cowork_artifacts).toEqual([
       expect.objectContaining({
         source_path: artifactPath,
         sha256: createHash('sha256').update(readFileSync(artifactPath)).digest('hex'),
       }),
-      expect.objectContaining({ source_path: copiedChatPath }),
-    ]));
+    ]);
 
     const searchText = conversationSearchText(parent!);
     expect(searchText).toContain('Canonical nested Cowork prompt');
@@ -165,13 +167,51 @@ describe('Cowork conversation normalization', () => {
       auditPath,
       outerPath,
       artifactPath,
-      copiedChatPath,
     ]));
+    expect(manifest.files.map((entry) => entry.path)).not.toContain(copiedChatPath);
     const auditEntry = manifest.files.find((entry) => entry.path === auditPath);
     expect(auditEntry).toBeDefined();
     expect(readFileSync(join(archiveDir, auditEntry!.archive_path))).toEqual(
       readFileSync(auditPath),
     );
+  });
+
+  it('never sweeps unrelated Cowork workspace files or unsupported mounted artifacts', async () => {
+    const root = makeFixtureCopy();
+    const sessionRoot = join(root, 'local-agent-mode-sessions', 'session-one');
+    const workspaceRoot = join(sessionRoot, 'runtime', 'workspace');
+    const outerPath = join(sessionRoot, 'local_session-one.json');
+    const outer = JSON.parse(readFileSync(outerPath, 'utf8')) as Record<string, unknown>;
+    outer.mountedFiles = [
+      'workspace/output.txt',
+      'workspace/model.stl',
+      'workspace/large.txt',
+      '../outside.txt',
+    ];
+    writeFileSync(outerPath, `${JSON.stringify(outer)}\n`);
+    writeFileSync(join(workspaceRoot, 'model.stl'), 'solid unexpectedly-large-model');
+    writeFileSync(join(workspaceRoot, 'large.txt'), '');
+    truncateSync(join(workspaceRoot, 'large.txt'), (25 * 1024 * 1024) + 1);
+    mkdirSync(join(workspaceRoot, 'build'), { recursive: true });
+    writeFileSync(join(workspaceRoot, 'build', 'bundle.js'), 'unrelated build output');
+    mkdirSync(join(workspaceRoot, 'node_modules', 'fixture'), { recursive: true });
+    writeFileSync(join(workspaceRoot, 'node_modules', 'fixture', 'index.js'), 'dependency');
+    writeFileSync(join(sessionRoot, 'outside.txt'), 'path traversal target');
+
+    const [file] = await coworkSource.discover();
+    const result = await coworkSource.readConversations!(file);
+    const manifest = result.conversations[0]?.provider_metadata_json.raw_archive_manifest as {
+      files: Array<{ path: string }>;
+    };
+    const archivedPaths = manifest.files.map((entry) => entry.path);
+
+    expect(archivedPaths).toContain(join(workspaceRoot, 'output.txt'));
+    expect(archivedPaths).not.toContain(join(workspaceRoot, 'model.stl'));
+    expect(archivedPaths).not.toContain(join(workspaceRoot, 'large.txt'));
+    expect(archivedPaths).not.toContain(join(workspaceRoot, 'copied-chat.jsonl'));
+    expect(archivedPaths).not.toContain(join(workspaceRoot, 'build', 'bundle.js'));
+    expect(archivedPaths).not.toContain(join(workspaceRoot, 'node_modules', 'fixture', 'index.js'));
+    expect(archivedPaths).not.toContain(join(sessionRoot, 'outside.txt'));
   });
 
   it('preserves repeated audit UUIDs as distinct line-addressed events', async () => {

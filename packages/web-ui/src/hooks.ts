@@ -27,6 +27,11 @@ import {
   approveFirstImport,
   cancelFirstImport,
   retryFirstImport,
+  latestFolderSource,
+  approveFolderRun,
+  cancelFolderRun,
+  retryFolderRun,
+  prepareFolderRemoval,
   inspectLineage,
   listArtifacts,
   listAccessTokens,
@@ -227,6 +232,26 @@ export function useCancelFirstImport() {
 
 export function useRetryFirstImport() {
   return useInvalidatingMutation(retryFirstImport, [['first-import']]);
+}
+
+export function useLatestFolderSource() {
+  return useQuery({ queryKey: ['folder-source'], queryFn: latestFolderSource,
+    refetchInterval: (query) => ['approved', 'running', 'cancel_requested'].includes(query.state.data?.latestRun?.status ?? '') ? 1_000 : false });
+}
+export function useApproveFolderRun() {
+  return useInvalidatingMutation(approveFolderRun, [['folder-source']]);
+}
+export function useCancelFolderRun() {
+  return useInvalidatingMutation(cancelFolderRun, [['folder-source']]);
+}
+export function useRetryFolderRun() {
+  return useInvalidatingMutation(retryFolderRun, [['folder-source']]);
+}
+export function usePrepareFolderRemoval() {
+  return useInvalidatingMutation(
+    ({ sourceId, retention }: { sourceId: string; retention: 'keep' | 'delete' }) => prepareFolderRemoval(sourceId, retention),
+    [['folder-source']],
+  );
 }
 
 export function useRecipes(libraryId: string) {
