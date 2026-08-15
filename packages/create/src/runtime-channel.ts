@@ -88,7 +88,7 @@ export function createRuntimeChannelProfile(
 
 export function writeRuntimeOwnershipMarker(profile: RuntimeChannelProfile): void {
   const composeFile = join(profile.home, 'docker-compose.yml');
-  writeFileSync(profile.markerFile, `${JSON.stringify({
+  const contents = `${JSON.stringify({
     schemaVersion: 2,
     channel: profile.channel,
     home: profile.home,
@@ -97,7 +97,9 @@ export function writeRuntimeOwnershipMarker(profile: RuntimeChannelProfile): voi
     volumes: profile.volumes,
     databaseName: profile.databaseName,
     composeFileSha256: createHash('sha256').update(readFileSync(composeFile)).digest('hex'),
-  }, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
+  }, null, 2)}\n`;
+  if (existsSync(profile.markerFile) && readFileSync(profile.markerFile, 'utf8') === contents) return;
+  writeFileSync(profile.markerFile, contents, { encoding: 'utf8', mode: 0o600 });
   chmodSync(profile.markerFile, 0o600);
 }
 

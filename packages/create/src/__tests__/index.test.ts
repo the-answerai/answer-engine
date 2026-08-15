@@ -26,6 +26,7 @@ describe('create-answer-engine CLI', () => {
       '--image',
       '--uninstall',
       '--purge',
+      '--json',
     ]));
     expect(buildProgram().registeredArguments[0]?.defaultValue).toBe('install');
   });
@@ -36,7 +37,7 @@ describe('create-answer-engine CLI', () => {
     writeInstallAgentGuidance({ write: (message) => messages.push(message) });
 
     expect(INSTALL_AGENT_URL).toBe(
-      'https://raw.githubusercontent.com/the-answerai/answer-engine/master/INSTALL_AGENT.md',
+      'https://raw.githubusercontent.com/the-answerai/answer-engine/v1.1.0/INSTALL_AGENT.md',
     );
     expect(messages).toEqual([
       `Agent-guided configuration: ${INSTALL_AGENT_URL}`,

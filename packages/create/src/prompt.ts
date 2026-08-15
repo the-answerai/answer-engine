@@ -5,6 +5,7 @@ export interface Prompt {
   input(message: string, defaultValue?: string): Promise<string>;
   secret(message: string): Promise<string>;
   select(message: string, choices: string[]): Promise<string>;
+  confirm?(message: string, defaultValue?: boolean): Promise<boolean>;
 }
 
 async function question(message: string): Promise<string> {
@@ -74,6 +75,16 @@ export function createPrompt(): Prompt {
         const index = Number.parseInt(raw, 10) - 1;
         if (index >= 0 && index < choices.length) return choices[index];
         stdout.write(`Enter a number from 1 to ${choices.length}.\n`);
+      }
+    },
+    async confirm(message, defaultValue = false) {
+      const hint = defaultValue ? 'Y/n' : 'y/N';
+      for (;;) {
+        const value = (await question(`${message} (${hint}): `)).trim().toLowerCase();
+        if (!value) return defaultValue;
+        if (value === 'y' || value === 'yes') return true;
+        if (value === 'n' || value === 'no') return false;
+        stdout.write('Enter yes or no.\n');
       }
     },
   };

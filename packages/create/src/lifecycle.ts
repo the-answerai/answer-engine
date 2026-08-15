@@ -10,9 +10,10 @@ import { runCommand as defaultRunCommand } from './process.js';
 import { readEnvValue } from './scaffold.js';
 import { uninstall } from './uninstall.js';
 import { assertRuntimeChannelConfiguration, type RuntimeChannelProfile } from './runtime-channel.js';
+import { assertImmutableImageReference, verifyBundledRelease } from './release.js';
 
 export const LifecycleActionSchema = z.enum([
-  'install', 'start', 'stop', 'status', 'repair', 'upgrade', 'rollback', 'uninstall',
+  'preflight', 'install', 'start', 'stop', 'status', 'repair', 'upgrade', 'rollback', 'uninstall',
 ]);
 export type LifecycleAction = z.infer<typeof LifecycleActionSchema>;
 
@@ -30,7 +31,14 @@ const OwnershipMarkerSchema = z.object({
 const ReleaseStateSchema = z.object({
   current: z.string().trim().min(1).regex(/^\S+$/),
   previous: z.string().trim().min(1).regex(/^\S+$/),
+  lastAction: z.enum(['upgrade', 'rollback']).optional(),
+  pending: z.object({
+    action: z.enum(['upgrade', 'rollback']),
+    from: z.string().trim().min(1).regex(/^\S+$/),
+    to: z.string().trim().min(1).regex(/^\S+$/),
+  }).strict().optional(),
 }).strict();
+type ReleaseState = z.infer<typeof ReleaseStateSchema>;
 
 export interface LifecycleOptions {
   purge?: boolean;
@@ -173,6 +181,11 @@ function replaceEnvAssignment(path: string, key: string, value: string): void {
   chmodSync(path, 0o600);
 }
 
+function writeReleaseState(path: string, state: ReleaseState): void {
+  writeFileSync(path, `${JSON.stringify(ReleaseStateSchema.parse(state))}\n`, { encoding: 'utf8', mode: 0o600 });
+  chmodSync(path, 0o600);
+}
+
 async function recreate(
   profile: RuntimeChannelProfile,
   command: CommandRunner,
@@ -186,7 +199,7 @@ async function recreate(
 }
 
 export async function runLifecycleAction(
-  action: Exclude<LifecycleAction, 'install'>,
+  action: Exclude<LifecycleAction, 'install' | 'preflight'>,
   profile: RuntimeChannelProfile,
   options: LifecycleOptions = {},
   dependencies: LifecycleDependencies = {},
@@ -200,6 +213,15 @@ export async function runLifecycleAction(
     };
   }
   assertRuntimeOwnership(profile);
+
+  if (action === 'rollback' && existsSync(profile.releaseFile)) {
+    try {
+      const releaseState = ReleaseStateSchema.parse(JSON.parse(readFileSync(profile.releaseFile, 'utf8')));
+      if (releaseState.lastAction === 'rollback' && !releaseState.pending) return;
+    } catch {
+      // The guarded rollback branch below reports the actionable error.
+    }
+  }
 
   if (action === 'start' || action === 'repair' || action === 'upgrade' || action === 'rollback') {
     await assertSelectedPortsAvailable(profile, command, dependencies);
@@ -218,26 +240,55 @@ export async function runLifecycleAction(
     return;
   }
   if (action === 'repair') {
+    const health = await readChannelHealth(profile, { ...dependencies, healthAttempts: 1 });
+    if (health.healthy) return;
     await recreate(profile, command, dependencies, false);
     return;
   }
   if (action === 'upgrade') {
+    const manifest = verifyBundledRelease();
     const environment = readFileSync(profile.credentialsFile, 'utf8');
     const current = readEnvValue(environment, 'ANSWER_ENGINE_IMAGE')
       ?? 'ghcr.io/the-answerai/answer-engine:1.1.0';
-    const next = z.string().trim().min(1).regex(/^\S+$/).parse(options.image ?? current);
-    replaceEnvAssignment(profile.credentialsFile, 'ANSWER_ENGINE_IMAGE', next);
-    writeFileSync(profile.releaseFile, `${JSON.stringify({ current: next, previous: current })}\n`, { encoding: 'utf8', mode: 0o600 });
+    const next = assertImmutableImageReference(options.image ?? manifest.images.answerEngine, manifest);
+    let pendingFrom = current;
+    if (existsSync(profile.releaseFile)) {
+      try {
+        const state = ReleaseStateSchema.parse(JSON.parse(readFileSync(profile.releaseFile, 'utf8')));
+        if (state.pending?.action === 'upgrade' && state.pending.to === next) pendingFrom = state.pending.from;
+      } catch {
+        // A fresh guarded upgrade replaces malformed non-secret release history.
+      }
+    }
+    if (next === current) {
+      const health = await readChannelHealth(profile, { ...dependencies, healthAttempts: 1 });
+      if (health.healthy && pendingFrom === current) return;
+    } else {
+      replaceEnvAssignment(profile.credentialsFile, 'ANSWER_ENGINE_IMAGE', next);
+    }
+    writeReleaseState(profile.releaseFile, {
+      current: pendingFrom, previous: pendingFrom,
+      pending: { action: 'upgrade', from: pendingFrom, to: next },
+    });
     await recreate(profile, command, dependencies, true);
+    writeReleaseState(profile.releaseFile, { current: next, previous: pendingFrom, lastAction: 'upgrade' });
     return;
   }
   if (action === 'rollback') {
+    const manifest = verifyBundledRelease();
     let release;
     try { release = ReleaseStateSchema.parse(JSON.parse(readFileSync(profile.releaseFile, 'utf8'))); }
     catch { throw new Error(`No guarded rollback release is recorded for ${profile.channel}.`); }
-    replaceEnvAssignment(profile.credentialsFile, 'ANSWER_ENGINE_IMAGE', release.previous);
-    writeFileSync(profile.releaseFile, `${JSON.stringify({ current: release.previous, previous: release.current })}\n`, { encoding: 'utf8', mode: 0o600 });
+    if (release.lastAction === 'rollback' && !release.pending) return;
+    const from = release.pending?.action === 'rollback' ? release.pending.from : release.current;
+    const to = release.pending?.action === 'rollback' ? release.pending.to : release.previous;
+    assertImmutableImageReference(to, manifest);
+    replaceEnvAssignment(profile.credentialsFile, 'ANSWER_ENGINE_IMAGE', to);
+    writeReleaseState(profile.releaseFile, {
+      current: from, previous: to, pending: { action: 'rollback', from, to },
+    });
     await recreate(profile, command, dependencies, true);
+    writeReleaseState(profile.releaseFile, { current: to, previous: from, lastAction: 'rollback' });
     return;
   }
 

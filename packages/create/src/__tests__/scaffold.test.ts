@@ -77,6 +77,12 @@ describe('scaffoldInstallation', () => {
     expect(env).toContain(`ENCRYPTION_SALT=${'b'.repeat(64)}`);
     expect(env).toContain('ANSWER_ENGINE_API_KEY=ae_live_once');
     expect(second.apiKey).toBe('ae_live_once');
+
+    const customConfig = `${readFileSync(second.configPath, 'utf8')}# user note\n`;
+    writeFileSync(second.configPath, customConfig, { mode: 0o600 });
+    const third = scaffoldInstallation({ home, config }, { generateSecret: () => 'd'.repeat(64) });
+    expect(readFileSync(third.configPath, 'utf8')).toBe(customConfig);
+    expect(third.changes).toEqual([]);
   });
 
   it('renders staging-only ports, credentials, volumes, and disabled sync defaults', () => {

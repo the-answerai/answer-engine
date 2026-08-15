@@ -23,7 +23,7 @@ function fixture(channel: 'stable' | 'staging' = 'staging') {
     `WEB_UI_PORT=${profile.ports.web}`,
     `ANSWER_ENGINE_MCP_PORT=${profile.ports.mcp}`,
     `DATABASE_NAME=${profile.databaseName}`,
-    'ANSWER_ENGINE_IMAGE=example/current:1',
+    `ANSWER_ENGINE_IMAGE=example/current@sha256:${'1'.repeat(64)}`,
     '',
   ].join('\n'));
   writeRuntimeOwnershipMarker(profile);
@@ -134,9 +134,62 @@ describe('channel lifecycle actions', () => {
     const runCommand = vi.fn(async (_command: string, _args: string[]) => ({ stdout: '' }));
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ status: 'healthy', channel: 'staging', uptime: 1 }), { status: 200 }));
 
-    await runLifecycleAction('upgrade', profile, { image: 'example/next:2' }, { runCommand, fetchImpl, probePort: async () => true });
-    expect(JSON.parse(readFileSync(profile.releaseFile, 'utf8'))).toEqual({ current: 'example/next:2', previous: 'example/current:1' });
+    const current = `example/current@sha256:${'1'.repeat(64)}`;
+    const next = `example/next@sha256:${'2'.repeat(64)}`;
+    await runLifecycleAction('upgrade', profile, { image: next }, { runCommand, fetchImpl, probePort: async () => true });
+    expect(JSON.parse(readFileSync(profile.releaseFile, 'utf8'))).toEqual({
+      current: next, previous: current, lastAction: 'upgrade',
+    });
     await runLifecycleAction('rollback', profile, {}, { runCommand, fetchImpl, probePort: async () => true });
-    expect(JSON.parse(readFileSync(profile.releaseFile, 'utf8'))).toEqual({ current: 'example/current:1', previous: 'example/next:2' });
+    expect(JSON.parse(readFileSync(profile.releaseFile, 'utf8'))).toEqual({
+      current, previous: next, lastAction: 'rollback',
+    });
+
+    const callsAfterRollback = runCommand.mock.calls.length;
+    await runLifecycleAction('rollback', profile, {}, { runCommand, fetchImpl, probePort: async () => true });
+    expect(runCommand).toHaveBeenCalledTimes(callsAfterRollback);
+  });
+
+  it('repairs a healthy runtime as an explicit no-op', async () => {
+    const profile = fixture();
+    const runCommand = vi.fn(async (_command: string, _args: string[]) => ({ stdout: 'api\npostgres\nredis\n' }));
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      status: 'healthy', channel: 'staging', uptime: 1,
+    }), { status: 200 }));
+
+    await runLifecycleAction('repair', profile, {}, { runCommand, fetchImpl, probePort: async () => true });
+
+    expect(runCommand.mock.calls.some(([, args]) => args.includes('up'))).toBe(false);
+  });
+
+  it('resumes a failed upgrade without losing the prior rollback target', async () => {
+    const profile = fixture();
+    const current = `example/current@sha256:${'1'.repeat(64)}`;
+    const next = `example/next@sha256:${'2'.repeat(64)}`;
+    let failRecreate = true;
+    const runCommand = vi.fn(async (_command: string, args: string[]) => {
+      if (args.includes('up') && failRecreate) {
+        failRecreate = false;
+        throw new Error('simulated interrupted recreate');
+      }
+      return { stdout: '' };
+    });
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      status: 'healthy', channel: 'staging', uptime: 1,
+    }), { status: 200 }));
+
+    await expect(runLifecycleAction('upgrade', profile, { image: next }, {
+      runCommand, fetchImpl, probePort: async () => true,
+    })).rejects.toThrow('simulated interrupted recreate');
+    expect(JSON.parse(readFileSync(profile.releaseFile, 'utf8'))).toMatchObject({
+      pending: { action: 'upgrade', from: current, to: next },
+    });
+
+    await runLifecycleAction('upgrade', profile, { image: next }, {
+      runCommand, fetchImpl, probePort: async () => true,
+    });
+    expect(JSON.parse(readFileSync(profile.releaseFile, 'utf8'))).toEqual({
+      current: next, previous: current, lastAction: 'upgrade',
+    });
   });
 });

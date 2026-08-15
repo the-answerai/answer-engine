@@ -5,7 +5,12 @@ import { activateApiKey, detectOwnedPorts, startStack } from './docker.js';
 import { parseModelSpec, prepareLmStudioModels, resolveModelSetup } from './models.js';
 import type { InstallerOptions } from './options.js';
 import { formatPreflightFailures, runPreflight } from './preflight.js';
+import { formatPreflightReport } from './preflight.js';
 import { createPrompt } from './prompt.js';
+import type { Prompt } from './prompt.js';
+import { recommendModelProfile, requireInstallConsent } from './interview.js';
+import { verifyBundledRelease } from './release.js';
+import { runLifecycleAction } from './lifecycle.js';
 import { scaffoldInstallation } from './scaffold.js';
 import { readEnvValue } from './scaffold.js';
 import { verifyMemoryRoundTrip } from './verify.js';
@@ -23,8 +28,18 @@ export interface InstallOutput {
   write(message: string): void;
 }
 
+export interface InstallDependencies {
+  prompt?: Prompt;
+  detectOwnedPorts?: typeof detectOwnedPorts;
+  runPreflight?: typeof runPreflight;
+  verifyBundledRelease?: typeof verifyBundledRelease;
+  runLifecycleAction?: typeof runLifecycleAction;
+  resolveModelSetup?: typeof resolveModelSetup;
+  selectAgents?: typeof selectAgents;
+}
+
 export const INSTALL_AGENT_URL =
-  'https://raw.githubusercontent.com/the-answerai/answer-engine/master/INSTALL_AGENT.md';
+  'https://raw.githubusercontent.com/the-answerai/answer-engine/v1.1.0/INSTALL_AGENT.md';
 
 export function writeInstallAgentGuidance(output: InstallOutput): void {
   output.write(`Agent-guided configuration: ${INSTALL_AGENT_URL}`);
@@ -37,19 +52,42 @@ const defaultOutput: InstallOutput = {
 export async function install(
   options: InstallerOptions,
   output: InstallOutput = defaultOutput,
+  dependencies: InstallDependencies = {},
 ): Promise<void> {
   const channel = parseRuntimeChannel(options.channel ?? process.env.AE_CHANNEL);
-  const homeOverride = options.home ?? process.env.AE_HOME;
+  const prompt = options.yes ? undefined : dependencies.prompt ?? createPrompt();
+  const configuredHome = options.home ?? process.env.AE_HOME;
+  const defaultHome = createRuntimeChannelProfile(channel).home;
+  const homeOverride = configuredHome
+    ?? (prompt ? await prompt.input('Installation folder', defaultHome) : undefined);
   const profile = createRuntimeChannelProfile(channel, {
     ...(homeOverride ? { home: resolve(homeOverride) } : {}),
   });
   const home = profile.home;
   await validateRuntimeChannelIsolation(channelProfiles(channel, home));
-  process.env.AE_HOME = home;
-  process.env.AE_CHANNEL = channel;
+  if (channel === 'staging' && options.agents && options.agents.trim().toLowerCase() !== 'none') {
+    throw new Error('Staging cannot write global agent configuration; use --agents none.');
+  }
+  output.write(chalk.cyan('1/6 Preflight'));
+  const ownedPorts = await (dependencies.detectOwnedPorts ?? detectOwnedPorts)(home, {}, profile);
+  const preflight = await (dependencies.runPreflight ?? runPreflight)({
+    home, ownedPorts, requiredPorts: Object.values(profile.ports),
+  });
+  if (!preflight.ok) throw new Error(formatPreflightFailures(preflight.failures));
+  output.write(preflight.status === 'pass'
+    ? chalk.green('  Supported local baseline is ready.')
+    : chalk.yellow(formatPreflightReport(preflight)));
+
+  const release = (dependencies.verifyBundledRelease ?? verifyBundledRelease)();
+  output.write(chalk.green(`  Verified installer ${release.tag} and bundled checksums.`));
+
+  const recommendation = recommendModelProfile(preflight);
+  output.write(`  Recommended profile: ${recommendation.label}. ${recommendation.reason}`);
+
   const legacyFiles = ['docker-compose.yml', '.env.compose', 'config.yaml']
     .map((name) => join(home, name));
   if (channel === 'stable' && legacyFiles.every(existsSync) && !existsSync(profile.markerFile)) {
+    if (prompt) await requireInstallConsent(prompt, { home, profile: recommendation.id, agents: [] });
     const envPath = join(home, '.env.compose');
     const environment = readFileSync(envPath, 'utf8');
     const project = readEnvValue(environment, 'COMPOSE_PROJECT_NAME');
@@ -66,19 +104,22 @@ export async function install(
     output.write(chalk.green(`Adopted the existing stable installation at ${home} without restarting or changing data.`));
     return;
   }
-  if (channel === 'staging' && options.agents && options.agents.trim().toLowerCase() !== 'none') {
-    throw new Error('Staging cannot write global agent configuration; use --agents none.');
-  }
-  const prompt = options.yes ? undefined : createPrompt();
 
-  output.write(chalk.cyan('1/6 Preflight'));
-  const ownedPorts = await detectOwnedPorts(home, {}, profile);
-  const preflight = await runPreflight({ ownedPorts, requiredPorts: Object.values(profile.ports) });
-  if (!preflight.ok) throw new Error(formatPreflightFailures(preflight.failures));
-  output.write(chalk.green('  Docker, Compose, Node, and ports are ready.'));
+  if (preflight.installation === 'managed') {
+    const status = await (dependencies.runLifecycleAction ?? runLifecycleAction)('status', profile);
+    if (status?.healthy) {
+      output.write(chalk.green(`Answer Engine is already healthy at ${profile.apiUrl}; no changes were made.`));
+      writeInstallAgentGuidance(output);
+      return;
+    }
+  }
 
   output.write(chalk.cyan('2/6 Models'));
-  const modelSetup = await resolveModelSetup(options, { prompt });
+  const modelSetup = await (dependencies.resolveModelSetup ?? resolveModelSetup)(options, { prompt });
+  const agents = channel === 'staging' ? [] : await (dependencies.selectAgents ?? selectAgents)(options, prompt);
+  if (prompt) await requireInstallConsent(prompt, { home, profile: recommendation.id, agents });
+  process.env.AE_HOME = home;
+  process.env.AE_CHANNEL = channel;
   if (modelSetup.config.models.chat_provider === 'lmstudio') {
     await prepareLmStudioModels(
       parseModelSpec(
@@ -101,7 +142,9 @@ export async function install(
   });
   assertRuntimeChannelConfiguration(profile);
   await validateRuntimeChannelIsolation(channelProfiles(channel, home));
-  output.write(chalk.green(`  Configuration: ${scaffold.configPath}`));
+  output.write(chalk.green(scaffold.changes.length === 0
+    ? `  Configuration already matched at ${scaffold.configPath}; no files changed.`
+    : `  Configuration: ${scaffold.configPath} (${scaffold.changes.join(', ')} updated).`));
 
   output.write(chalk.cyan('4/6 Start'));
   const loggedKey = await startStack(home, {}, profile);
@@ -117,7 +160,6 @@ export async function install(
   output.write(chalk.green(`  ${channel} Answer Engine is healthy at ${profile.apiUrl}.`));
 
   output.write(chalk.cyan('5/6 Wire agents'));
-  const agents = channel === 'staging' ? [] : await selectAgents(options, prompt);
   const wiring = wireAgents(agents, apiKey, profile.apiUrl);
   if (wiring.length === 0) output.write('  No agent configs selected.');
   for (const result of wiring) output.write(chalk.green(`  Wired ${result.path}`));
@@ -126,10 +168,6 @@ export async function install(
   const contentId = await verifyMemoryRoundTrip({ apiKey, apiUrl: profile.apiUrl });
   output.write(chalk.green(`  remember → recall → inspect_memory passed (${contentId}).`));
 
-  if (!providedKey && !scaffold.apiKey && loggedKey) {
-    output.write(chalk.yellow(`ANSWER_ENGINE_API_KEY=${loggedKey}`));
-    output.write('Save this key now. It is also secured in $AE_HOME/.env.compose.');
-  }
   output.write(chalk.bold.green('Answer Engine is ready.'));
   output.write(`Config: ${scaffold.configPath}`);
   writeInstallAgentGuidance(output);

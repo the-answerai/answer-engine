@@ -8,6 +8,8 @@ import { Command } from 'commander';
 import { install } from './install.js';
 import type { InstallerOptions } from './options.js';
 import { parseLifecycleAction, runLifecycleAction } from './lifecycle.js';
+import { detectOwnedPorts } from './docker.js';
+import { formatPreflightReport, runPreflight } from './preflight.js';
 import {
   channelProfiles,
   createRuntimeChannelProfile,
@@ -23,7 +25,7 @@ export function buildProgram(): Command {
     .name('create-answer-engine')
     .description('Install and wire a local Answer Engine in one command')
     .version(manifest.version)
-    .argument('[action]', 'install, start, stop, status, repair, upgrade, rollback, or uninstall', 'install')
+    .argument('[action]', 'preflight, install, start, stop, status, repair, upgrade, rollback, or uninstall', 'install')
     .option('--channel <channel>', 'runtime channel: stable or staging')
     .option('-y, --yes', 'run without interactive prompts')
     .option('--models <models>', 'LM Studio models: chat=<id>,embedding=<id>')
@@ -40,7 +42,8 @@ export function buildProgram(): Command {
     .option('--api-key <key>', 'existing local Answer Engine API key')
     .option('--image <reference>', 'pinned image reference for upgrade')
     .option('--uninstall', 'stop and remove the local Compose stack')
-    .option('--purge', 'with uninstall, also delete selected-channel volumes and AE_HOME');
+    .option('--purge', 'with uninstall, also delete selected-channel volumes and AE_HOME')
+    .option('--json', 'emit machine-readable JSON (preflight and status)');
 }
 
 export async function run(argv: string[] = process.argv): Promise<void> {
@@ -58,6 +61,14 @@ export async function run(argv: string[] = process.argv): Promise<void> {
   });
   const home = profile.home;
   await validateRuntimeChannelIsolation(channelProfiles(channel, home));
+
+  if (action === 'preflight') {
+    const ownedPorts = await detectOwnedPorts(home, {}, profile);
+    const result = await runPreflight({ home, ownedPorts, requiredPorts: Object.values(profile.ports) });
+    process.stdout.write(`${formatPreflightReport(result, options.json)}\n`);
+    if (!result.ok) process.exitCode = 2;
+    return;
+  }
 
   if (options.purge && action !== 'uninstall') {
     throw new Error('--purge can only be used with the uninstall action.');
