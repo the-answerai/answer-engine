@@ -487,6 +487,63 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/recall-tutorials/capabilities:
+    get:
+      tags: [Onboarding]
+      summary: Preflight supported same-client and cross-client recall paths
+      parameters:
+        - in: query
+          name: environment
+          schema: { enum: [native, wsl], default: native }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/recall-tutorials:
+    get:
+      tags: [Onboarding]
+      summary: List recent first-memory proof challenges
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Onboarding]
+      summary: Create a harmless remember and fresh-chat recall challenge
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RecallTutorialCreateRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/recall-tutorials/{tutorialId}:
+    parameters:
+      - { $ref: '#/components/parameters/TutorialId' }
+    get:
+      tags: [Onboarding]
+      summary: Inspect tutorial progress and answer-free fresh-chat instructions
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/recall-tutorials/{tutorialId}/check:
+    parameters:
+      - { $ref: '#/components/parameters/TutorialId' }
+    post:
+      tags: [Onboarding]
+      summary: Verify ordered remember, recall citation, and lineage tool evidence
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RecallTutorialCheckRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /api/v1/tags:
     get:
       tags: [Organization]
@@ -1074,6 +1131,11 @@ components:
       name: planId
       required: true
       schema: { type: string, format: uuid }
+    TutorialId:
+      in: path
+      name: tutorialId
+      required: true
+      schema: { type: string, format: uuid }
     FirstImportSessionId:
       in: path
       name: sessionId
@@ -1275,6 +1337,21 @@ components:
           type: array
           maxItems: 30
           items: { $ref: '#/components/schemas/OrganizationDecision' }
+    RecallTutorialCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [writeClient, recallClient]
+      properties:
+        writeClient: { $ref: '#/components/schemas/RecallTutorialClient' }
+        recallClient: { $ref: '#/components/schemas/RecallTutorialClient' }
+        environment: { enum: [native, wsl], default: native }
+    RecallTutorialClient:
+      enum: [codex, chatgpt-desktop, chatgpt-work, chatgpt-web, claude-code, claude-desktop, claude-cowork, cursor, cli]
+    RecallTutorialCheckRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        reportedFailure: { enum: [runtime, wiring, access, indexing, retrieval] }
     TagInput:
       type: object
       additionalProperties: false

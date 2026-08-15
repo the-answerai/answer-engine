@@ -14,6 +14,7 @@ import { registerFolderCommands } from './commands/folders.js';
 import { registerConfigCommands } from './commands/config.js';
 import { registerEvalCommands } from './commands/eval.js';
 import { registerOrganizationCommands } from './commands/organize.js';
+import { registerTutorialCommands } from './commands/tutorial.js';
 import { setOutputMode } from './output.js';
 import { getConfig } from './config.js';
 import { resolveRuntimeChannel } from './channel.js';
@@ -49,6 +50,7 @@ registerSyncCommands(program);
 registerFolderCommands(program);
 registerEvalCommands(program);
 registerOrganizationCommands(program);
+registerTutorialCommands(program);
 
 // Add full usage reference to help output
 program.addHelpText('after', `
@@ -79,6 +81,9 @@ Examples:
   ae organize apply <plan-id> --accept <id> --reject <id>
                                                 Decide every suggestion before mutation
   ae organize undo <plan-id>                 Restore pre-organization taxonomy and memberships
+  ae tutorial start --write-client codex --recall-client claude-code
+                                                Create a harmless cross-chat memory proof
+  ae tutorial check <tutorial-id>             Verify recall and source tool evidence
   ae sync install-service                     Start sync now and automatically after login
   ae sync status                              Show service health and per-source cursors
   ae sync uninstall-service                   Stop and remove the background service

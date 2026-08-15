@@ -5,6 +5,8 @@ export interface Principal {
   tenantId: string;
   apiKeyId: string;
   libraryId?: string;
+  surface?: 'mcp' | 'cli' | 'cli-sync' | 'browser' | 'api';
+  client?: 'codex' | 'chatgpt-desktop' | 'claude-code' | 'claude-desktop' | 'cursor' | 'cli';
 }
 
 export interface LibraryScope {

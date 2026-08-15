@@ -9,6 +9,7 @@ import {
   createDashboard,
   createLibrary,
   createOrganizationProposal,
+  createRecallTutorial,
   createRecipe,
   createReport,
   createTag,
@@ -42,6 +43,8 @@ import {
   listContent,
   listLibraries,
   listOrganizationPlans,
+  listRecallTutorials,
+  recallTutorialCapabilities,
   listDashboards,
   listLibraryMembers,
   listGeneratedReports,
@@ -68,8 +71,9 @@ import {
   updateTag,
   applyOrganizationPlan,
   undoOrganizationPlan,
+  checkRecallTutorial,
 } from './api';
-import type { BatchJob, ContentFilters, Dashboard, FirstImportSourceId, ImportItem, LibraryFilter, LocalSettings, OrganizationDecision, RecipeInput, ReportInput, Tag } from './types';
+import type { BatchJob, ContentFilters, Dashboard, FirstImportSourceId, ImportItem, LibraryFilter, LocalSettings, OrganizationDecision, RecallTutorialClient, RecipeInput, ReportInput, Tag } from './types';
 
 const isActive = (status?: string) => status === 'queued' || status === 'running';
 
@@ -225,6 +229,20 @@ export function useUndoOrganizationPlan() {
   return useInvalidatingMutation(
     (planId: string) => undoOrganizationPlan(planId),
     [['organization-plans'], ['tags'], ['libraries'], ['content']],
+  );
+}
+
+export function useRecallTutorialCapabilities(environment: 'native' | 'wsl') {
+  return useQuery({ queryKey: ['recall-tutorial-capabilities', environment], queryFn: () => recallTutorialCapabilities(environment) });
+}
+export function useRecallTutorials() { return useQuery({ queryKey: ['recall-tutorials'], queryFn: listRecallTutorials }); }
+export function useCreateRecallTutorial() {
+  return useInvalidatingMutation(createRecallTutorial, [['recall-tutorials']]);
+}
+export function useCheckRecallTutorial() {
+  return useInvalidatingMutation(
+    ({ id, reportedFailure }: { id: string; reportedFailure?: 'runtime' | 'wiring' | 'access' | 'indexing' | 'retrieval' }) => checkRecallTutorial(id, reportedFailure),
+    [['recall-tutorials'], ['audit'], ['content']],
   );
 }
 

@@ -66,7 +66,7 @@ describe('local application shell', () => {
 
     const navigation = await screen.findByRole('navigation', { name: 'Primary' });
     expect([...navigation.querySelectorAll('a')].map((link) => link.textContent?.replace(/^\d+/, '')))
-      .toEqual(['Content', 'Import', 'Tags', 'Libraries', 'Organize', 'Answers', 'Batch Jobs', 'Settings']);
+      .toEqual(['Content', 'Import', 'Tags', 'Libraries', 'Organize', 'First memory', 'Answers', 'Batch Jobs', 'Settings']);
   });
 
   it('renders a permanent staging indicator in desktop and mobile identity surfaces', async () => {

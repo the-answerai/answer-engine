@@ -21,6 +21,7 @@ describe('AnswerEngineClient', () => {
     await client.getSchema();
     expect(mockFetch.mock.calls[0][1].headers['X-API-Key']).toBe('ae_live_test');
     expect(mockFetch.mock.calls[0][1].headers['X-AE-Surface']).toBe('cli');
+    expect(mockFetch.mock.calls[0][1].headers['X-AE-Client']).toBe('cli');
   });
 
   it('throws ApiError on HTTP error', async () => {
@@ -46,6 +47,7 @@ describe('AnswerEngineClient', () => {
     const result = await client.healthCheck();
     expect(result.status).toBe('healthy');
     expect(mockFetch.mock.calls[0][1].headers['X-AE-Surface']).toBe('cli');
+    expect(mockFetch.mock.calls[0][1].headers['X-AE-Client']).toBe('cli');
   });
 
   it('refuses authenticated requests when the API reports another runtime channel', async () => {
@@ -111,6 +113,7 @@ describe('AnswerEngineClient', () => {
     });
 
     expect(mockFetch.mock.calls[0][1].headers['X-AE-Surface']).toBe('cli-sync');
+    expect(mockFetch.mock.calls[0][1].headers['X-AE-Client']).toBe('cli');
     expect(JSON.parse(mockFetch.mock.calls[0][1].body)).toMatchObject({
       librarySlug: 'memory',
       items: [
@@ -151,6 +154,20 @@ describe('AnswerEngineClient', () => {
     expect(JSON.parse(mockFetch.mock.calls[0][1].body)).toEqual({
       decisions: [{ suggestionId: 's-1111111111111111', decision: 'accept' }],
     });
+  });
+
+  it('checks one encoded tutorial ID with an optional diagnostic report', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ success: true, data: { id: 'tutorial-1', status: 'remembered' } }),
+    });
+
+    await client.checkRecallTutorial('tutorial/unsafe', 'access');
+
+    expect(mockFetch.mock.calls[0][0]).toBe(
+      'http://localhost:5050/api/v1/recall-tutorials/tutorial%2Funsafe/check',
+    );
+    expect(JSON.parse(mockFetch.mock.calls[0][1].body)).toEqual({ reportedFailure: 'access' });
   });
 
   it('deletes synced content by ID with the cli-sync surface', async () => {

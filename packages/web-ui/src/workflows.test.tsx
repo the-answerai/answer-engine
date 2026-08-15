@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
-import type { FolderSource, OrganizationPlan } from './types';
+import type { FolderSource, OrganizationPlan, RecallTutorial } from './types';
 
 const contentId = '11111111-1111-4111-8111-111111111111';
 
@@ -23,6 +23,59 @@ function healthResponse() {
 describe('primary local workflows', () => {
   beforeEach(() => { vi.restoreAllMocks(); });
   afterEach(cleanup);
+
+  it('proves a first memory only after fresh-chat recall and source evidence', async () => {
+    window.history.replaceState({}, '', '/first-memory');
+    const id = '77777777-7777-4777-8777-777777777777';
+    const marker = 'ae-demo-111111111111';
+    const fact = `For ${marker}, the harmless demo lighthouse color is cobalt.`;
+    const base: RecallTutorial = {
+      id, status: 'planned', writeClient: 'codex', recallClient: 'claude-code', sameClient: false,
+      marker, fact, sourceIdentifier: `recall-tutorial:${marker}`, contentId: null,
+      diagnostic: { code: 'waiting_for_remember', details: {} },
+      instructions: {
+        remember: { client: 'codex', text: `Remember this exact fact: ${fact}` },
+        freshChat: { client: 'claude-code', answerBearingContextIncluded: false, text: `Recall exact marker ${marker}, then inspect_memory on the returned ID.` },
+      },
+      rememberedAt: null, verifiedAt: null,
+      createdAt: '2026-08-15T20:00:00.000Z', updatedAt: '2026-08-15T20:00:00.000Z',
+    };
+    let current: RecallTutorial | undefined;
+    let checks = 0;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === '/local-ui/session') return new Response(null, { status: 204 });
+      if (url === '/health') return healthResponse();
+      if (url === '/api/v1/settings') return json({ defaultPageSize: 25, defaultLibraryId: null, density: 'comfortable', defaultExportFormat: 'json' });
+      if (url.startsWith('/api/v1/recall-tutorials/capabilities')) return json([
+        { id: 'codex', label: 'Codex', supported: true, verification: 'command', surface: 'mcp' },
+        { id: 'claude-code', label: 'Claude Code', supported: true, verification: 'command', surface: 'mcp' },
+        { id: 'chatgpt-web', label: 'ChatGPT web', supported: false, verification: 'unavailable', surface: 'mcp', limitation: 'Cannot reach localhost.' },
+      ]);
+      if (url === '/api/v1/recall-tutorials' && init?.method === 'POST') { current = base; return json(current, undefined, 201); }
+      if (url === '/api/v1/recall-tutorials') return json(current ? [current] : []);
+      if (url.endsWith('/check') && init?.method === 'POST') {
+        checks += 1;
+        current = checks === 1
+          ? { ...base, status: 'remembered', contentId, diagnostic: { code: 'waiting_for_fresh_chat', details: { message: 'Open a fresh chat.' } } }
+          : { ...base, status: 'verified', contentId, diagnostic: { code: 'passed', details: {} }, verifiedAt: '2026-08-15T20:02:00.000Z' };
+        return json(current);
+      }
+      return json([]);
+    });
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findAllByRole('option', { name: 'Claude Code' });
+    await user.selectOptions(await screen.findByLabelText('Recall in a fresh chat'), 'claude-code');
+    await user.click(screen.getByRole('button', { name: 'Start harmless proof' }));
+    expect(await screen.findByText(fact)).toBeTruthy();
+    const freshPrompt = screen.getByText(`Recall exact marker ${marker}, then inspect_memory on the returned ID.`);
+    expect(freshPrompt.textContent).not.toContain('cobalt');
+    await user.click(screen.getByRole('button', { name: 'Check tool evidence' }));
+    expect(await screen.findByText('waiting for fresh chat')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Check tool evidence' }));
+    expect(await screen.findByText(/A real recall returned/)).toBeTruthy();
+  });
 
   it('requires a decision for every organization suggestion and supports audited undo', async () => {
     window.history.replaceState({}, '', '/organize');

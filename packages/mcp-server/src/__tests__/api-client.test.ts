@@ -11,7 +11,7 @@ describe('AnswerEngineClient', () => {
 
   beforeEach(() => {
     delete process.env.ANSWER_ENGINE_LIBRARY;
-    client = new AnswerEngineClient({ apiUrl: 'http://localhost:5050', apiKey: 'ae_live_test123' });
+    client = new AnswerEngineClient({ apiUrl: 'http://localhost:5050', apiKey: 'ae_live_test123', clientId: 'codex' });
     mockFetch.mockReset();
   });
 
@@ -53,6 +53,7 @@ describe('AnswerEngineClient', () => {
           headers: expect.objectContaining({
             'X-API-Key': 'ae_live_test123',
             'X-AE-Surface': 'mcp',
+            'X-AE-Client': 'codex',
           }),
         })
       );

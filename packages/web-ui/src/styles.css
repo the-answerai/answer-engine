@@ -254,13 +254,22 @@ td input[type="checkbox"], th input[type="checkbox"] { width: 18px; min-height: 
 .status-pill.preview { color: var(--text-soft); }
 .status-pill.applied { color: var(--accent); }
 .status-pill.undone { color: var(--marker); }
+.tutorial-preflight > p, .tutorial-preflight > .button, .tutorial-preflight > details { margin-left: var(--sp-4); margin-right: var(--sp-4); }
+.tutorial-preflight > details { margin-bottom: var(--sp-4); }
+.tutorial-selectors { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-3); padding: var(--sp-4); }
+.tutorial-selectors label { display: grid; gap: var(--sp-2); font-weight: 700; }
+.tutorial-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-4); }
+.tutorial-step { min-width: 0; padding: var(--sp-4); }
+.tutorial-step pre { max-height: none; }
+.tutorial-fact { border-left: 7px solid var(--accent); background: var(--accent-wash); padding: var(--sp-3); font-weight: 700; }
 .status-pill.queued { color: var(--text-soft); }
 .status-pill.running { color: var(--accent); }
 .status-pill.failed, .status-pill.canceled { color: var(--marker); }
 
 @media (max-width: 1000px) {
   .filter-row { grid-template-columns: repeat(3, 1fr); }
-  .library-layout, .import-layout, .first-import-layout, .answers-layout, .advanced-layout, .organization-layout { grid-template-columns: 1fr; }
+  .library-layout, .import-layout, .first-import-layout, .answers-layout, .advanced-layout, .organization-layout, .tutorial-steps { grid-template-columns: 1fr; }
+  .tutorial-selectors { grid-template-columns: 1fr; }
   .reconciliation-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .reconciliation-grid div { border-bottom: var(--hair-faint); }
 }

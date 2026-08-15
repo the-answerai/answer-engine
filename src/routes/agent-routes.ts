@@ -8,7 +8,7 @@ import { requireApiCapability } from '../middleware/api-capability.js';
 const SchemaQuery = z.object({ libraryId: z.string().optional(), librarySlug: z.string().optional() });
 
 function principal(req: Express.Request): Principal {
-  return { tenantId: req.tenantId as string, apiKeyId: req.apiKeyId as string, libraryId: req.libraryId };
+  return { tenantId: req.tenantId as string, apiKeyId: req.apiKeyId as string, libraryId: req.libraryId, surface: req.apiSurface, client: req.apiClient };
 }
 
 function envelope<T>(data: T) { return { success: true, data }; }

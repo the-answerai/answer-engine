@@ -26,6 +26,9 @@ import type {
   MintedAccessToken,
   OrganizationDecision,
   OrganizationPlan,
+  RecallClientCapability,
+  RecallTutorial,
+  RecallTutorialClient,
   PageMeta,
   Recipe,
   RecipeInput,
@@ -221,6 +224,17 @@ export function applyOrganizationPlan(planId: string, decisions: OrganizationDec
 
 export function undoOrganizationPlan(planId: string): Promise<OrganizationPlan> {
   return request(`/api/v1/organization-plans/${encodeURIComponent(planId)}/undo`, json('POST'));
+}
+
+export function recallTutorialCapabilities(environment: 'native' | 'wsl' = 'native'): Promise<RecallClientCapability[]> {
+  return request(`/api/v1/recall-tutorials/capabilities?environment=${environment}`);
+}
+export function listRecallTutorials(): Promise<RecallTutorial[]> { return request('/api/v1/recall-tutorials'); }
+export function createRecallTutorial(input: { writeClient: RecallTutorialClient; recallClient: RecallTutorialClient; environment: 'native' | 'wsl' }): Promise<RecallTutorial> {
+  return request('/api/v1/recall-tutorials', json('POST', input));
+}
+export function checkRecallTutorial(id: string, reportedFailure?: 'runtime' | 'wiring' | 'access' | 'indexing' | 'retrieval'): Promise<RecallTutorial> {
+  return request(`/api/v1/recall-tutorials/${encodeURIComponent(id)}/check`, json('POST', reportedFailure ? { reportedFailure } : {}));
 }
 
 export function latestFirstImport(): Promise<FirstImportSession | null> {

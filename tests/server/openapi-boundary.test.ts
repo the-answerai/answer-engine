@@ -27,6 +27,8 @@ describe('OpenAPI neutral application boundary', () => {
       '/api/v1/organization-plans',
       '/api/v1/organization-plans/{planId}/apply',
       '/api/v1/organization-plans/{planId}/undo',
+      '/api/v1/recall-tutorials',
+      '/api/v1/recall-tutorials/{tutorialId}/check',
     ]));
     expect(source).not.toMatch(/auth0|stripe|rbac|billing|permissions|teams|user roles/i);
 
@@ -44,6 +46,8 @@ describe('OpenAPI neutral application boundary', () => {
       ['post', '/api/v1/content/{id}/blobs'],
       ['post', '/api/v1/organization-plans'],
       ['post', '/api/v1/organization-plans/{planId}/apply'],
+      ['post', '/api/v1/recall-tutorials'],
+      ['post', '/api/v1/recall-tutorials/{tutorialId}/check'],
     ] as const;
     for (const [method, path] of bodyOperations) {
       expect(document.paths[path]?.[method]?.requestBody, `${method.toUpperCase()} ${path}`)

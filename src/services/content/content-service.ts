@@ -305,7 +305,8 @@ export class ContentService {
       `INSERT INTO audit_log (
          tenant_id,library_id,api_key_id,action,resource_type,resource_id,details
        ) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [principal.tenantId, libraryId, principal.apiKeyId, action, resourceType, resourceId, details],
+      [principal.tenantId, libraryId, principal.apiKeyId, action, resourceType, resourceId,
+        { ...details, surface: principal.surface ?? 'api', client: principal.client ?? 'unknown' }],
     );
   }
 
@@ -471,7 +472,7 @@ export class ContentService {
       client.release();
     }
     await this.audit(principal, 'content.import', 'content', null, fallbackLibrary?.libraryId ?? null,
-      { completedItems: items.length, failedItems: failures.length });
+      { completedItems: items.length, failedItems: failures.length, contentIds: items.map((item) => item.id) });
     return {
       contentIds: items.map((item) => item.id), items, totalItems: input.items.length,
       completedItems: items.length,
@@ -743,7 +744,7 @@ export class ContentService {
     const scope = await this.resolveLibrary(principal, input.libraryId, input.librarySlug);
     const rows = await this.searchRows(principal, input, scope);
     await this.audit(principal, 'content.query', 'query', null, scope?.libraryId ?? null,
-      { query: input.query, resultCount: rows.length, searchType: input.searchType });
+      { query: input.query, resultCount: rows.length, resultIds: rows.map((row) => row.id), searchType: input.searchType });
     return {
       results: rows.map((row) => ({ ...this.present(row, input.include), relevanceScore: Number(row.relevance_score ?? 0) })),
       total: rows.length, searchType: input.searchType, ...(scope ? { scope } : {}),
