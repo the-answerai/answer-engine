@@ -61,7 +61,6 @@ ae sync first-import --resume <session-id>
 ae sync once --source claude-code
 ae sync once --source codex
 ae sync once --source cowork
-ae sync once --source local_dir --path ./notes
 ae sync run --source claude-code
 ae sync install-service
 ae sync status
@@ -73,8 +72,26 @@ approval in the `/import` web surface, merges only approved transcript sources
 into `config.yaml`, verifies the full bundle fingerprint again before reading,
 and records a resumable reconciled inventory. Changed bundles require a fresh
 preview and approval; inaccessible sources receive safe permission guidance.
-Supported history sources are Claude Code, Codex, Cowork, and local directories.
+Supported history sources are Claude Code, Codex, and Cowork.
 The sync cursor and raw source archive remain local under `AE_HOME`.
+
+## Permissioned local folders
+
+```bash
+ae folders add ./notes --include '**/*.md' --exclude 'private/**'
+ae folders resume --source <source-id>
+ae folders refresh --source <source-id>
+ae folders remove <source-id> --retention keep
+ae folders remove <source-id> --retention delete
+```
+
+`add` requires an exact user-selected root, creates a bounded preview using
+metadata and a small binary-classification sample, and waits for approval in
+`/import` before reading full bytes. Symlinks are not
+followed; hidden, ignored, unsupported, binary, oversized, aggregate-limited,
+permission-denied, and changed paths receive explicit outcomes. Manifests and
+SHA-256 archives remain in the active channel home. Direct `local_dir` sync is
+rejected so legacy configurations cannot bypass approval.
 
 Staging history discovery is refused unless staging `config.yaml` contains
 `history_sync: { enabled: true }` and the command also includes

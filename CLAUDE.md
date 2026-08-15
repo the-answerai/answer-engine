@@ -23,7 +23,7 @@ Loop's `pnpm browser:prepare` host preflight. Do not substitute
 
 - `src/` — composable server, memory, retrieval, context, evaluation, and public application APIs.
 - `database/migrations/` — tracked PostgreSQL and pgvector schema ownership.
-- `packages/cli/` — configuration, installation wiring, history import, and sync.
+- `packages/cli/` — configuration, installation wiring, history import, permissioned folder ingestion, and sync.
 - `packages/mcp-server/` — MCP tools and resources.
 - `packages/create/` — clean installer-managed setup.
 - `packages/create/src/runtime-channel.ts` — stable/staging resource contract and collision validation.

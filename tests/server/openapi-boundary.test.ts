@@ -22,6 +22,8 @@ describe('OpenAPI neutral application boundary', () => {
       '/api/v1/content/{id}/blobs',
       '/api/v1/first-imports',
       '/api/v1/first-imports/{sessionId}/approve',
+      '/api/v1/folder-sources',
+      '/api/v1/folder-sources/runs/{runId}/approve',
     ]));
     expect(source).not.toMatch(/auth0|stripe|rbac|billing|permissions|teams|user roles/i);
 

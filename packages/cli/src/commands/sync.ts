@@ -296,14 +296,22 @@ async function runFirstImportCommand(opts: FirstImportCommandOptions): Promise<v
 function resolveCommandSources(opts: SyncCommandOptions): ConfiguredSyncSource[] {
   const hasExplicitPaths = opts.path !== undefined && opts.path.length > 0;
   if (opts.source !== undefined || hasExplicitPaths) {
+    const sourceId = parseSource(opts.source ?? 'claude-code');
+    if (sourceId === 'local_dir') {
+      throw new UserInputError('Direct local_dir sync is disabled. Use ae folders add <root> so the inventory is approved before content is read.');
+    }
     return [{
-      sourceId: parseSource(opts.source ?? 'claude-code'),
+      sourceId,
       ...(hasExplicitPaths ? { paths: opts.path } : {}),
       ...(opts.library ? { librarySlug: opts.library } : {}),
     }];
   }
 
-  return resolveSyncSourcesFromConfig().map((source) => ({
+  const configured = resolveSyncSourcesFromConfig();
+  if (configured.some((source) => source.sourceId === 'local_dir')) {
+    throw new UserInputError('Configured local_dir sync requires migration to ae folders add <root>; implicit folder reads are disabled.');
+  }
+  return configured.map((source) => ({
     ...source,
     ...(opts.library ? { librarySlug: opts.library } : {}),
   }));

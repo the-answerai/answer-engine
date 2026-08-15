@@ -19,4 +19,11 @@ describe('Blueprint app styling', () => {
     expect(css).toContain('@media (max-width: 780px)');
     expect(css).toContain('@media (prefers-reduced-motion: reduce)');
   });
+
+  it('gives native disclosure summaries the shared keyboard focus indicator', () => {
+    const path = resolve(process.cwd(), 'src/styles.css');
+    const css = readFileSync(path, 'utf8');
+
+    expect(css).toMatch(/summary:focus-visible[^\{]*\{[^}]*outline:\s*3px solid var\(--focus\)/s);
+  });
 });

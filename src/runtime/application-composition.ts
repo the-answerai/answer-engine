@@ -97,6 +97,7 @@ export function validateApplicationExtensions<TConfig>(extensions?: ApplicationE
     '/api/v1/artifacts', '/api/v1/blobs', '/api/v1/batch-jobs',
     '/api/v1/access-tokens', '/api/v1/audit', '/api/v1/settings',
     '/api/v1/first-imports',
+    '/api/v1/folder-sources',
   ];
   for (const route of routes) {
     if (routeIds.has(route.id)) throw new Error(`Duplicate extension route ${route.id}`);
