@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runLifecycleAction } from '../lifecycle.js';
-import { createRuntimeChannelProfile } from '../runtime-channel.js';
+import { createRuntimeChannelProfile, writeRuntimeOwnershipMarker } from '../runtime-channel.js';
 
 const tempDirs: string[] = [];
 
@@ -12,16 +12,21 @@ function fixture(channel: 'stable' | 'staging' = 'staging') {
   tempDirs.push(home);
   const profile = createRuntimeChannelProfile(channel, { home });
   writeFileSync(join(home, 'docker-compose.yml'), 'services: {}\n');
-  writeFileSync(join(home, '.env.compose'), `COMPOSE_PROJECT_NAME=${profile.composeProject}\nANSWER_ENGINE_IMAGE=example/current:1\n`);
-  writeFileSync(profile.markerFile, `${JSON.stringify({
-    schemaVersion: 1,
-    channel: profile.channel,
-    home: profile.home,
-    composeProject: profile.composeProject,
-    ports: profile.ports,
-    volumes: profile.volumes,
-    databaseName: profile.databaseName,
-  })}\n`);
+  writeFileSync(join(home, '.env.compose'), [
+    `COMPOSE_PROJECT_NAME=${profile.composeProject}`,
+    `AE_CHANNEL=${profile.channel}`,
+    `AE_HISTORY_SYNC_ENABLED=${profile.sync.enabledByDefault}`,
+    `ANSWER_ENGINE_SYNC_ENABLED=${profile.sync.enabledByDefault}`,
+    `ANSWER_ENGINE_PORT=${profile.ports.api}`,
+    `DATABASE_PORT_HOST=${profile.ports.database}`,
+    `REDIS_PORT_HOST=${profile.ports.redis}`,
+    `WEB_UI_PORT=${profile.ports.web}`,
+    `ANSWER_ENGINE_MCP_PORT=${profile.ports.mcp}`,
+    `DATABASE_NAME=${profile.databaseName}`,
+    'ANSWER_ENGINE_IMAGE=example/current:1',
+    '',
+  ].join('\n'));
+  writeRuntimeOwnershipMarker(profile);
   return profile;
 }
 
@@ -39,6 +44,53 @@ describe('channel lifecycle actions', () => {
         .rejects.toThrow(/ownership marker/i);
     },
   );
+
+  it.each(['start', 'stop', 'status', 'repair', 'upgrade', 'rollback', 'uninstall'] as const)(
+    'refuses %s before Docker when the selected environment drifts to the stable project',
+    async (action) => {
+      const profile = fixture();
+      const environment = readFileSync(profile.credentialsFile, 'utf8')
+        .replace(`COMPOSE_PROJECT_NAME=${profile.composeProject}`, 'COMPOSE_PROJECT_NAME=answer-engine-local');
+      writeFileSync(profile.credentialsFile, environment);
+      const runCommand = vi.fn(async () => ({ stdout: '' }));
+
+      await expect(runLifecycleAction(action, profile, {}, { runCommand }))
+        .rejects.toThrow(/compose project.*expected answer-engine-staging/i);
+      expect(runCommand).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['AE_CHANNEL', 'stable'],
+    ['AE_HISTORY_SYNC_ENABLED', 'true'],
+    ['ANSWER_ENGINE_SYNC_ENABLED', 'true'],
+    ['ANSWER_ENGINE_PORT', '5050'],
+    ['DATABASE_PORT_HOST', '5433'],
+    ['REDIS_PORT_HOST', '6380'],
+    ['WEB_UI_PORT', '3200'],
+    ['ANSWER_ENGINE_MCP_PORT', '5051'],
+    ['DATABASE_NAME', 'answerengine'],
+  ])('refuses resource drift in %s', async (key, replacement) => {
+    const profile = fixture();
+    const environment = readFileSync(profile.credentialsFile, 'utf8')
+      .replace(new RegExp(`^${key}=.*$`, 'm'), `${key}=${replacement}`);
+    writeFileSync(profile.credentialsFile, environment);
+    const runCommand = vi.fn(async () => ({ stdout: '' }));
+
+    await expect(runLifecycleAction('status', profile, {}, { runCommand }))
+      .rejects.toThrow(new RegExp(`Runtime (channel|${key})`, 'i'));
+    expect(runCommand).not.toHaveBeenCalled();
+  });
+
+  it('refuses a changed Compose definition before Docker runs', async () => {
+    const profile = fixture();
+    writeFileSync(join(profile.home, 'docker-compose.yml'), 'services:\n  api: {}\n');
+    const runCommand = vi.fn(async () => ({ stdout: '' }));
+
+    await expect(runLifecycleAction('stop', profile, {}, { runCommand }))
+      .rejects.toThrow(/ownership marker/i);
+    expect(runCommand).not.toHaveBeenCalled();
+  });
 
   it('routes start and stop through only the selected Compose project', async () => {
     const profile = fixture();

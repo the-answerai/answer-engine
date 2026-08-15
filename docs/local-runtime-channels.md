@@ -3,7 +3,9 @@
 Answer Engine has two explicit local channels. `stable` is personal memory;
 `staging` is an isolated development runtime. Every lifecycle command validates
 both profiles before invoking Docker. Destructive recovery and cleanup also
-require a matching owner-only marker in the selected home.
+require a matching owner-only marker in the selected home. The marker pins the
+generated Compose file, and lifecycle commands reject channel, project, port,
+database, or sync-policy drift in `.env.compose` before invoking Docker.
 
 | Resource | Stable | Staging |
 |---|---|---|
@@ -82,4 +84,6 @@ ae --channel staging sync install-service --confirm-staging-history-sync
 
 Removing the persisted opt-in makes later staging daemon starts fail closed.
 Stable and staging CLI credentials live separately in `config.yml` and
-`staging.yml`.
+`staging.yml`. Before any authenticated CLI request, the client verifies that
+the target API's `/health` channel matches `--channel`; an overridden API URL
+cannot silently redirect staging work into stable.

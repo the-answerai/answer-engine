@@ -65,6 +65,7 @@ export async function activateApiKey(
     dependencies.sleep ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))),
     dependencies.healthAttempts ?? 180,
     profile.apiUrl,
+    profile.channel,
   );
 }
 
@@ -96,12 +97,22 @@ async function waitForHealth(
   sleep: (milliseconds: number) => Promise<void>,
   attempts: number,
   apiUrl = 'http://127.0.0.1:5050',
+  expectedChannel: RuntimeChannelProfile['channel'] = 'stable',
 ): Promise<void> {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
       const response = await fetchImpl(`${apiUrl}/health`);
-      if (response.ok) return;
-    } catch {
+      if (response.ok) {
+        const payload = await response.json() as { status?: unknown; channel?: unknown };
+        if (payload.channel !== expectedChannel) {
+          throw new Error(
+            `Health endpoint reported channel ${String(payload.channel ?? '(missing)')}, expected ${expectedChannel}.`,
+          );
+        }
+        if (payload.status === 'healthy') return;
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('Health endpoint reported channel')) throw error;
       // The API is expected to refuse connections while Compose starts.
     }
     if (attempt + 1 < attempts) await sleep(1_000);
@@ -120,7 +131,13 @@ export async function startStack(
     ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
   await command('docker', composeArgs(home, ['up', '-d', '--remove-orphans']));
   try {
-    await waitForHealth(fetchImpl, sleep, dependencies.healthAttempts ?? 180, profile.apiUrl);
+    await waitForHealth(
+      fetchImpl,
+      sleep,
+      dependencies.healthAttempts ?? 180,
+      profile.apiUrl,
+      profile.channel,
+    );
   } catch (error) {
     const diagnostics = await command('docker', composeArgs(home, [
       'logs', '--no-color', '--tail', '100', 'migrate', 'init', 'api',

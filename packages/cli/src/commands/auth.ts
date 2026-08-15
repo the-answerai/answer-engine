@@ -8,6 +8,7 @@ import { getConfig, saveConfig, maskApiKey, getConfigFilePath } from '../config.
 import { AnswerEngineClient, ApiError } from '../api-client.js';
 import { printSuccess, printError, printHeader, printWarning } from '../output.js';
 import { createInterface } from 'readline/promises';
+import { resolveRuntimeChannel } from '../channel.js';
 
 export function registerAuthCommands(program: Command): void {
   const auth = program.command('auth').description('Authentication and API key management');
@@ -46,7 +47,7 @@ export function registerAuthCommands(program: Command): void {
       }
 
       try {
-        const client = new AnswerEngineClient(config.api_url, config.api_key);
+        const client = new AnswerEngineClient(config.api_url, config.api_key, resolveRuntimeChannel());
         const response = await client.getSchema();
         printSuccess('Authenticated.');
       } catch (error) {

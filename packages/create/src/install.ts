@@ -11,6 +11,7 @@ import { readEnvValue } from './scaffold.js';
 import { verifyMemoryRoundTrip } from './verify.js';
 import { selectAgents, wireAgents } from './wire.js';
 import {
+  assertRuntimeChannelConfiguration,
   channelProfiles,
   createRuntimeChannelProfile,
   parseRuntimeChannel,
@@ -55,11 +56,13 @@ export async function install(
     if (project !== profile.composeProject) {
       throw new Error(`Refusing stable adoption: existing Compose project is ${project ?? '(missing)'}.`);
     }
+    assertRuntimeChannelConfiguration(profile, { allowMissingChannel: true });
     if (!readEnvValue(environment, 'AE_CHANNEL')) {
       writeFileSync(envPath, `${environment.trimEnd()}\nAE_CHANNEL=stable\n`, { encoding: 'utf8', mode: 0o600 });
       chmodSync(envPath, 0o600);
     }
     writeRuntimeOwnershipMarker(profile);
+    assertRuntimeChannelConfiguration(profile);
     output.write(chalk.green(`Adopted the existing stable installation at ${home} without restarting or changing data.`));
     return;
   }
@@ -96,6 +99,7 @@ export async function install(
     runtime: modelSetup.runtime,
     profile,
   });
+  assertRuntimeChannelConfiguration(profile);
   await validateRuntimeChannelIsolation(channelProfiles(channel, home));
   output.write(chalk.green(`  Configuration: ${scaffold.configPath}`));
 

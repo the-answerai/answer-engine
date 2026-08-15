@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { chmodSync, existsSync, lstatSync, readFileSync, writeFileSync } from 'node:fs';
 import { z } from 'zod';
 import { homedir } from 'node:os';
@@ -8,7 +9,7 @@ import type { CommandRunner } from './process.js';
 import { runCommand as defaultRunCommand } from './process.js';
 import { readEnvValue } from './scaffold.js';
 import { uninstall } from './uninstall.js';
-import type { RuntimeChannelProfile } from './runtime-channel.js';
+import { assertRuntimeChannelConfiguration, type RuntimeChannelProfile } from './runtime-channel.js';
 
 export const LifecycleActionSchema = z.enum([
   'install', 'start', 'stop', 'status', 'repair', 'upgrade', 'rollback', 'uninstall',
@@ -16,13 +17,14 @@ export const LifecycleActionSchema = z.enum([
 export type LifecycleAction = z.infer<typeof LifecycleActionSchema>;
 
 const OwnershipMarkerSchema = z.object({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   channel: z.enum(['stable', 'staging']),
   home: z.string().min(1),
   composeProject: z.string().min(1),
   ports: z.record(z.number().int()),
   volumes: z.record(z.string().min(1)),
   databaseName: z.string().min(1),
+  composeFileSha256: z.string().regex(/^[a-f0-9]{64}$/),
 }).strict();
 
 const ReleaseStateSchema = z.object({
@@ -111,17 +113,22 @@ export function assertRuntimeOwnership(profile: RuntimeChannelProfile): void {
   try {
     if (lstatSync(profile.markerFile).isSymbolicLink()) throw new Error('marker is a symbolic link');
     const marker = OwnershipMarkerSchema.parse(JSON.parse(readFileSync(profile.markerFile, 'utf8')));
+    const composeFileSha256 = createHash('sha256')
+      .update(readFileSync(join(profile.home, 'docker-compose.yml')))
+      .digest('hex');
     const matches = marker.channel === profile.channel
       && marker.home === profile.home
       && marker.composeProject === profile.composeProject
       && marker.databaseName === profile.databaseName
       && JSON.stringify(marker.ports) === JSON.stringify(profile.ports)
-      && JSON.stringify(marker.volumes) === JSON.stringify(profile.volumes);
+      && JSON.stringify(marker.volumes) === JSON.stringify(profile.volumes)
+      && marker.composeFileSha256 === composeFileSha256;
     if (!matches) throw new Error('marker does not match the selected channel');
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     throw new Error(`Refusing lifecycle action: runtime ownership marker is missing or invalid (${reason}).`);
   }
+  assertRuntimeChannelConfiguration(profile);
 }
 
 async function readChannelHealth(

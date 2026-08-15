@@ -37,6 +37,10 @@ export interface RuntimeChannelOverrides {
   home?: string;
 }
 
+interface RuntimeChannelConfigurationOptions {
+  allowMissingChannel?: boolean;
+}
+
 const DEFAULTS = {
   stable: {
     homeName: '.answer-engine', composeProject: 'answer-engine-local', databaseName: 'answerengine',
@@ -83,16 +87,90 @@ export function createRuntimeChannelProfile(
 }
 
 export function writeRuntimeOwnershipMarker(profile: RuntimeChannelProfile): void {
+  const composeFile = join(profile.home, 'docker-compose.yml');
   writeFileSync(profile.markerFile, `${JSON.stringify({
-    schemaVersion: 1,
+    schemaVersion: 2,
     channel: profile.channel,
     home: profile.home,
     composeProject: profile.composeProject,
     ports: profile.ports,
     volumes: profile.volumes,
     databaseName: profile.databaseName,
+    composeFileSha256: createHash('sha256').update(readFileSync(composeFile)).digest('hex'),
   }, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
   chmodSync(profile.markerFile, 0o600);
+}
+
+function environmentValue(contents: string, key: string): string | undefined {
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const raw = [...contents.matchAll(new RegExp(`^\\s*${escaped}\\s*=\\s*(.*)$`, 'gm'))].at(-1)?.[1]?.trim();
+  if (!raw) return undefined;
+  if (raw.startsWith('"') && raw.endsWith('"')) {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      return typeof parsed === 'string' ? parsed : raw;
+    } catch {
+      return raw;
+    }
+  }
+  return raw;
+}
+
+export function assertRuntimeChannelConfiguration(
+  profile: RuntimeChannelProfile,
+  options: RuntimeChannelConfigurationOptions = {},
+): void {
+  if (!existsSync(profile.credentialsFile)) {
+    throw new Error(`Runtime credentials file is missing for ${profile.channel}.`);
+  }
+  if (lstatSync(profile.credentialsFile).isSymbolicLink()) {
+    throw new Error(`Runtime credentials file must not be a symbolic link for ${profile.channel}.`);
+  }
+  const environment = readFileSync(profile.credentialsFile, 'utf8');
+  const actualProject = environmentValue(environment, 'COMPOSE_PROJECT_NAME');
+  if (actualProject !== profile.composeProject) {
+    throw new Error(
+      `Runtime Compose project is ${actualProject ?? '(missing)'}; expected ${profile.composeProject} for ${profile.channel}.`,
+    );
+  }
+  const actualChannel = environmentValue(environment, 'AE_CHANNEL');
+  if (actualChannel !== profile.channel && !(options.allowMissingChannel && actualChannel === undefined)) {
+    throw new Error(
+      `Runtime channel is ${actualChannel ?? '(missing)'}; expected ${profile.channel}.`,
+    );
+  }
+
+  const expectedModernResources: Record<string, string> = {
+    AE_HISTORY_SYNC_ENABLED: String(profile.sync.enabledByDefault),
+    ANSWER_ENGINE_SYNC_ENABLED: String(profile.sync.enabledByDefault),
+    ANSWER_ENGINE_PORT: String(profile.ports.api),
+    DATABASE_PORT_HOST: String(profile.ports.database),
+    REDIS_PORT_HOST: String(profile.ports.redis),
+    WEB_UI_PORT: String(profile.ports.web),
+    ANSWER_ENGINE_MCP_PORT: String(profile.ports.mcp),
+    DATABASE_NAME: profile.databaseName,
+  };
+  const modernDiscriminators = Object.keys(expectedModernResources)
+    .filter((key) => key !== 'DATABASE_NAME');
+  const modern = profile.channel === 'staging'
+    || modernDiscriminators.some((key) => environmentValue(environment, key) !== undefined);
+  if (modern) {
+    for (const [key, expected] of Object.entries(expectedModernResources)) {
+      const actual = environmentValue(environment, key);
+      if (actual !== expected) {
+        throw new Error(
+          `Runtime ${key} is ${actual ?? '(missing)'}; expected ${expected} for ${profile.channel}.`,
+        );
+      }
+    }
+  } else {
+    const legacyDatabase = environmentValue(environment, 'DATABASE_NAME');
+    if (legacyDatabase !== undefined && legacyDatabase !== profile.databaseName) {
+      throw new Error(
+        `Runtime DATABASE_NAME is ${legacyDatabase}; expected ${profile.databaseName} for stable.`,
+      );
+    }
+  }
 }
 
 function canonicalPath(path: string): string {
@@ -127,18 +205,8 @@ function pathsOverlap(left: string, right: string): boolean {
 function credentialFingerprints(path: string): Map<string, string> {
   if (!existsSync(path)) return new Map();
   const contents = readFileSync(path, 'utf8');
-  const envValue = (key: string): string | undefined => {
-    const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const raw = [...contents.matchAll(new RegExp(`^\\s*${escaped}\\s*=\\s*(.*)$`, 'gm'))].at(-1)?.[1]?.trim();
-    if (!raw) return undefined;
-    if (raw.startsWith('"') && raw.endsWith('"')) {
-      try { const parsed = JSON.parse(raw) as unknown; return typeof parsed === 'string' ? parsed : raw; }
-      catch { return raw; }
-    }
-    return raw;
-  };
   const values = ['DATABASE_PASSWORD', 'ENCRYPTION_KEY', 'ENCRYPTION_SALT', 'ANSWER_ENGINE_API_KEY']
-    .map((key) => [key, envValue(key)] as const)
+    .map((key) => [key, environmentValue(contents, key)] as const)
     .filter((entry): entry is readonly [string, string] => Boolean(entry[1]));
   return new Map(values.map(([key, value]) => [key, createHash('sha256').update(value).digest('hex')]));
 }
@@ -157,6 +225,7 @@ export async function validateRuntimeChannelIsolation(
     if (new Set(Object.values(profile.volumes)).size !== Object.values(profile.volumes).length) {
       throw new Error(`Volume name collision inside the ${profile.channel} runtime channel.`);
     }
+    if (existsSync(profile.markerFile)) assertRuntimeChannelConfiguration(profile);
   }
 
   for (let leftIndex = 0; leftIndex < profiles.length; leftIndex += 1) {
