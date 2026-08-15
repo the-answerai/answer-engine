@@ -52,7 +52,7 @@ describe('ContentService tenant boundaries', () => {
     const clientQuery = vi.fn()
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [{ id: contentId }] })
+      .mockResolvedValueOnce({ rows: [{ id: contentId, created: true }] })
       .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({ rows: [], rowCount: 1 })
       .mockResolvedValueOnce({ rows: [] })
@@ -97,6 +97,7 @@ describe('ContentService tenant boundaries', () => {
     );
 
     expect(result.completedItems).toBe(1);
+    expect(result.items[0]?.outcome).toBe('created');
     expect(complete).toHaveBeenNthCalledWith(1, expect.objectContaining({
       maxTokens: 768,
       responseFormat: expect.objectContaining({ type: 'json_schema' }),

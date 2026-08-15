@@ -240,6 +240,60 @@ sources:
     expect(client.submitSyncImport).not.toHaveBeenCalled();
   });
 
+  it('resumes an approved first import from durable item and cursor state', async () => {
+    const dir = makeTempDir();
+    const transcript = join(dir, 'resume.jsonl');
+    const cursorFile = join(dir, 'cursor.json');
+    const home = join(dir, 'home');
+    process.env.AE_HOME = home;
+    mkdirSync(home, { recursive: true });
+    writeFileSync(join(home, 'config.yaml'), `models:\n  chat: local-chat\n  embedding: local-embedding\n  chat_provider: lmstudio\n  embedding_provider: lmstudio\n  embedding_dimension: 768\nsources: []\nconnectors: {}\nserver:\n  port: 5050\n  bind: 127.0.0.1\n`);
+    writeFileSync(transcript, `${JSON.stringify({
+      type: 'user', sessionId: 'resume-session', uuid: 'resume-user',
+      timestamp: '2026-06-01T12:00:00.000Z',
+      message: { role: 'user', content: 'Resume this durable memory.' },
+    })}\n`);
+    const session = {
+      id: '11111111-1111-4111-8111-111111111111', status: 'running' as const,
+      manifestPath: join(home, 'data', 'first-import', 'manifest.json'),
+      selectedSourceIds: ['claude-code' as const], approvedAt: '2026-08-14T12:00:00.000Z',
+      counts: { discovered: 0, imported: 0, duplicate: 0, failed: 0, skipped: 0 }, pending: 1,
+      sources: [],
+      items: [{
+        sourceId: 'claude-code' as const, fingerprint: 'a'.repeat(64), sourcePath: transcript,
+        byteSize: 100, modifiedAt: '2026-08-14T12:00:00.000Z', outcome: 'pending' as const,
+        contentIds: [], archiveManifestPath: null, errorCode: null, recoveryAction: null,
+      }],
+    };
+    const submitSyncImport = vi.fn(async (request: ImportRequest) => ({ data: {
+      totalItems: request.items.length, completedItems: request.items.length,
+      createdItems: request.items.length, updatedItems: 0, duplicateItems: 0,
+      failedItems: 0, contentIds: ['22222222-2222-4222-8222-222222222222'], failures: [],
+    } }));
+    const recordFirstImportEvent = vi.fn().mockResolvedValue({ data: session });
+    const completeFirstImport = vi.fn().mockResolvedValue({
+      data: { ...session, status: 'completed', pending: 0, counts: { discovered: 1, imported: 1, duplicate: 0, failed: 0, skipped: 0 } },
+    });
+    vi.mocked(createClient).mockReturnValue({
+      submitSyncImport,
+      getFirstImport: vi.fn().mockResolvedValue({ data: session }),
+      recordFirstImportEvent,
+      completeFirstImport,
+    } as unknown as AnswerEngineClient);
+
+    await makeProgram().parseAsync([
+      'node', 'ae', 'sync', 'first-import', '--resume', session.id,
+      '--cursor-file', cursorFile,
+    ]);
+
+    expect(recordFirstImportEvent).toHaveBeenCalledWith(session.id, expect.objectContaining({
+      outcome: 'imported',
+      contentIds: ['22222222-2222-4222-8222-222222222222'],
+      archiveManifestPath: expect.stringContaining('manifest.json'),
+    }));
+    expect(completeFirstImport).toHaveBeenCalledWith(session.id);
+  });
+
   it('does not advance the cursor when synchronous import reports row failures', async () => {
     const dir = makeTempDir();
     const transcript = join(dir, 'conversation.jsonl');

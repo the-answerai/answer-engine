@@ -66,6 +66,7 @@ describe('primary local workflows', () => {
     const user = userEvent.setup();
     render(<App />);
 
+    await user.click(await screen.findByRole('button', { name: 'Manual text' }));
     await user.type(await screen.findByLabelText('Title'), 'Local decision');
     await user.type(screen.getByLabelText('Content'), 'Preserve this.');
     await user.click(screen.getByRole('button', { name: 'Preview import' }));
@@ -98,6 +99,7 @@ describe('primary local workflows', () => {
     const user = userEvent.setup();
     render(<App />);
 
+    await user.click(await screen.findByRole('button', { name: 'Manual text' }));
     await user.type(await screen.findByLabelText('Title'), 'Duplicate decision');
     await user.type(screen.getByLabelText('Content'), 'Preserve this.');
     await user.click(screen.getByRole('button', { name: 'Preview import' }));
@@ -105,6 +107,51 @@ describe('primary local workflows', () => {
 
     expect((await screen.findByRole('alert')).textContent).toContain('The destination library is no longer available.');
     expect(screen.getByRole('button', { name: 'Import 1 item' })).toBeTruthy();
+  });
+
+  it('requires explicit consent and sends only the selected agent-history sources', async () => {
+    window.history.replaceState({}, '', '/import');
+    const session = {
+      id: '33333333-3333-4333-8333-333333333333', status: 'discovered',
+      selectedSourceIds: [], approvedAt: null, pending: 3,
+      counts: { discovered: 0, imported: 0, duplicate: 0, failed: 0, skipped: 0 },
+      sources: [
+        { sourceId: 'claude-code', label: 'Claude Code', paths: ['/Users/local/.claude/projects'], estimatedCount: 2, estimatedBytes: 2048, privacyPosture: 'Transcript bodies are read only after approval.', exclusions: ['audit logs'], availability: 'available', availabilityNote: 'Local source history is available for selection.', status: 'discovered', errorCode: null, recoveryAction: null },
+        { sourceId: 'codex', label: 'Codex', paths: ['/Users/local/.codex/sessions'], estimatedCount: 1, estimatedBytes: 1024, privacyPosture: 'Rollout bodies are read only after approval.', exclusions: ['prompt history'], availability: 'available', availabilityNote: 'Local source history is available for selection.', status: 'discovered', errorCode: null, recoveryAction: null },
+      ],
+      items: [],
+    };
+    let approved = false;
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === '/local-ui/session') return new Response(null, { status: 204 });
+      if (url === '/health') return healthResponse();
+      if (url === '/api/v1/libraries') return json([]);
+      if (url === '/api/v1/first-imports/latest') return json(approved ? {
+        ...session, status: 'approved', approvedAt: '2026-08-14T12:00:00.000Z', selectedSourceIds: ['codex'],
+      } : session);
+      if (url.endsWith('/approve') && init?.method === 'POST') {
+        approved = true;
+        return json({
+          ...session, status: 'approved', approvedAt: '2026-08-14T12:00:00.000Z', selectedSourceIds: ['codex'],
+        });
+      }
+      return json([]);
+    });
+    const user = userEvent.setup();
+    render(<App />);
+
+    expect(await screen.findByText('Transcript bodies are read only after approval.')).toBeTruthy();
+    await user.click(screen.getByLabelText('Claude Code'));
+    await user.click(screen.getByLabelText('I understand what Answer Engine will read'));
+    await user.click(screen.getByRole('button', { name: 'Approve 1 source' }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      `/api/v1/first-imports/${session.id}/approve`,
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ sourceIds: ['codex'] }) }),
+    ));
+    await waitFor(() => expect((screen.getByLabelText('Codex') as HTMLInputElement).checked).toBe(true));
+    expect((screen.getByLabelText('Claude Code') as HTMLInputElement).checked).toBe(false);
   });
 
   it('filters content with array-backed facets and ISO date boundaries', async () => {

@@ -47,8 +47,13 @@ export interface SyncRunSummary {
   filesScanned: number;
   turnsFound: number;
   turnsImported: number;
+  createdItems: number;
+  updatedItems: number;
+  duplicateItems: number;
   failedItems: number;
   parseErrors: number;
+  contentIds: string[];
+  archiveManifestPaths: string[];
 }
 
 export interface SyncLoopOptions extends SyncRunOptions {
@@ -166,8 +171,13 @@ async function runLocalDirSyncOnce(
     filesScanned: files.length,
     turnsFound: 0,
     turnsImported: 0,
+    createdItems: 0,
+    updatedItems: 0,
+    duplicateItems: 0,
     failedItems: 0,
     parseErrors: 0,
+    contentIds: [],
+    archiveManifestPaths: [],
   };
 
   const discoveredPaths = new Set(files.map((file) => file.path));
@@ -208,7 +218,11 @@ async function runLocalDirSyncOnce(
       librarySlug: options.librarySlug,
     });
     summary.turnsImported += imported.importedItems;
+    summary.createdItems += imported.createdItems;
+    summary.updatedItems += imported.updatedItems;
+    summary.duplicateItems += imported.duplicateItems;
     summary.failedItems += imported.failedItems;
+    summary.contentIds.push(...imported.contentIds);
 
     if (imported.failedItems === 0) {
       await cursorStore.set(LOCAL_DIR_SOURCE_ID, file.path, {
@@ -310,8 +324,13 @@ export async function runSyncOnce(options: SyncRunOptions): Promise<SyncRunSumma
     filesScanned: files.length,
     turnsFound: 0,
     turnsImported: 0,
+    createdItems: 0,
+    updatedItems: 0,
+    duplicateItems: 0,
     failedItems: 0,
     parseErrors: 0,
+    contentIds: [],
+    archiveManifestPaths: [],
   };
 
   await processWithConcurrency(
@@ -329,6 +348,7 @@ export async function runSyncOnce(options: SyncRunOptions): Promise<SyncRunSumma
         cursor.fileIdentity === file.identity
       );
       if (cursor.sourceSha256 === sourceSha256) {
+        summary.duplicateItems += 1;
         if (!metadataUnchanged) {
           await cursorStore.set(source.id, file.path, {
             ...cursor,
@@ -357,7 +377,20 @@ export async function runSyncOnce(options: SyncRunOptions): Promise<SyncRunSumma
         importedCount = imported.importedItems;
         failedCount = imported.failedItems;
         summary.turnsImported += imported.importedItems;
+        summary.createdItems += imported.createdItems;
+        summary.updatedItems += imported.updatedItems;
+        summary.duplicateItems += imported.duplicateItems;
         summary.failedItems += imported.failedItems;
+        summary.contentIds.push(...imported.contentIds);
+        for (const conversation of readResult.conversations) {
+          const manifest = conversation.provider_metadata_json.raw_archive_manifest;
+          if (manifest && typeof manifest === 'object' && !Array.isArray(manifest)) {
+            const path = (manifest as Record<string, unknown>).manifest_path;
+            if (typeof path === 'string' && !summary.archiveManifestPaths.includes(path)) {
+              summary.archiveManifestPaths.push(path);
+            }
+          }
+        }
         for (const failure of imported.failures) {
           warn(
             `import failed for ${file.path}`
@@ -406,7 +439,11 @@ export async function runSyncOnce(options: SyncRunOptions): Promise<SyncRunSumma
       importedCount = imported.importedItems;
       failedCount = imported.failedItems;
       summary.turnsImported += imported.importedItems;
+      summary.createdItems += imported.createdItems;
+      summary.updatedItems += imported.updatedItems;
+      summary.duplicateItems += imported.duplicateItems;
       summary.failedItems += imported.failedItems;
+      summary.contentIds.push(...imported.contentIds);
       for (const failure of imported.failures) {
         warn(
           `import failed for ${file.path}`

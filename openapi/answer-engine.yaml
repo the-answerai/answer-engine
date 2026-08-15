@@ -64,6 +64,107 @@ paths:
         '201': { $ref: '#/components/responses/Success' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/first-imports:
+    post:
+      tags: [Workflows]
+      summary: Register a metadata-only supported agent-history discovery
+      description: Registers paths, file statistics, fingerprints, privacy posture, and exclusions. This endpoint never imports content.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FirstImportDiscovery' }
+      responses:
+        '201': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/first-imports/latest:
+    get:
+      tags: [Workflows]
+      summary: Read the latest first-import session and reconciliation inventory
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/v1/first-imports/{sessionId}:
+    parameters:
+      - { $ref: '#/components/parameters/FirstImportSessionId' }
+    get:
+      tags: [Workflows]
+      summary: Read a first-import session and its source-backed item manifest
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/first-imports/{sessionId}/approve:
+    parameters:
+      - { $ref: '#/components/parameters/FirstImportSessionId' }
+    post:
+      tags: [Workflows]
+      summary: Explicitly approve a subset of discovered history sources
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [sourceIds]
+              properties:
+                sourceIds:
+                  type: array
+                  minItems: 1
+                  uniqueItems: true
+                  items: { $ref: '#/components/schemas/FirstImportSourceId' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/first-imports/{sessionId}/start:
+    parameters:
+      - { $ref: '#/components/parameters/FirstImportSessionId' }
+    post:
+      tags: [Workflows]
+      summary: Start an explicitly approved first import
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/first-imports/{sessionId}/events:
+    parameters:
+      - { $ref: '#/components/parameters/FirstImportSessionId' }
+    post:
+      tags: [Workflows]
+      summary: Record a safe per-history import outcome
+      description: Imported outcomes are accepted only when all referenced chat rows have non-empty summaries and a matching raw-archive manifest path.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FirstImportEvent' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/first-imports/{sessionId}/cancel:
+    parameters:
+      - { $ref: '#/components/parameters/FirstImportSessionId' }
+    post:
+      tags: [Workflows]
+      summary: Request safe cancellation at the next resumable boundary
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/v1/first-imports/{sessionId}/retry:
+    parameters:
+      - { $ref: '#/components/parameters/FirstImportSessionId' }
+    post:
+      tags: [Workflows]
+      summary: Reset failed or interrupted selected items for retry
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/first-imports/{sessionId}/complete:
+    parameters:
+      - { $ref: '#/components/parameters/FirstImportSessionId' }
+    post:
+      tags: [Workflows]
+      summary: Finalize only after every discovered item has an outcome
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /api/v1/content:
     get:
       tags: [Content]
@@ -760,6 +861,11 @@ components:
       name: blobId
       required: true
       schema: { type: string, format: uuid }
+    FirstImportSessionId:
+      in: path
+      name: sessionId
+      required: true
+      schema: { type: string, format: uuid }
   responses:
     Success:
       description: Request completed.
@@ -787,6 +893,56 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
   schemas:
+    FirstImportSourceId:
+      type: string
+      enum: [claude-code, codex, cowork]
+    FirstImportDiscovery:
+      type: object
+      additionalProperties: false
+      required: [manifestPath, sources]
+      properties:
+        manifestPath: { type: string, minLength: 1 }
+        sources:
+          type: array
+          minItems: 1
+          maxItems: 3
+          items:
+            type: object
+            additionalProperties: false
+            required: [sourceId, label, paths, estimatedCount, estimatedBytes, privacyPosture, exclusions, availability, availabilityNote, items]
+            properties:
+              sourceId: { $ref: '#/components/schemas/FirstImportSourceId' }
+              label: { type: string, minLength: 1 }
+              paths: { type: array, items: { type: string, minLength: 1 } }
+              estimatedCount: { type: integer, minimum: 0 }
+              estimatedBytes: { type: integer, minimum: 0 }
+              privacyPosture: { type: string, minLength: 1 }
+              exclusions: { type: array, items: { type: string } }
+              availability: { enum: [available, not_found, unsupported_platform] }
+              availabilityNote: { type: string, minLength: 1 }
+              items:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: false
+                  required: [fingerprint, sourcePath, byteSize, modifiedAt]
+                  properties:
+                    fingerprint: { type: string, pattern: '^[a-f0-9]{64}$' }
+                    sourcePath: { type: string, minLength: 1 }
+                    byteSize: { type: integer, minimum: 0 }
+                    modifiedAt: { type: string, format: date-time }
+    FirstImportEvent:
+      type: object
+      additionalProperties: false
+      required: [sourceId, fingerprint, outcome]
+      properties:
+        sourceId: { $ref: '#/components/schemas/FirstImportSourceId' }
+        fingerprint: { type: string, pattern: '^[a-f0-9]{64}$' }
+        outcome: { enum: [imported, duplicate, failed, skipped] }
+        contentIds: { type: array, items: { type: string, format: uuid } }
+        archiveManifestPath: { type: string, minLength: 1 }
+        errorCode: { type: string, pattern: '^[A-Z0-9_]{2,80}$' }
+        recoveryAction: { type: string, minLength: 1 }
     SuccessEnvelope:
       type: object
       required: [success, data]

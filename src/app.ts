@@ -12,9 +12,11 @@ import { createLocalUiSessionCookie } from './middleware/local-ui-session.js';
 import { createAgentRoutes } from './routes/agent-routes.js';
 import { createApplicationRoutes } from './routes/application-routes.js';
 import { createContentRoutes } from './routes/content-routes.js';
+import { createFirstImportRoutes } from './routes/first-import-routes.js';
 import { OpenAiCompatibleProvider } from './services/ai/openai-compatible.js';
 import { ApplicationService } from './services/application/application-service.js';
 import { ContentService } from './services/content/content-service.js';
+import { FirstImportService } from './services/first-import/first-import-service.js';
 import { LocalBlobStorage } from './services/storage/local-blob-storage.js';
 import { logger } from './utils/logger.js';
 import {
@@ -43,6 +45,7 @@ export function createApp<TConfig = Record<string, never>>(options: CreateAppOpt
   const database = options.dependencies?.database ?? pool;
   const language = options.dependencies?.languageProvider ?? new OpenAiCompatibleProvider();
   const service = new ContentService(database, language);
+  const firstImportService = new FirstImportService(database);
   const applicationService = new ApplicationService(
     database,
     language,
@@ -92,6 +95,7 @@ export function createApp<TConfig = Record<string, never>>(options: CreateAppOpt
       tags: '/api/v1/tags', libraries: '/api/v1/libraries',
       batchJobs: '/api/v1/batch-jobs', accessTokens: '/api/v1/access-tokens',
       audit: '/api/v1/audit',
+      firstImports: '/api/v1/first-imports',
       settings: '/api/v1/settings',
       ...(extensions?.endpointMetadata ?? {}),
     },
@@ -102,6 +106,7 @@ export function createApp<TConfig = Record<string, never>>(options: CreateAppOpt
   }));
   app.use('/api/v1', createApplicationRoutes(applicationService));
   app.use('/api/v1/content', createContentRoutes(service));
+  app.use('/api/v1/first-imports', createFirstImportRoutes(firstImportService));
   app.use('/api/v1/agent', createAgentRoutes(service));
 
   if (env.WEB_UI_DIR) {

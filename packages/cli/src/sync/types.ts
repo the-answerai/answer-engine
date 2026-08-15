@@ -93,6 +93,7 @@ export interface ConversationReadResult {
 
 export interface TranscriptDiscoverOptions {
   paths?: string[];
+  inventoryOnly?: boolean;
 }
 
 export interface TranscriptSource {

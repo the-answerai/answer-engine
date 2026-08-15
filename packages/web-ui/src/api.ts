@@ -15,6 +15,8 @@ import type {
   ImportItem,
   ImportPreview,
   ImportResult,
+  FirstImportSession,
+  FirstImportSourceId,
   Library,
   LibraryFilter,
   LibraryMemberPage,
@@ -200,6 +202,22 @@ export function previewImport(items: ImportItem[], libraryId?: string): Promise<
 
 export function importContent(items: ImportItem[], libraryId?: string): Promise<ImportResult> {
   return request('/api/v1/content/import', json('POST', { items, ...(libraryId ? { libraryId } : {}) }));
+}
+
+export function latestFirstImport(): Promise<FirstImportSession | null> {
+  return request('/api/v1/first-imports/latest');
+}
+
+export function approveFirstImport(sessionId: string, sourceIds: FirstImportSourceId[]): Promise<FirstImportSession> {
+  return request(`/api/v1/first-imports/${encodeURIComponent(sessionId)}/approve`, json('POST', { sourceIds }));
+}
+
+export function cancelFirstImport(sessionId: string): Promise<FirstImportSession> {
+  return request(`/api/v1/first-imports/${encodeURIComponent(sessionId)}/cancel`, json('POST'));
+}
+
+export function retryFirstImport(sessionId: string): Promise<FirstImportSession> {
+  return request(`/api/v1/first-imports/${encodeURIComponent(sessionId)}/retry`, json('POST'));
 }
 
 export async function importMemory(input: { title: string; content: string }): Promise<void> {

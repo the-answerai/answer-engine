@@ -401,7 +401,36 @@ export interface ImportPreview {
 
 export interface ImportResult {
   completedItems: number;
+  createdItems?: number;
+  updatedItems?: number;
+  duplicateItems?: number;
   failedItems: number;
-  items: Array<{ rowIndex: number; id: string; contentType: string; sourceIdentifier: string; title: string }>;
+  items: Array<{ rowIndex: number; id: string; contentType: string; sourceIdentifier: string; title: string; outcome?: 'created' | 'updated' | 'duplicate' }>;
   failures: Array<{ rowIndex: number; sourceIdentifier: string; error: string }>;
+}
+
+export type FirstImportSourceId = 'claude-code' | 'codex' | 'cowork';
+export type FirstImportStatus = 'discovered' | 'approved' | 'running' | 'cancel_requested' | 'canceled' | 'completed' | 'failed';
+
+export interface FirstImportSession {
+  id: string;
+  status: FirstImportStatus;
+  selectedSourceIds: FirstImportSourceId[];
+  approvedAt: string | null;
+  pending: number;
+  counts: { discovered: number; imported: number; duplicate: number; failed: number; skipped: number };
+  sources: Array<{
+    sourceId: FirstImportSourceId;
+    label: string;
+    paths: string[];
+    estimatedCount: number;
+    estimatedBytes: number;
+    privacyPosture: string;
+    exclusions: string[];
+    availability: 'available' | 'not_found' | 'unsupported_platform';
+    availabilityNote: string;
+    status: string;
+    errorCode: string | null;
+    recoveryAction: string | null;
+  }>;
 }

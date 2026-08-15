@@ -640,6 +640,7 @@ export const claudeCodeSource: TranscriptSource = {
 
     const files = await Promise.all([...paths].sort().map(transcriptFileFromPath));
     const discovered = files.filter((file): file is TranscriptFile => file !== null);
+    if (options.inventoryOnly) return discovered;
     const launchMetadata = await loadLaunchMetadataIndex();
     for (const file of discovered) {
       launchMetadataByTranscriptPath.set(
