@@ -33,10 +33,11 @@ capability, or database migration is included.
   redacted in the ledger, reversible through `remove-integrations`, and limited
   to Answer Engine-owned entries. Integration-ledger hashing invalidates stale
   installer completion state.
-- [ ] Focused install/use/organize skills, shared safety/capability/tool
+- [x] Focused install/use/organize skills, shared safety/capability/tool
   references, activation cases, and representative workflow eval fixtures are
-  packaged and checksum-covered, but the activation/workflow prompts still need
-  independent execution and assertion grading before this criterion can pass.
+  packaged and checksum-covered. Fresh agents executed positive and near-miss
+  activation cases plus every workflow prompt, and an independent grader passed
+  all 14 packaged-skill assertions.
 - [x] `pnpm verify` passes.
 
 ## Verification evidence
@@ -48,13 +49,20 @@ Executed in the isolated issue #43 worktree on 2026-08-14:
   - server: 82 passed, 1 environment-gated database integration skipped;
   - CLI: 149 passed;
   - MCP server: 62 passed;
-  - installer: 113 passed;
+  - installer: 114 passed;
   - web UI: 35 passed;
   - server, CLI, MCP server, installer, and web UI builds passed.
 - Codex plugin validator — passed.
 - Claude plugin strict validator — passed.
 - Skill quick validator — passed for all three packaged skills; this validates
   package structure, not activation or representative workflow behavior.
+- Independent skill evaluation — passed:
+  - activation selection: 6 of 6 positive and near-miss decisions;
+  - packaged skills: 14 of 14 assertions;
+  - no-skill baseline: 11 of 14 assertions;
+  - raw runs and independent grades are preserved under
+    `docs/acceptance/evidence/issue-43-skill-eval-*` and CI verifies their source
+    hashes, assertion coverage, and passing grades.
 - Canonical install prompt equality across `README.md`, `INSTALL_AGENT.md`, and
   `packages/create/README.md` — passed by the repository test.
 - `git diff --check` — passed.
@@ -70,9 +78,8 @@ applicable to this CLI welcome flow.
 
 ## Review
 
-Runtime code quality, test robustness, and security review findings were fixed.
-Issue completeness remains blocked on executing and grading the packaged skill
-eval prompts.
+Requirements, runtime code quality, test robustness, and security review status:
+pass. Independent activation and workflow evaluation is current and passing.
 Credential values appear only in the owner-readable CLI handoff, never in MCP
 metadata, the ledger, or command arguments. External commands use `execFile` argument arrays,
 existing JSON/TOML entries are preserved, symbolic-link targets are rejected,

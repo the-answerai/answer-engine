@@ -7,10 +7,11 @@
       "expected_output": "Calls recall, inspects the selected memory lineage, and answers from grounded evidence with uncertainty made explicit.",
       "assertions": [
         "Uses recall rather than inventing prior context",
+        "Shows explicit recall and inspect_memory calls for the selected content ID",
         "Inspects memory source metadata or lineage",
         "Separates stored evidence from inference"
       ],
-      "files": []
+      "files": ["fixtures/onboarding-scope.json"]
     }
   ]
 }

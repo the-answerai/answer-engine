@@ -15,6 +15,8 @@ const RELEASE_ARTIFACTS = [
   'integrations/answer-engine/evals/install-answer-engine.json',
   'integrations/answer-engine/evals/organize-answer-engine.json',
   'integrations/answer-engine/evals/use-answer-engine.json',
+  'integrations/answer-engine/evals/fixtures/duplicate-project-memories.json',
+  'integrations/answer-engine/evals/fixtures/onboarding-scope.json',
   'integrations/answer-engine/references/capabilities.md',
   'integrations/answer-engine/references/safety.md',
   'integrations/answer-engine/references/tools.md',

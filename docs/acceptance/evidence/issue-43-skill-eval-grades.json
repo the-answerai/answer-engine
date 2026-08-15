@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "evaluatedAt": "2026-08-14",
+  "sources": {
+    "runsSha256": "0c17b8a34951d7d1f846bdca6eed8e35399a1a1efea0d94ff157804c5a46acce",
+    "skills": {
+      "install-answer-engine": "f5d7f91050e621ef1ad46b31afa93b2ae7753dc68f645212580d589ac2df704f",
+      "organize-answer-engine": "b5dbfe21c3649749b039b2cb7e2b5d945ba31ab177e22c063a3a3a4896431991",
+      "use-answer-engine": "47365bcc36224a46575f6f5ed27468113103db6ca7785f6035bd0043fcb01ce1"
+    },
+    "evals": {
+      "install-answer-engine": "37de00055edcdbaa38cbaaf8333300b07dd106fcca0233eadc0f36b78754b3dc",
+      "organize-answer-engine": "4fb0a745b30ae79f3946b381d282dfabafce8f6c6c73de342883c21773bcae43",
+      "use-answer-engine": "df631a27b46719cc47b0f06a05410f2dbf96fc5bca13423a32cc4ba5178048dc"
+    },
+    "fixtures": {
+      "duplicate-project-memories.json": "e40d447427ee9775bb6caea84593f3d93453a3edd924c9c73cc8b31a4044b340",
+      "onboarding-scope.json": "f97c430b1b0aea96aadb2915ee5331a1fe7ca47f1f6cc5195cf85d7629c851c4"
+    }
+  },
+  "activation": {
+    "passed": true,
+    "evidence": "A fresh metadata-only selector chose install, use, and organize for the three positive prompts and none for all three near-misses.",
+    "decisions": [
+      { "promptId": 1, "selected": "install-answer-engine", "passed": true },
+      { "promptId": 2, "selected": "use-answer-engine", "passed": true },
+      { "promptId": 3, "selected": "organize-answer-engine", "passed": true },
+      { "promptId": 4, "selected": "none", "passed": true },
+      { "promptId": 5, "selected": "none", "passed": true },
+      { "promptId": 6, "selected": "none", "passed": true }
+    ]
+  },
+  "runs": [
+    {
+      "skill_name": "install-answer-engine",
+      "configuration": "with_skill",
+      "expectations": [
+        { "text": "Runs read-only preflight before mutation", "passed": true, "evidence": "The version-pinned read-only preflight is first and installation is deferred until consent." },
+        { "text": "Shows exact managed paths and asks one confirmation before installation", "passed": true, "evidence": "The output enumerates Answer Engine, Codex, Claude, Cursor, ledger, and backup paths before one exact confirmation question." },
+        { "text": "Does not claim ChatGPT web or remote Cowork can reach localhost", "passed": true, "evidence": "Hosted ChatGPT is described as unable to reach localhost and remote Cowork requires a separate remote service." },
+        { "text": "Requires real verification for Codex and Claude Code", "passed": true, "evidence": "Completion explicitly requires automated real recall in both command clients." },
+        { "text": "Never prints or requests the local API key", "passed": true, "evidence": "The output explicitly refuses to request or print the key." }
+      ],
+      "pass_rate": 1
+    },
+    {
+      "skill_name": "install-answer-engine",
+      "configuration": "baseline",
+      "expectations": [
+        { "text": "Runs read-only preflight before mutation", "passed": true, "evidence": "The baseline also puts the read-only preflight first." },
+        { "text": "Shows exact managed paths and asks one confirmation before installation", "passed": true, "evidence": "The baseline lists the managed paths and final confirmation boundary." },
+        { "text": "Does not claim ChatGPT web or remote Cowork can reach localhost", "passed": true, "evidence": "The baseline describes both limitations honestly." },
+        { "text": "Requires real verification for Codex and Claude Code", "passed": true, "evidence": "The baseline requires automated real recalls in both clients." },
+        { "text": "Never prints or requests the local API key", "passed": true, "evidence": "The baseline says no API key would be requested in chat." }
+      ],
+      "pass_rate": 1
+    },
+    {
+      "skill_name": "organize-answer-engine",
+      "configuration": "with_skill",
+      "expectations": [
+        { "text": "Produces a preview before any mutation", "passed": true, "evidence": "The output labels itself preview-only and reports no mutation call." },
+        { "text": "Proposes source-aware groups and tags", "passed": true, "evidence": "Both groups have explicit tags and preserve their distinct origins." },
+        { "text": "Identifies affected content IDs and reasons", "passed": true, "evidence": "All three UUIDs are tied to duplicate or related-item reasons." },
+        { "text": "Preserves source metadata", "passed": true, "evidence": "Claude Code, Codex, and local file origins are explicitly preserved." },
+        { "text": "Hands the approved preview to a separate reversible workflow without claiming mutation is available", "passed": true, "evidence": "The output explicitly hands approval to a separate reversible workflow and claims no applied change." }
+      ],
+      "pass_rate": 1
+    },
+    {
+      "skill_name": "organize-answer-engine",
+      "configuration": "baseline",
+      "expectations": [
+        { "text": "Produces a preview before any mutation", "passed": true, "evidence": "The baseline is preview-only and reports no change." },
+        { "text": "Proposes source-aware groups and tags", "passed": false, "evidence": "It proposes groups but supplies no tags." },
+        { "text": "Identifies affected content IDs and reasons", "passed": true, "evidence": "All three IDs and their duplicate distinction are present." },
+        { "text": "Preserves source metadata", "passed": true, "evidence": "Distinct source records and external IDs are retained." },
+        { "text": "Hands the approved preview to a separate reversible workflow without claiming mutation is available", "passed": false, "evidence": "It proposes applying changes later but does not identify a separate unavailable workflow." }
+      ],
+      "pass_rate": 0.6
+    },
+    {
+      "skill_name": "use-answer-engine",
+      "configuration": "with_skill",
+      "expectations": [
+        { "text": "Uses recall rather than inventing prior context", "passed": true, "evidence": "The output retrieves the scored fixture memory for the requested scope." },
+        { "text": "Shows explicit recall and inspect_memory calls for the selected content ID", "passed": true, "evidence": "Both calls and the selected UUID are shown verbatim." },
+        { "text": "Inspects memory source metadata or lineage", "passed": true, "evidence": "The source, external ID, project, session, and lineage state are reported." },
+        { "text": "Separates stored evidence from inference", "passed": true, "evidence": "The answer explicitly identifies the decision as stored evidence rather than inference." }
+      ],
+      "pass_rate": 1
+    },
+    {
+      "skill_name": "use-answer-engine",
+      "configuration": "baseline",
+      "expectations": [
+        { "text": "Uses recall rather than inventing prior context", "passed": true, "evidence": "The baseline reports a matching scored memory and exact ID." },
+        { "text": "Shows explicit recall and inspect_memory calls for the selected content ID", "passed": false, "evidence": "It describes retrieval and inspection but shows neither explicit tool call." },
+        { "text": "Inspects memory source metadata or lineage", "passed": true, "evidence": "The source, external ID, memory ID, and lineage state are present." },
+        { "text": "Separates stored evidence from inference", "passed": true, "evidence": "The baseline quotes the decision and limits unsupported attribution." }
+      ],
+      "pass_rate": 0.75
+    }
+  ],
+  "analysis": {
+    "withSkillPassRate": 1,
+    "baselinePassRate": 0.7857142857142857,
+    "observations": [
+      "The packaged skills passed all 14 assertions.",
+      "The baseline passed 11 of 14 assertions.",
+      "The discriminating assertions cover explicit memory tool calls, source-aware tags, and the separate reversible organization handoff."
+    ]
+  }
+}

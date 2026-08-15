@@ -7,6 +7,7 @@
       "expected_output": "Detects distinct client surfaces, shows exact planned paths, asks for consent, wires only supported localhost clients, and explains remote-only limitations.",
       "assertions": [
         "Runs read-only preflight before mutation",
+        "Shows exact managed paths and asks one confirmation before installation",
         "Does not claim ChatGPT web or remote Cowork can reach localhost",
         "Requires real verification for Codex and Claude Code",
         "Never prints or requests the local API key"

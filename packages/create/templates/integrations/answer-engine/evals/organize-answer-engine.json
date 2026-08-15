@@ -7,11 +7,12 @@
       "expected_output": "Inspects representative memories and lineage, then returns a source-aware preview without mutation and hands off the reversible apply step.",
       "assertions": [
         "Produces a preview before any mutation",
+        "Proposes source-aware groups and tags",
         "Identifies affected content IDs and reasons",
         "Preserves source metadata",
-        "Does not claim the downstream organization mutation is already available"
+        "Hands the approved preview to a separate reversible workflow without claiming mutation is available"
       ],
-      "files": []
+      "files": ["fixtures/duplicate-project-memories.json"]
     }
   ]
 }

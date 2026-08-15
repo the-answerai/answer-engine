@@ -1,0 +1,31 @@
+{
+  "recall": {
+    "query": "duplicated project memories",
+    "results": [
+      {
+        "id": "22222222-2222-4222-8222-222222222222",
+        "content": "Project Atlas launch checklist: installer, client wiring, verification.",
+        "source": "claude-code",
+        "origin": {
+          "externalId": "claude-code:atlas:session-1"
+        }
+      },
+      {
+        "id": "33333333-3333-4333-8333-333333333333",
+        "content": "Project Atlas launch checklist: installer, client wiring, verification.",
+        "source": "codex",
+        "origin": {
+          "externalId": "codex:atlas:rollout-9"
+        }
+      },
+      {
+        "id": "44444444-4444-4444-8444-444444444444",
+        "content": "Project Atlas post-launch support checklist and rollback owner.",
+        "source": "local_dir",
+        "origin": {
+          "externalId": "file:atlas/support.md"
+        }
+      }
+    ]
+  }
+}

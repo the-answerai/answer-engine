@@ -31,15 +31,23 @@
     },
     {
       "path": "integrations/answer-engine/evals/install-answer-engine.json",
-      "sha256": "b6fbed3001d5cc668c22d9c10dc1ecf715adf449a32f8f816aed5ef21083b590"
+      "sha256": "37de00055edcdbaa38cbaaf8333300b07dd106fcca0233eadc0f36b78754b3dc"
     },
     {
       "path": "integrations/answer-engine/evals/organize-answer-engine.json",
-      "sha256": "ef4d2c22a9d38ac20cf50679eed4dacd67be912794e6d697d9e6c6c4607c6e10"
+      "sha256": "4fb0a745b30ae79f3946b381d282dfabafce8f6c6c73de342883c21773bcae43"
     },
     {
       "path": "integrations/answer-engine/evals/use-answer-engine.json",
-      "sha256": "4fe13f4ffadb6a41fc2b2a25252fd4f42f369fd0043a7b52f7b457d917006467"
+      "sha256": "df631a27b46719cc47b0f06a05410f2dbf96fc5bca13423a32cc4ba5178048dc"
+    },
+    {
+      "path": "integrations/answer-engine/evals/fixtures/duplicate-project-memories.json",
+      "sha256": "e40d447427ee9775bb6caea84593f3d93453a3edd924c9c73cc8b31a4044b340"
+    },
+    {
+      "path": "integrations/answer-engine/evals/fixtures/onboarding-scope.json",
+      "sha256": "f97c430b1b0aea96aadb2915ee5331a1fe7ca47f1f6cc5195cf85d7629c851c4"
     },
     {
       "path": "integrations/answer-engine/references/capabilities.md",
