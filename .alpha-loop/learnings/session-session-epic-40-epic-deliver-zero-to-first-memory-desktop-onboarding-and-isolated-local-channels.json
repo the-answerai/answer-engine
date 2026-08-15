@@ -1,7 +1,7 @@
 {
   "name": "session/epic-40-epic-deliver-zero-to-first-memory-desktop-onboarding-and-isolated-local-channels",
   "branch": "session/epic-40-epic-deliver-zero-to-first-memory-desktop-onboarding-and-isolated-local-channels",
-  "completed": "2026-08-15T04:43:53.630Z",
+  "completed": "2026-08-15T18:00:43.973Z",
   "results": [
     {
       "issueNum": 42,
@@ -32,6 +32,15 @@
       "verifyPassing": true,
       "duration": 3962,
       "filesChanged": 6
+    },
+    {
+      "issueNum": 45,
+      "title": "feat: add permissioned preview-first local folder ingestion",
+      "status": "failure",
+      "testsPassing": false,
+      "verifyPassing": false,
+      "duration": 9,
+      "filesChanged": 0
     }
   ],
   "stages": [
@@ -230,6 +239,20 @@
       "stage_success": true,
       "started_at": "2026-08-15T04:24:21.757Z",
       "issue_num": 44
+    },
+    {
+      "stage": "batch-plan",
+      "model": "",
+      "endpoint": "default",
+      "tokens_in": 190702,
+      "tokens_out": 146694,
+      "cost_usd": 0,
+      "wall_time_s": 369.407,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "stage_success": true,
+      "started_at": "2026-08-15T17:01:02.250Z",
+      "issue_num": 45
     }
   ]
 }
