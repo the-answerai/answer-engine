@@ -17,6 +17,10 @@
     "./runtime-channel": {
       "types": "./dist/runtime-channel.d.ts",
       "import": "./dist/runtime-channel.js"
+    },
+    "./legacy-adoption": {
+      "types": "./dist/legacy-adoption.d.ts",
+      "import": "./dist/legacy-adoption.js"
     }
   },
   "files": [

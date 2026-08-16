@@ -7,6 +7,11 @@ import {
   createRuntimeChannelProfile,
   validateRuntimeChannelIsolation,
 } from '@answer-engine/create/runtime-channel';
+import {
+  adoptLegacyStableInstallation,
+  inspectLegacyStableInstallation,
+  type LegacyStableInspection,
+} from '@answer-engine/create/legacy-adoption';
 import type { DesktopChannel, DesktopCommand, DesktopStatus } from './shared.js';
 
 export interface DesktopController {
@@ -15,7 +20,7 @@ export interface DesktopController {
   getLogsDirectory(channel: DesktopChannel): string;
 }
 
-function present(status: LifecycleStatus): DesktopStatus {
+function present(status: LifecycleStatus, legacy: LegacyStableInspection): DesktopStatus {
   return {
     channel: status.channel,
     home: status.home,
@@ -26,21 +31,28 @@ function present(status: LifecycleStatus): DesktopStatus {
     release: status.release,
     syncInstalled: status.syncService.installed,
     syncEnabledByDefault: status.syncService.enabledByDefault,
+    runtimeMode: 'live',
+    legacyAdoptionAvailable: legacy.state === 'available',
+    ...(legacy.state === 'invalid' ? { legacyAdoptionError: legacy.message } : {}),
     checkedAt: new Date().toISOString(),
   };
 }
 
 export class LocalRuntimeController implements DesktopController {
   async getStatus(channel: DesktopChannel): Promise<DesktopStatus> {
-    const status = await runLifecycleAction('status', createRuntimeChannelProfile(channel));
+    const profile = createRuntimeChannelProfile(channel);
+    const status = await runLifecycleAction('status', profile);
     if (!status) throw new Error(`No ${channel} status was returned.`);
-    return present(status);
+    const legacy = await inspectLegacyStableInstallation(profile);
+    return present(status, legacy);
   }
 
   async run(command: DesktopCommand): Promise<DesktopStatus> {
     const profile = createRuntimeChannelProfile(command.channel);
     await validateRuntimeChannelIsolation(channelProfiles(command.channel));
-    if (command.action === 'restart') {
+    if (command.action === 'adopt') {
+      await adoptLegacyStableInstallation(profile);
+    } else if (command.action === 'restart') {
       await runLifecycleAction('stop', profile);
       await runLifecycleAction('start', profile);
     } else {
@@ -65,12 +77,13 @@ export class FixtureRuntimeController implements DesktopController {
         channel,
         home: profile.home,
         apiUrl: profile.apiUrl,
-        installed: true,
-        healthy: channel === 'stable',
-        runningServices: channel === 'stable' ? ['api', 'web', 'postgres', 'redis'] : [],
-        release: 'ghcr.io/the-answerai/answer-engine:1.1.0',
-        syncInstalled: channel === 'stable',
+        installed: false,
+        healthy: false,
+        runningServices: [],
+        syncInstalled: false,
         syncEnabledByDefault: channel === 'stable',
+        runtimeMode: 'fixture',
+        legacyAdoptionAvailable: false,
         checkedAt: new Date().toISOString(),
       });
     }
@@ -84,11 +97,11 @@ export class FixtureRuntimeController implements DesktopController {
 
   async run(command: DesktopCommand): Promise<DesktopStatus> {
     const current = await this.getStatus(command.channel);
-    const running = !['stop'].includes(command.action);
     const next: DesktopStatus = {
       ...current,
-      healthy: running,
-      runningServices: running ? ['api', 'web', 'postgres', 'redis'] : [],
+      installed: false,
+      healthy: false,
+      runningServices: [],
       checkedAt: new Date().toISOString(),
     };
     this.states.set(command.channel, next);

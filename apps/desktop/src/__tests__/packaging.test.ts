@@ -26,7 +26,9 @@ describe('desktop packaging policy', () => {
     const css = readFileSync(join(packageRoot, 'src/renderer/styles.css'), 'utf8');
     expect(html).toContain("default-src 'none'");
     expect(html).toContain('STAGING · ISOLATED DATA');
+    expect(html).toContain('Demo mode');
     expect(css).toContain('body[data-channel="staging"]');
+    expect(css).toContain('body[data-runtime-mode="fixture"]');
     expect(css).toContain('prefers-reduced-motion: reduce');
   });
 });

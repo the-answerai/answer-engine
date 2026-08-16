@@ -35,6 +35,16 @@ afterEach(() => {
 });
 
 describe('channel lifecycle actions', () => {
+  it('refuses start before Docker when the ownership marker is missing', async () => {
+    const profile = fixture('stable');
+    rmSync(profile.markerFile);
+    const runCommand = vi.fn();
+
+    await expect(runLifecycleAction('start', profile, {}, { runCommand }))
+      .rejects.toThrow(/ownership marker is missing/i);
+    expect(runCommand).not.toHaveBeenCalled();
+  });
+
   it.each(['stop', 'repair', 'upgrade', 'rollback', 'uninstall'] as const)(
     'refuses %s when the ownership marker does not match',
     async (action) => {

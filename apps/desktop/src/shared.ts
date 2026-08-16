@@ -4,7 +4,7 @@ export const DesktopChannelSchema = z.enum(['stable', 'staging']);
 export type DesktopChannel = z.infer<typeof DesktopChannelSchema>;
 
 export const DesktopActionSchema = z.enum([
-  'start', 'stop', 'restart', 'repair', 'update', 'rollback',
+  'adopt', 'start', 'stop', 'restart', 'repair', 'update', 'rollback',
 ]);
 export type DesktopAction = z.infer<typeof DesktopActionSchema>;
 
@@ -24,14 +24,23 @@ export interface DesktopStatus {
   release?: string;
   syncInstalled: boolean;
   syncEnabledByDefault: boolean;
+  runtimeMode: 'live' | 'fixture';
+  legacyAdoptionAvailable: boolean;
+  legacyAdoptionError?: string;
   checkedAt: string;
+}
+
+export interface DesktopExternalActionResult {
+  opened: boolean;
+  message: string;
+  target?: string;
 }
 
 export interface DesktopBridge {
   getStatus(channel: DesktopChannel): Promise<DesktopStatus>;
   run(command: DesktopCommand): Promise<DesktopStatus>;
-  openUi(channel: DesktopChannel): Promise<void>;
-  openLogs(channel: DesktopChannel): Promise<void>;
+  openUi(channel: DesktopChannel): Promise<DesktopExternalActionResult>;
+  openLogs(channel: DesktopChannel): Promise<DesktopExternalActionResult>;
   getLaunchAtLogin(): Promise<boolean>;
   setLaunchAtLogin(enabled: boolean): Promise<boolean>;
 }

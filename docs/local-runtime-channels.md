@@ -12,7 +12,7 @@ database, or sync-policy drift in `.env.compose` before invoking Docker.
 | Home | `~/.answer-engine` | `~/.answer-engine-staging` |
 | Compose project | `answer-engine-local` | `answer-engine-staging` |
 | API / PostgreSQL / Redis | `5050` / `5433` / `6380` | `5150` / `5533` / `6480` |
-| Web / MCP reservation | `3200` / `5051` | `3300` / `5151` |
+| Vite web-development / MCP reservation | `3200` / `5051` | `3300` / `5151` |
 | Database | `answerengine` | `answerengine_staging` |
 | launchd sync label | `ai.answer-engine.sync` | `ai.answer-engine.staging.sync` |
 | systemd sync unit | `answer-engine-sync.service` | `answer-engine-staging-sync.service` |
@@ -63,10 +63,17 @@ restarting containers or touching database/archive bytes:
 npx @answer-engine/create@1.1.0 install --channel stable
 ```
 
-For an existing home, this verifies the legacy `answer-engine-local` project,
-adds `AE_CHANNEL=stable` and the ownership marker, then exits. Back up the home
-first as normal operational hygiene. Never move, copy, or point staging at the
-stable directory.
+For an existing home, this validates that the home and required Compose,
+environment, and configuration entries are regular files rather than symbolic
+links; verifies the legacy `answer-engine-local` project, stable channel, valid
+configuration mappings, and stable/staging isolation; then adds only
+`AE_CHANNEL=stable` and the private ownership marker. It exits without checking
+or binding the runtime's reserved ports, starting containers, migrating data,
+or changing database, blob, volume, or raw-archive bytes. Invalid,
+wrong-project, channel-conflicting, or symlinked legacy homes fail closed with
+an actionable error. Partial homes are not adopted and continue through the
+normal resumable install path. Back up the home first as normal operational
+hygiene. Never move, copy, or point staging at the stable directory.
 
 ## Staging history opt-in
 

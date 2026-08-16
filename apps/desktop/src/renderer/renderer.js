@@ -8,6 +8,7 @@ const cancelButton = document.querySelector('#cancel-action');
 const message = document.querySelector('#message');
 let pendingAction;
 let busy = false;
+let currentStatus;
 
 function channel() { return channelSelect.value; }
 function setText(selector, value) { document.querySelector(selector).textContent = value; }
@@ -17,7 +18,20 @@ function describeError(error) {
 }
 function setBusy(value) {
   busy = value;
-  document.querySelectorAll('button, select, input').forEach((control) => { control.disabled = value; });
+  syncControlAvailability();
+}
+function syncControlAvailability() {
+  document.querySelectorAll('button, select, input').forEach((control) => { control.disabled = busy; });
+  const adoptButton = document.querySelector('[data-action="adopt"]');
+  const adoptionAvailable = currentStatus?.legacyAdoptionAvailable === true;
+  adoptButton.hidden = !adoptionAvailable;
+  if (!busy && adoptionAvailable) {
+    document.querySelectorAll('.controls button:not([data-action="adopt"])')
+      .forEach((control) => { control.disabled = true; });
+  }
+  if (!busy && currentStatus?.runtimeMode === 'fixture') {
+    document.querySelector('#launch-at-login').disabled = true;
+  }
 }
 function showMessage(text, error = false) {
   message.textContent = text;
@@ -34,16 +48,28 @@ function updateChannelPresentation() {
     : 'Your primary local data and services.';
 }
 function renderStatus(status) {
+  currentStatus = status;
+  document.body.dataset.runtimeMode = status.runtimeMode;
+  document.querySelector('#mode-badge').hidden = status.runtimeMode !== 'fixture';
   const healthDot = document.querySelector('#health-dot');
-  healthDot.className = `health-dot ${status.healthy ? 'healthy' : 'unhealthy'}`;
-  setText('#health-label', status.healthy ? 'Healthy and ready' : status.installed ? 'Needs attention' : 'Not installed');
+  healthDot.className = `health-dot ${status.runtimeMode === 'fixture' ? '' : status.healthy ? 'healthy' : 'unhealthy'}`;
+  setText('#health-label', status.runtimeMode === 'fixture'
+    ? 'Demo only — no runtime'
+    : status.healthy ? 'Healthy and ready' : status.installed ? 'Needs attention' : 'Not installed');
   setText('#release', status.release ?? 'Not available');
   setText('#services', status.runningServices.length ? status.runningServices.join(', ') : 'None running');
   setText('#api-url', status.apiUrl);
   setText('#checked-at', new Date(status.checkedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' }));
-  setText('#status-detail', status.healthy
-    ? `${status.channel} is responding. Closing this window will not stop it.`
-    : 'Use Repair for an actionable recovery attempt. Your data is preserved.');
+  setText('#status-detail', status.runtimeMode === 'fixture'
+    ? 'This is a simulated launcher preview. No local service, external web app, or logs folder is available.'
+    : status.legacyAdoptionAvailable
+      ? 'A verified legacy stable home is ready to adopt. Adoption adds ownership metadata only and does not start or migrate data.'
+      : status.legacyAdoptionError
+        ? status.legacyAdoptionError
+        : status.healthy
+          ? `${status.channel} is responding. Closing this window will not stop it.`
+          : 'Use Repair for an actionable recovery attempt. Your data is preserved.');
+  syncControlAvailability();
 }
 async function refresh() {
   if (busy) return;
@@ -60,15 +86,18 @@ async function run(action) {
   setBusy(true);
   showMessage(`${action[0].toUpperCase()}${action.slice(1)} in progress for ${channel()}…`);
   try {
-    renderStatus(await bridge.run({ channel: channel(), action }));
-    showMessage(`${action[0].toUpperCase()}${action.slice(1)} completed for ${channel()}.`);
+    const status = await bridge.run({ channel: channel(), action });
+    renderStatus(status);
+    showMessage(status.runtimeMode === 'fixture'
+      ? 'Demo mode simulated the control; no runtime action occurred.'
+      : `${action[0].toUpperCase()}${action.slice(1)} completed for ${channel()}.`);
   } catch (error) {
     showMessage(`${describeError(error)} No other channel was changed.`, true);
   } finally { setBusy(false); }
 }
 
 document.querySelector('#refresh').addEventListener('click', refresh);
-channelSelect.addEventListener('change', () => { updateChannelPresentation(); void refresh(); });
+channelSelect.addEventListener('change', () => { currentStatus = undefined; updateChannelPresentation(); void refresh(); });
 document.querySelector('.controls').addEventListener('click', (event) => {
   const button = event.target.closest('button[data-action]');
   if (!button || busy) return;
@@ -92,11 +121,11 @@ cancelButton.addEventListener('click', () => {
   document.querySelector(`[data-action="stop"]`).focus();
 });
 document.querySelector('#open-ui').addEventListener('click', async () => {
-  try { await bridge.openUi(channel()); showMessage(`Opened the ${channel()} web app.`); }
+  try { const result = await bridge.openUi(channel()); showMessage(result.message, !result.opened); }
   catch (error) { showMessage(describeError(error), true); }
 });
 document.querySelector('#open-logs').addEventListener('click', async () => {
-  try { await bridge.openLogs(channel()); showMessage(`Opened ${channel()} logs.`); }
+  try { const result = await bridge.openLogs(channel()); showMessage(result.message, !result.opened); }
   catch (error) { showMessage(`${describeError(error)} Run Repair to recreate missing runtime folders.`, true); }
 });
 document.querySelector('#launch-at-login').addEventListener('change', async (event) => {

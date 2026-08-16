@@ -1,7 +1,12 @@
 import { app, ipcMain, shell, type IpcMainInvokeEvent } from 'electron';
 import { z } from 'zod';
 import type { DesktopController } from './runtime-controller.js';
-import { DesktopChannelSchema, DesktopCommandSchema, IPC } from './shared.js';
+import {
+  DesktopChannelSchema,
+  DesktopCommandSchema,
+  IPC,
+  type DesktopExternalActionResult,
+} from './shared.js';
 import { isTrustedDesktopUrl, localWebUrl } from './security.js';
 
 export interface DesktopIpcEnvironment {
@@ -9,6 +14,8 @@ export interface DesktopIpcEnvironment {
   openPath?: (path: string) => Promise<string>;
   getLaunchAtLogin?: () => boolean;
   setLaunchAtLogin?: (enabled: boolean) => void;
+  externalActionsEnabled?: boolean;
+  standaloneWebDevelopment?: boolean;
 }
 
 function assertTrustedSender(event: IpcMainInvokeEvent): void {
@@ -36,12 +43,33 @@ export function registerDesktopIpc(
   ipcMain.handle(IPC.status, guarded(async (_event, raw: unknown) => controller.getStatus(DesktopChannelSchema.parse(raw))));
   ipcMain.handle(IPC.run, guarded(async (_event, raw: unknown) => controller.run(DesktopCommandSchema.parse(raw))));
   ipcMain.handle(IPC.openUi, guarded(async (_event, raw: unknown) => {
-    const status = await controller.getStatus(DesktopChannelSchema.parse(raw));
-    await openExternal(localWebUrl(status.apiUrl, status.channel));
+    const channel = DesktopChannelSchema.parse(raw);
+    const status = await controller.getStatus(channel);
+    if (environment.externalActionsEnabled === false || status.runtimeMode === 'fixture') {
+      return {
+        opened: false,
+        message: 'Demo mode is simulated; the web app was not opened.',
+      } satisfies DesktopExternalActionResult;
+    }
+    const target = localWebUrl(status.apiUrl, status.channel, {
+      standaloneWebDevelopment: environment.standaloneWebDevelopment,
+    });
+    await openExternal(target);
+    return { opened: true, target, message: `Opened the ${channel} web app.` } satisfies DesktopExternalActionResult;
   }));
   ipcMain.handle(IPC.openLogs, guarded(async (_event, raw: unknown) => {
-    const error = await openPath(controller.getLogsDirectory(DesktopChannelSchema.parse(raw)));
+    const channel = DesktopChannelSchema.parse(raw);
+    const status = await controller.getStatus(channel);
+    if (environment.externalActionsEnabled === false || status.runtimeMode === 'fixture') {
+      return {
+        opened: false,
+        message: 'Demo mode is simulated; a logs folder was not opened.',
+      } satisfies DesktopExternalActionResult;
+    }
+    const target = controller.getLogsDirectory(channel);
+    const error = await openPath(target);
     if (error) throw new Error(error);
+    return { opened: true, target, message: `Opened ${channel} logs.` } satisfies DesktopExternalActionResult;
   }));
   ipcMain.handle(IPC.getLaunchAtLogin, guarded(() => getLaunchAtLogin()));
   ipcMain.handle(IPC.setLaunchAtLogin, guarded((_event, raw: unknown) => {
