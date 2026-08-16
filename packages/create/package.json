@@ -9,6 +9,16 @@
   "bin": {
     "create-answer-engine": "dist/index.js"
   },
+  "exports": {
+    "./lifecycle": {
+      "types": "./dist/lifecycle.d.ts",
+      "import": "./dist/lifecycle.js"
+    },
+    "./runtime-channel": {
+      "types": "./dist/runtime-channel.d.ts",
+      "import": "./dist/runtime-channel.js"
+    }
+  },
   "files": [
     "dist/**/*.js",
     "dist/**/*.d.ts",

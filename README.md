@@ -236,6 +236,12 @@ contract.
 | `@answer-engine/mcp-server` | MCP tools backed by the local API |
 | `@answer-engine/create` | Local installer and client wiring |
 | `@answer-engine/web-ui` | Standalone local interface plus non-published composition library |
+| `@answer-engine/desktop` | Private Electron launcher and guarded local runtime controls |
+
+The desktop package keeps the installed runtime independent from its windows
+and exposes explicit stable/staging health, lifecycle, logs, and verified
+release controls. See [Desktop launcher releases](./docs/desktop-release.md) for
+its security model, packaging, signing, checksum, and cleanup workflow.
 
 ## First agent-history import
 
