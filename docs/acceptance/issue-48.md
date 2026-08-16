@@ -58,6 +58,8 @@ Executed in the isolated issue #48 worktree on 2026-08-15:
 - The final packaged ASAR contains the guarded lifecycle/runtime-channel code,
   release manifest, and checked Docker Compose template required by update and
   rollback; the packaged app also completed a fixture-mode smoke test.
+- The child PR base was explicitly audited as the active epic session branch
+  before merge, preventing a premature direct merge of the partial epic.
 - The Windows NSIS x64 target, macOS hardened-runtime targets, no-publish policy,
   data-preserving uninstall option, signing plan, and checksum workflow are
   documented. Clean Windows hardware execution remains correctly assigned to
