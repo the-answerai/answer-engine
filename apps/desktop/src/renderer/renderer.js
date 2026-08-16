@@ -7,6 +7,7 @@ const confirmButton = document.querySelector('#confirm-action');
 const cancelButton = document.querySelector('#cancel-action');
 const message = document.querySelector('#message');
 let pendingAction;
+let confirmationTrigger;
 let busy = false;
 let currentStatus;
 
@@ -104,21 +105,28 @@ document.querySelector('.controls').addEventListener('click', (event) => {
   const prompt = button.dataset.confirm;
   if (!prompt) { void run(button.dataset.action); return; }
   pendingAction = button.dataset.action;
+  confirmationTrigger = button;
   confirmationCopy.textContent = `${prompt} Selected channel: ${channel().toUpperCase()}.`;
   confirmation.hidden = false;
   confirmButton.focus();
 });
-confirmButton.addEventListener('click', () => {
+confirmButton.addEventListener('click', async () => {
   if (!pendingAction) return;
   const action = pendingAction;
+  const returnFocus = confirmationTrigger;
   pendingAction = undefined;
+  confirmationTrigger = undefined;
   confirmation.hidden = true;
-  void run(action);
+  await run(action);
+  if (returnFocus && !returnFocus.hidden && !returnFocus.disabled) returnFocus.focus();
+  else document.querySelector('#refresh').focus();
 });
 cancelButton.addEventListener('click', () => {
+  const returnFocus = confirmationTrigger;
   pendingAction = undefined;
+  confirmationTrigger = undefined;
   confirmation.hidden = true;
-  document.querySelector(`[data-action="stop"]`).focus();
+  returnFocus?.focus();
 });
 document.querySelector('#open-ui').addEventListener('click', async () => {
   try { const result = await bridge.openUi(channel()); showMessage(result.message, !result.opened); }

@@ -77,34 +77,35 @@ export async function inspectLegacyStableInstallation(
     return { state: 'unavailable', message: 'No existing stable installation was found.' };
   }
 
-  const requiredPaths = REQUIRED_FILES.map((name) => join(profile.home, name));
-  const present = requiredPaths.filter(pathEntryExists);
-  if (present.length === 0 && !pathEntryExists(profile.markerFile)) {
-    return { state: 'unavailable', message: 'No legacy stable installation was found.' };
-  }
-
   try {
     const homeMetadata = lstatSync(profile.home);
     if (homeMetadata.isSymbolicLink()) return invalid('the runtime home must not be a symbolic link.');
     if (!homeMetadata.isDirectory()) return invalid('the runtime home must be a directory.');
+
+    const requiredPaths = REQUIRED_FILES.map((name) => join(profile.home, name));
+    const present = requiredPaths.filter(pathEntryExists);
     if (pathEntryExists(profile.markerFile)) {
       const markerError = validateRegularFile(profile.markerFile, 'the ownership marker');
       return markerError ? invalid(markerError) : {
         state: 'unavailable', message: 'The stable installation already has an ownership marker.',
       };
     }
+
+    for (let index = 0; index < requiredPaths.length; index += 1) {
+      const path = requiredPaths[index];
+      const name = REQUIRED_FILES[index];
+      if (!path || !name || !pathEntryExists(path)) continue;
+      const fileError = validateRegularFile(path, name);
+      if (fileError) return invalid(fileError);
+    }
+    if (present.length === 0) {
+      return { state: 'unavailable', message: 'No legacy stable installation was found.' };
+    }
     if (present.length !== requiredPaths.length) {
       return {
         state: 'unavailable',
         message: 'The stable installation is partial and is not eligible for legacy adoption.',
       };
-    }
-    for (let index = 0; index < requiredPaths.length; index += 1) {
-      const path = requiredPaths[index];
-      const name = REQUIRED_FILES[index];
-      if (!path || !name) continue;
-      const fileError = validateRegularFile(path, name);
-      if (fileError) return invalid(fileError);
     }
 
     const yamlError = validateYamlFiles(profile);

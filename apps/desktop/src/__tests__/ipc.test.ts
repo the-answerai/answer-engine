@@ -54,6 +54,7 @@ describe('desktop external actions', () => {
   it('returns the actual production UI origin after opening it', async () => {
     electron.openExternal.mockResolvedValue(undefined);
     registerDesktopIpc({
+      runtimeMode: 'live',
       getStatus: () => Promise.resolve(status()),
       run: () => Promise.resolve(status()),
       getLogsDirectory: () => '/logs',
@@ -68,6 +69,7 @@ describe('desktop external actions', () => {
 
   it('truthfully reports disabled fixture URL and log side effects', async () => {
     registerDesktopIpc({
+      runtimeMode: 'fixture',
       getStatus: () => Promise.resolve(status({ runtimeMode: 'fixture', installed: false, healthy: false })),
       run: () => Promise.resolve(status()),
       getLogsDirectory: () => '/fixture/logs',
@@ -87,5 +89,20 @@ describe('desktop external actions', () => {
     expect(logsResult.message).toMatch(/demo mode.*not opened/i);
     expect(electron.openExternal).not.toHaveBeenCalled();
     expect(electron.openPath).not.toHaveBeenCalled();
+  });
+
+  it('opens live logs even when runtime status is unavailable', async () => {
+    electron.openPath.mockResolvedValue('');
+    registerDesktopIpc({
+      runtimeMode: 'live',
+      getStatus: () => Promise.reject(new Error('Docker is unavailable')),
+      run: () => Promise.resolve(status()),
+      getLogsDirectory: () => '/logs',
+    });
+
+    await expect(invoke(IPC.openLogs, 'stable')).resolves.toEqual({
+      opened: true, target: '/logs', message: 'Opened stable logs.',
+    });
+    expect(electron.openPath).toHaveBeenCalledWith('/logs');
   });
 });

@@ -46,16 +46,22 @@ Executed in the isolated issue #68 worktree on 2026-08-16:
 - `CI=true pnpm install --frozen-lockfile` passed with the lockfile unchanged.
 - `pnpm verify` passed the public-boundary check; server and desktop lint/type
   checks; 116 server tests with one expected integration skip; 184 CLI tests;
-  63 MCP tests; 126 installer tests; 40 web tests; and 16 desktop tests. All
+  63 MCP tests; 127 installer tests; 40 web tests; and 18 desktop tests. All
   server, CLI, MCP, installer, web, and desktop builds passed.
 - `pnpm audit --prod --audit-level high` reported no known vulnerabilities.
+- The unsigned macOS directory package completed with sandbox-writable Electron
+  caches, and `app.asar` contains the exported installer adoption module and its
+  runtime dependencies.
 - Installer regressions cover valid metadata-only adoption, read-only
   inspection, unchanged database/archive fixtures, unrelated occupied-port and
   unavailable-model tolerance, stable-only enforcement, wrong project/channel,
-  symlinked home/config refusal, and missing ownership refusal before Docker.
+  complete and partial symlinked home/config refusal, and missing ownership
+  refusal before Docker.
 - Desktop regressions cover fixture status/tray truthfulness, explicit disabled
   side-effect results, production and explicit Vite URL selection, adoption
-  delegation without startup, restrictive renderer policy, and Demo mode copy.
+  delegation without startup, adoption completion when Docker cannot refresh
+  status, log access during status failure, restrictive renderer policy, and
+  Demo mode copy.
 
 ## Data safety
 

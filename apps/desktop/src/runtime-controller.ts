@@ -15,6 +15,7 @@ import {
 import type { DesktopChannel, DesktopCommand, DesktopStatus } from './shared.js';
 
 export interface DesktopController {
+  readonly runtimeMode: 'live' | 'fixture';
   getStatus(channel: DesktopChannel): Promise<DesktopStatus>;
   run(command: DesktopCommand): Promise<DesktopStatus>;
   getLogsDirectory(channel: DesktopChannel): string;
@@ -39,6 +40,8 @@ function present(status: LifecycleStatus, legacy: LegacyStableInspection): Deskt
 }
 
 export class LocalRuntimeController implements DesktopController {
+  readonly runtimeMode = 'live' as const;
+
   async getStatus(channel: DesktopChannel): Promise<DesktopStatus> {
     const profile = createRuntimeChannelProfile(channel);
     const status = await runLifecycleAction('status', profile);
@@ -51,7 +54,22 @@ export class LocalRuntimeController implements DesktopController {
     const profile = createRuntimeChannelProfile(command.channel);
     await validateRuntimeChannelIsolation(channelProfiles(command.channel));
     if (command.action === 'adopt') {
+      const statusBeforeAdoption = await this.getStatus(command.channel);
       await adoptLegacyStableInstallation(profile);
+      try {
+        return await this.getStatus(command.channel);
+      } catch {
+        const adoptedStatus = {
+          ...statusBeforeAdoption,
+          installed: true,
+          healthy: false,
+          runningServices: [],
+          legacyAdoptionAvailable: false,
+          checkedAt: new Date().toISOString(),
+        };
+        delete adoptedStatus.legacyAdoptionError;
+        return adoptedStatus;
+      }
     } else if (command.action === 'restart') {
       await runLifecycleAction('stop', profile);
       await runLifecycleAction('start', profile);
@@ -68,6 +86,7 @@ export class LocalRuntimeController implements DesktopController {
 }
 
 export class FixtureRuntimeController implements DesktopController {
+  readonly runtimeMode = 'fixture' as const;
   private readonly states = new Map<DesktopChannel, DesktopStatus>();
 
   constructor() {

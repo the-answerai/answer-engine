@@ -88,6 +88,35 @@ describe('legacy stable adoption', () => {
     expect(existsSync(join(home, '.runtime-channel.json'))).toBe(false);
   });
 
+  it('fails closed for symlinks even when the legacy home is partial or empty', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'ae-legacy-partial-link-'));
+    tempDirs.push(root);
+    const emptyTarget = join(root, 'empty-target');
+    mkdirSync(emptyTarget);
+    const linkedHome = join(root, 'linked-home');
+    symlinkSync(emptyTarget, linkedHome);
+
+    await expect(inspectLegacyStableInstallation(
+      createRuntimeChannelProfile('stable', { home: linkedHome }),
+    )).resolves.toMatchObject({
+      state: 'invalid',
+      message: expect.stringMatching(/home.*symbolic link/i),
+    });
+
+    const partialHome = join(root, 'partial-home');
+    mkdirSync(partialHome);
+    const configTarget = join(root, 'partial-config.yaml');
+    writeFileSync(configTarget, 'models: {}\n');
+    symlinkSync(configTarget, join(partialHome, 'config.yaml'));
+
+    await expect(inspectLegacyStableInstallation(
+      createRuntimeChannelProfile('stable', { home: partialHome }),
+    )).resolves.toMatchObject({
+      state: 'invalid',
+      message: expect.stringMatching(/config\.yaml.*symbolic link/i),
+    });
+  });
+
   it('refuses malformed mappings and non-regular required paths', async () => {
     const malformed = legacyFixture();
     writeFileSync(join(malformed.home, 'docker-compose.yml'), 'services: [\n');

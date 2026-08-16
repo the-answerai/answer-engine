@@ -44,13 +44,13 @@ export function registerDesktopIpc(
   ipcMain.handle(IPC.run, guarded(async (_event, raw: unknown) => controller.run(DesktopCommandSchema.parse(raw))));
   ipcMain.handle(IPC.openUi, guarded(async (_event, raw: unknown) => {
     const channel = DesktopChannelSchema.parse(raw);
-    const status = await controller.getStatus(channel);
-    if (environment.externalActionsEnabled === false || status.runtimeMode === 'fixture') {
+    if (environment.externalActionsEnabled === false || controller.runtimeMode === 'fixture') {
       return {
         opened: false,
         message: 'Demo mode is simulated; the web app was not opened.',
       } satisfies DesktopExternalActionResult;
     }
+    const status = await controller.getStatus(channel);
     const target = localWebUrl(status.apiUrl, status.channel, {
       standaloneWebDevelopment: environment.standaloneWebDevelopment,
     });
@@ -59,8 +59,7 @@ export function registerDesktopIpc(
   }));
   ipcMain.handle(IPC.openLogs, guarded(async (_event, raw: unknown) => {
     const channel = DesktopChannelSchema.parse(raw);
-    const status = await controller.getStatus(channel);
-    if (environment.externalActionsEnabled === false || status.runtimeMode === 'fixture') {
+    if (environment.externalActionsEnabled === false || controller.runtimeMode === 'fixture') {
       return {
         opened: false,
         message: 'Demo mode is simulated; a logs folder was not opened.',

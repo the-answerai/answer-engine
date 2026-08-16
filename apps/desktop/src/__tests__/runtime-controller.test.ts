@@ -92,6 +92,21 @@ describe('LocalRuntimeController', () => {
     expect(mocks.adoptLegacyStableInstallation).toHaveBeenCalledOnce();
     expect(mocks.runLifecycleAction).not.toHaveBeenCalledWith('start', expect.anything());
   });
+
+  it('reports completed adoption even when live status cannot refresh afterward', async () => {
+    mocks.runLifecycleAction
+      .mockResolvedValueOnce(lifecycleStatus('stable'))
+      .mockRejectedValueOnce(new Error('Docker is unavailable'));
+    mocks.inspectLegacyStableInstallation.mockResolvedValue({
+      state: 'available', message: 'A legacy stable installation can be adopted safely.',
+    });
+    mocks.adoptLegacyStableInstallation.mockResolvedValue({ state: 'adopted' });
+
+    await expect(new LocalRuntimeController().run({ channel: 'stable', action: 'adopt' }))
+      .resolves.toMatchObject({
+        runtimeMode: 'live', installed: true, healthy: false, legacyAdoptionAvailable: false,
+      });
+  });
 });
 
 describe('FixtureRuntimeController', () => {

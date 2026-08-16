@@ -24,11 +24,14 @@ describe('desktop packaging policy', () => {
   it('ships a restrictive CSP and an unmistakable staging treatment', () => {
     const html = readFileSync(join(packageRoot, 'src/renderer/index.html'), 'utf8');
     const css = readFileSync(join(packageRoot, 'src/renderer/styles.css'), 'utf8');
+    const renderer = readFileSync(join(packageRoot, 'src/renderer/renderer.js'), 'utf8');
     expect(html).toContain("default-src 'none'");
     expect(html).toContain('STAGING · ISOLATED DATA');
     expect(html).toContain('Demo mode');
     expect(css).toContain('body[data-channel="staging"]');
     expect(css).toContain('body[data-runtime-mode="fixture"]');
     expect(css).toContain('prefers-reduced-motion: reduce');
+    expect(renderer).toContain('returnFocus?.focus()');
+    expect(renderer).toContain("document.querySelector('#refresh').focus()");
   });
 });
