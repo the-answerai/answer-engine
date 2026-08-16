@@ -46,7 +46,7 @@ Executed in the isolated issue #68 worktree on 2026-08-16:
 - `CI=true pnpm install --frozen-lockfile` passed with the lockfile unchanged.
 - `pnpm verify` passed the public-boundary check; server and desktop lint/type
   checks; 116 server tests with one expected integration skip; 184 CLI tests;
-  63 MCP tests; 127 installer tests; 40 web tests; and 18 desktop tests. All
+  63 MCP tests; 128 installer tests; 40 web tests; and 18 desktop tests. All
   server, CLI, MCP, installer, web, and desktop builds passed.
 - `pnpm audit --prod --audit-level high` reported no known vulnerabilities.
 - The unsigned macOS directory package completed with sandbox-writable Electron

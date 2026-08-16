@@ -1,5 +1,4 @@
 import {
-  existsSync,
   lstatSync,
   readFileSync,
 } from 'node:fs';
@@ -73,7 +72,7 @@ export async function inspectLegacyStableInstallation(
   if (profile.channel !== 'stable') {
     return { state: 'unavailable', message: 'Only legacy stable installations can be adopted.' };
   }
-  if (!existsSync(profile.home)) {
+  if (!pathEntryExists(profile.home)) {
     return { state: 'unavailable', message: 'No existing stable installation was found.' };
   }
 

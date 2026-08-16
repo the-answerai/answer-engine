@@ -117,6 +117,20 @@ describe('legacy stable adoption', () => {
     });
   });
 
+  it('fails closed for a dangling symbolic-link home', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'ae-legacy-dangling-link-'));
+    tempDirs.push(root);
+    const linkedHome = join(root, 'linked-home');
+    symlinkSync(join(root, 'missing-target'), linkedHome);
+
+    await expect(inspectLegacyStableInstallation(
+      createRuntimeChannelProfile('stable', { home: linkedHome }),
+    )).resolves.toMatchObject({
+      state: 'invalid',
+      message: expect.stringMatching(/home.*symbolic link/i),
+    });
+  });
+
   it('refuses malformed mappings and non-regular required paths', async () => {
     const malformed = legacyFixture();
     writeFileSync(join(malformed.home, 'docker-compose.yml'), 'services: [\n');
