@@ -66,14 +66,17 @@ npx @answer-engine/create@1.1.0 install --channel stable
 For an existing home, this validates that the home and required Compose,
 environment, and configuration entries are regular files rather than symbolic
 links; verifies the legacy `answer-engine-local` project, stable channel, valid
-configuration mappings, and stable/staging isolation; then adds only
-`AE_CHANNEL=stable` and the private ownership marker. It exits without checking
-or binding the runtime's reserved ports, starting containers, migrating data,
-or changing database, blob, volume, or raw-archive bytes. Invalid,
-wrong-project, channel-conflicting, or symlinked legacy homes fail closed with
-an actionable error. Partial homes are not adopted and continue through the
-normal resumable install path. Back up the home first as normal operational
-hygiene. Never move, copy, or point staging at the stable directory.
+configuration mappings, the known Answer Engine services, images, commands,
+loopback ports, named mounts and volumes, and stable/staging isolation; then
+adds only `AE_CHANNEL=stable` and the private ownership marker. Extra services,
+host mounts, privileged options, and unexpected runtime definitions fail
+closed. Adoption exits without checking or binding reserved ports, starting
+containers, migrating data, or changing database, blob, volume, or raw-archive
+bytes. Invalid, wrong-project, channel-conflicting, or symlinked legacy homes
+fail closed with an actionable error. Partial homes are not adopted and
+continue through the normal resumable install path. Back up the home first as
+normal operational hygiene. Never move, copy, or point staging at the stable
+directory.
 
 ## Staging history opt-in
 

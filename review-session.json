@@ -1,0 +1,12 @@
+{
+  "passed": true,
+  "summary": "Holistic session review passed after preventing arbitrary Compose projects from gaining legacy runtime ownership.",
+  "findings": [
+    {
+      "severity": "critical",
+      "description": "Legacy stable adoption accepted any syntactically valid Compose services mapping, then wrote the ownership marker that authorizes later lifecycle execution. An unrelated or hostile Compose project could therefore be blessed for Start or Repair. Adoption now requires the known Answer Engine service, image, command, loopback-port, mount, and volume topology and rejects extra services, host mounts, privileged options, and other unsafe drift before writing metadata.",
+      "fixed": true,
+      "file": "packages/create/src/legacy-adoption.ts"
+    }
+  ]
+}

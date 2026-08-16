@@ -18,7 +18,11 @@ describe('stable channel adoption', () => {
   it('adds channel ownership to a legacy installer home without touching data or archives', async () => {
     const home = mkdtempSync(join(tmpdir(), 'ae-adopt-'));
     tempDirs.push(home);
-    writeFileSync(join(home, 'docker-compose.yml'), 'services: {}\n');
+    const compose = readFileSync(new URL('../../templates/docker-compose.yml', import.meta.url), 'utf8')
+      .replace('{{POSTGRES_VOLUME}}', 'answer-engine-local_postgres_data')
+      .replace('{{REDIS_VOLUME}}', 'answer-engine-local_redis_data')
+      .replace('{{BLOBS_VOLUME}}', 'answer-engine-local_answerengine_blobs');
+    writeFileSync(join(home, 'docker-compose.yml'), compose);
     writeFileSync(join(home, '.env.compose'), 'COMPOSE_PROJECT_NAME=answer-engine-local\nENCRYPTION_KEY=stable-secret\n');
     writeFileSync(join(home, 'config.yaml'), 'models: {}\n');
     writeFileSync(join(home, 'stable-database.fixture'), 'database unchanged');

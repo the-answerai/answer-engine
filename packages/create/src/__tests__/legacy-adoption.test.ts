@@ -18,10 +18,38 @@ import { createRuntimeChannelProfile } from '../runtime-channel.js';
 
 const tempDirs: string[] = [];
 
+const LEGACY_COMPOSE = `services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    volumes: [postgres_data:/var/lib/postgresql/data]
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes: [redis_data:/data]
+  migrate:
+    image: \${ANSWER_ENGINE_IMAGE:-ghcr.io/the-answerai/answer-engine:1.1.0}
+    command: [node, dist/scripts/migrate.js]
+    env_file: [.env.compose]
+  init:
+    image: \${ANSWER_ENGINE_IMAGE:-ghcr.io/the-answerai/answer-engine:1.1.0}
+    command: [node, dist/scripts/init.js]
+    env_file: [.env.compose]
+  api:
+    image: \${ANSWER_ENGINE_IMAGE:-ghcr.io/the-answerai/answer-engine:1.1.0}
+    command: [node, dist/server.js]
+    env_file: [.env.compose]
+    ports: [127.0.0.1:5050:5000]
+    volumes: [answerengine_blobs:/data]
+volumes:
+  postgres_data:
+  redis_data:
+  answerengine_blobs:
+`;
+
 function legacyFixture(environment = 'COMPOSE_PROJECT_NAME=answer-engine-local\nENCRYPTION_KEY=stable-secret\n') {
   const home = mkdtempSync(join(tmpdir(), 'ae-legacy-adoption-'));
   tempDirs.push(home);
-  writeFileSync(join(home, 'docker-compose.yml'), 'services: {}\n');
+  writeFileSync(join(home, 'docker-compose.yml'), LEGACY_COMPOSE);
   writeFileSync(join(home, '.env.compose'), environment);
   writeFileSync(join(home, 'config.yaml'), 'models: {}\n');
   writeFileSync(join(home, 'database.fixture'), 'database bytes remain unchanged');
@@ -144,6 +172,33 @@ describe('legacy stable adoption', () => {
     await expect(adoptLegacyStableInstallation(nonRegular.profile))
       .rejects.toThrow(/config\.yaml must be a regular file/i);
     expect(existsSync(nonRegular.profile.markerFile)).toBe(false);
+  });
+
+  it('refuses to grant lifecycle ownership to an arbitrary Compose project', async () => {
+    const arbitrary = legacyFixture();
+    writeFileSync(join(arbitrary.home, 'docker-compose.yml'), `services:
+  exfiltrate:
+    image: attacker/example
+    privileged: true
+    volumes: [/var/run/docker.sock:/var/run/docker.sock]
+`);
+
+    await expect(adoptLegacyStableInstallation(arbitrary.profile))
+      .rejects.toThrow(/Answer Engine service topology/i);
+    expect(existsSync(arbitrary.profile.markerFile)).toBe(false);
+    expect(readFileSync(arbitrary.profile.credentialsFile, 'utf8')).not.toContain('AE_CHANNEL');
+
+    const unsafeKnownTopology = legacyFixture();
+    const unsafeCompose = LEGACY_COMPOSE.replace(
+      '    volumes: [answerengine_blobs:/data]',
+      '    privileged: true\n    volumes: [/var/run/docker.sock:/var/run/docker.sock]',
+    );
+    writeFileSync(join(unsafeKnownTopology.home, 'docker-compose.yml'), unsafeCompose);
+
+    await expect(adoptLegacyStableInstallation(unsafeKnownTopology.profile))
+      .rejects.toThrow(/unsupported privileged/i);
+    expect(existsSync(unsafeKnownTopology.profile.markerFile)).toBe(false);
+    expect(readFileSync(unsafeKnownTopology.profile.credentialsFile, 'utf8')).not.toContain('AE_CHANNEL');
   });
 
   it('never offers adoption for staging', async () => {

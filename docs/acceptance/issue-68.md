@@ -10,10 +10,12 @@ confirmation without starting services or changing memory data.
 
 Legacy adoption is a shared installer API. It runs before Docker, model, and
 reserved-port readiness checks; accepts only stable homes with regular
-non-symlink required files, the expected project/channel, valid Compose and
+non-symlink required files, the expected project/channel, the known Answer
+Engine Compose service/image/command/loopback-port/volume topology, valid
 configuration mappings, and isolated channel resources; and writes only
-`AE_CHANNEL=stable` plus the private ownership marker. Existing lifecycle
-ownership refusal remains unchanged.
+`AE_CHANNEL=stable` plus the private ownership marker. Extra services, host
+mounts, and privileged options fail closed. Existing lifecycle ownership
+refusal remains unchanged.
 
 ## Acceptance criteria
 
@@ -27,6 +29,9 @@ ownership refusal remains unchanged.
   without starting containers or migrating data.
 - [x] Wrong-project, channel-conflicting, symlinked, malformed, and non-stable
   adoption attempts fail closed before ownership is written.
+- [x] Arbitrary Compose projects cannot gain lifecycle ownership; unexpected
+  services, commands, images, ports, mounts, volumes, or privileged options are
+  rejected before channel metadata is written.
 - [x] Adoption runs before unrelated reserved-port/model/Docker readiness and
   fixture database/archive bytes remain unchanged.
 - [x] Regression coverage preserves lifecycle refusal when the ownership marker

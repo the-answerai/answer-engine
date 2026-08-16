@@ -23,7 +23,9 @@ installed runtime and its data unchanged.
   origin when opening the app. Ports `3200` and `3300` are used only when
   `AE_DESKTOP_WEB_DEV=1` explicitly selects a standalone Vite development UI.
 - A pre-channel stable home is shown as adoptable only after the installer's
-  file, project, channel, configuration, and isolation validation passes. The
+  file, project, channel, known Compose topology, configuration, and isolation
+  validation passes. Extra services, host mounts, privileged options, and
+  unexpected images, commands, ports, mounts, or volumes are rejected. The
   confirmed Adopt action writes ownership metadata only; it does not start the
   runtime or migrate user data. Invalid legacy homes remain unmanaged and show
   the validation error.
