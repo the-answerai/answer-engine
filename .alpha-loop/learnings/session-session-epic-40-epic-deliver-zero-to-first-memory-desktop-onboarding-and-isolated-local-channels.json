@@ -1,46 +1,17 @@
 {
   "name": "session/epic-40-epic-deliver-zero-to-first-memory-desktop-onboarding-and-isolated-local-channels",
   "branch": "session/epic-40-epic-deliver-zero-to-first-memory-desktop-onboarding-and-isolated-local-channels",
-  "completed": "2026-08-15T18:00:43.973Z",
+  "completed": "2026-08-16T23:05:19.078Z",
   "results": [
     {
-      "issueNum": 42,
-      "title": "feat: add a cross-platform one-prompt installer and capability preflight",
-      "status": "success",
-      "prUrl": "https://github.com/the-answerai/answer-engine/pull/57",
-      "testsPassing": true,
-      "verifyPassing": true,
-      "duration": 2431,
-      "filesChanged": 6
-    },
-    {
-      "issueNum": 43,
-      "title": "feat: install and verify Answer Engine skills, plugins, MCP, and CLI wiring",
-      "status": "success",
-      "prUrl": "https://github.com/the-answerai/answer-engine/pull/58",
-      "testsPassing": true,
-      "verifyPassing": true,
-      "duration": 5747,
-      "filesChanged": 6
-    },
-    {
-      "issueNum": 44,
-      "title": "feat: guide and reconcile the first agent-history import",
-      "status": "success",
-      "prUrl": "https://github.com/the-answerai/answer-engine/pull/59",
-      "testsPassing": true,
-      "verifyPassing": true,
-      "duration": 3962,
-      "filesChanged": 6
-    },
-    {
-      "issueNum": 45,
-      "title": "feat: add permissioned preview-first local folder ingestion",
+      "issueNum": 68,
+      "title": "fix: adopt legacy stable installs and open the real desktop web runtime",
       "status": "failure",
+      "prUrl": "https://github.com/the-answerai/answer-engine/pull/69",
       "testsPassing": false,
-      "verifyPassing": false,
-      "duration": 9,
-      "filesChanged": 0
+      "verifyPassing": true,
+      "duration": 2756,
+      "filesChanged": 6
     }
   ],
   "stages": [
@@ -253,6 +224,132 @@
       "stage_success": true,
       "started_at": "2026-08-15T17:01:02.250Z",
       "issue_num": 45
+    },
+    {
+      "stage": "batch-plan",
+      "model": "",
+      "endpoint": "default",
+      "tokens_in": 109329,
+      "tokens_out": 84099,
+      "cost_usd": 0,
+      "wall_time_s": 172.743,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "stage_success": true,
+      "started_at": "2026-08-15T18:06:45.775Z",
+      "issue_num": 45
+    },
+    {
+      "stage": "batch-implement",
+      "model": "",
+      "endpoint": "default",
+      "tokens_in": 390251,
+      "tokens_out": 300193,
+      "cost_usd": 0,
+      "wall_time_s": 656.754,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "stage_success": true,
+      "started_at": "2026-08-15T18:09:38.549Z",
+      "issue_num": 45
+    },
+    {
+      "stage": "batch-plan",
+      "model": "",
+      "endpoint": "default",
+      "tokens_in": 88215,
+      "tokens_out": 67858,
+      "cost_usd": 0,
+      "wall_time_s": 210.152,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "stage_success": true,
+      "started_at": "2026-08-16T21:34:01.371Z",
+      "issue_num": 68
+    },
+    {
+      "stage": "batch-implement",
+      "model": "",
+      "endpoint": "default",
+      "tokens_in": 1555862,
+      "tokens_out": 1196817,
+      "cost_usd": 0,
+      "wall_time_s": 901.287,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "stage_success": true,
+      "started_at": "2026-08-16T21:37:31.557Z",
+      "issue_num": 68
+    },
+    {
+      "stage": "batch-review",
+      "model": "",
+      "endpoint": "default",
+      "tokens_in": 422514,
+      "tokens_out": 325011,
+      "cost_usd": 0,
+      "wall_time_s": 582.908,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "stage_success": true,
+      "started_at": "2026-08-16T21:52:55.644Z",
+      "issue_num": 68
+    },
+    {
+      "stage": "batch-review_fix",
+      "model": "",
+      "endpoint": "default",
+      "tokens_in": 25490,
+      "tokens_out": 19608,
+      "cost_usd": 0,
+      "wall_time_s": 325.762,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "stage_success": true,
+      "started_at": "2026-08-16T22:02:38.578Z",
+      "issue_num": 68
+    },
+    {
+      "stage": "batch-review",
+      "model": "",
+      "endpoint": "default",
+      "tokens_in": 133786,
+      "tokens_out": 102912,
+      "cost_usd": 0,
+      "wall_time_s": 238.899,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "stage_success": true,
+      "started_at": "2026-08-16T22:08:28.653Z",
+      "issue_num": 68
+    },
+    {
+      "stage": "batch-review_fix",
+      "model": "",
+      "endpoint": "default",
+      "tokens_in": 16992,
+      "tokens_out": 13071,
+      "cost_usd": 0,
+      "wall_time_s": 109.944,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "stage_success": true,
+      "started_at": "2026-08-16T22:12:27.583Z",
+      "issue_num": 68
+    },
+    {
+      "stage": "batch-review",
+      "model": "",
+      "endpoint": "default",
+      "tokens_in": 135364,
+      "tokens_out": 104126,
+      "cost_usd": 0,
+      "wall_time_s": 304.265,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "stage_success": true,
+      "started_at": "2026-08-16T22:14:42.077Z",
+      "issue_num": 68
     }
   ]
 }
