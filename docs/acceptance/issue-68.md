@@ -32,12 +32,13 @@ ownership refusal remains unchanged.
 - [x] Regression coverage preserves lifecycle refusal when the ownership marker
   is missing.
 - [x] `pnpm verify` passes.
-- [ ] Live Electron screenshots at 1440×900 and 375×812 remain to be captured
-  from a host-capable browser-preparation environment. The managed worker built
-  the fixture successfully, but macOS terminated Electron with `SIGABRT` before
-  CDP port 9228 opened. After the prelaunched Chrome session was closed, the
-  repository wrapper correctly refused a sandboxed replacement because process
-  inspection/GUI launch is denied. No unsafe browser bypass was used.
+- [x] The built production Electron renderer completed live interaction checks
+  through the repository-pinned `pnpm browser:ui` session at 1440×900 and
+  375×812. Fixture lifecycle and external-action controls remained truthful,
+  stable/staging origins remained isolated, confirmation focus returned to its
+  trigger, the mobile layout had no horizontal overflow, and reduced-motion
+  styles were active. Evidence: [desktop](evidence/issue-68-desktop.png) and
+  [375px mobile](evidence/issue-68-mobile.png).
 
 ## Verification evidence
 
@@ -45,13 +46,29 @@ Executed in the isolated issue #68 worktree on 2026-08-16:
 
 - `CI=true pnpm install --frozen-lockfile` passed with the lockfile unchanged.
 - `pnpm verify` passed the public-boundary check; server and desktop lint/type
-  checks; 116 server tests with one expected integration skip; 184 CLI tests;
+  checks; 117 server tests with one expected integration skip; 185 CLI tests;
   63 MCP tests; 128 installer tests; 40 web tests; and 18 desktop tests. All
   server, CLI, MCP, installer, web, and desktop builds passed.
 - `pnpm audit --prod --audit-level high` reported no known vulnerabilities.
 - The unsigned macOS directory package completed with sandbox-writable Electron
   caches, and `app.asar` contains the exported installer adoption module and its
   runtime dependencies.
+- The prepared `pnpm browser:ui` Chrome session exercised the built production
+  desktop renderer with a preload-compatible in-memory fixture contract. At
+  1440×900, Start retained `None running`, Open web app returned its explicit
+  not-opened message, and stable retained `http://127.0.0.1:5050`. Stop moved
+  focus to Confirm and Cancel returned focus to Stop. At 375×812, staging used
+  `http://127.0.0.1:5150`, Open logs returned its explicit not-opened message,
+  and `body.scrollWidth` equaled the 375px viewport. Emulated
+  `prefers-reduced-motion: reduce` matched and reduced transition/animation
+  durations to `0.001ms`.
+- Direct fixture launch remains unavailable inside the managed macOS worker:
+  both the workspace Electron binary and a valid ad-hoc-signed temporary app
+  bundle were denied before CDP port 9228 became available. The live pass
+  therefore covers the production renderer and fixture preload contract; the
+  native macOS window shell and tray still require a host-capable release
+  environment. No raw browser CLI, Playwright substitute, or unsafe launch
+  bypass was used.
 - Installer regressions cover valid metadata-only adoption, read-only
   inspection, unchanged database/archive fixtures, unrelated occupied-port and
   unavailable-model tolerance, stable-only enforcement, wrong project/channel,
@@ -65,7 +82,9 @@ Executed in the isolated issue #68 worktree on 2026-08-16:
 
 ## Data safety
 
-All adoption tests used temporary synthetic homes. Browser attempts used only
-the in-memory fixture controller and a temporary static renderer server. No
-stable runtime lifecycle command ran, and no user database, blob, volume,
-archive, credentials, or release state was read or changed.
+All adoption tests used temporary synthetic homes. Browser verification used
+only the built production renderer, an in-memory preload-compatible fixture,
+and a temporary static server. Electron launch attempts used fixture mode and a
+temporary packaged copy. No stable runtime lifecycle command ran, and no user
+database, blob, volume, archive, credentials, or release state was read or
+changed.
