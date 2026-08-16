@@ -1,0 +1,18 @@
+{
+  "passed": false,
+  "summary": "Organization undo timestamp precision is fixed and all automated checks pass, but required live desktop/mobile verification remains environment-blocked.",
+  "findings": [
+    {
+      "severity": "critical",
+      "description": "Organization apply receipts converted PostgreSQL updated_at values through JavaScript Date, truncating microseconds; undo then compared the truncated value for exact equality and could reject unchanged tags or libraries. The apply queries now serialize timestamps at PostgreSQL microsecond precision, with regression coverage for the precise receipt.",
+      "fixed": true,
+      "file": "src/services/organization/organization-service.ts"
+    },
+    {
+      "severity": "critical",
+      "description": "The mandatory live Electron UI verification for Issue #68 could not be completed: the repository acceptance evidence records Electron SIGABRT and the prepared browser becoming unavailable. Desktop and 375px mobile interactions, screenshots, focus behavior, and reduced-motion behavior therefore remain unverified.",
+      "fixed": false,
+      "file": "docs/acceptance/issue-68.md"
+    }
+  ]
+}
