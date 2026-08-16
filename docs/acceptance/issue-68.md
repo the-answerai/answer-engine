@@ -44,6 +44,10 @@ refusal remains unchanged.
   trigger, the mobile layout had no horizontal overflow, and reduced-motion
   styles were active. Evidence: [desktop](evidence/issue-68-desktop.png) and
   [375px mobile](evidence/issue-68-mobile.png).
+- [x] A host-launched native Electron window reported the existing stable
+  runtime healthy at port 5050, opened that web application successfully, and
+  showed staging as an independent not-installed runtime at port 5150.
+  Evidence: [real stable runtime](evidence/issue-68-real-runtime.png).
 
 ## Verification evidence
 
@@ -52,28 +56,36 @@ Executed in the isolated issue #68 worktree on 2026-08-16:
 - `CI=true pnpm install --frozen-lockfile` passed with the lockfile unchanged.
 - `pnpm verify` passed the public-boundary check; server and desktop lint/type
   checks; 117 server tests with one expected integration skip; 185 CLI tests;
-  63 MCP tests; 128 installer tests; 40 web tests; and 18 desktop tests. All
+  63 MCP tests; 129 installer tests; 40 web tests; and 18 desktop tests. All
   server, CLI, MCP, installer, web, and desktop builds passed.
 - `pnpm audit --prod --audit-level high` reported no known vulnerabilities.
 - The unsigned macOS directory package completed with sandbox-writable Electron
   caches, and `app.asar` contains the exported installer adoption module and its
   runtime dependencies.
-- The prepared `pnpm browser:ui` Chrome session exercised the built production
-  desktop renderer with a preload-compatible in-memory fixture contract. At
+- The host-launched Electron fixture exposed CDP on port 9228, and the prepared
+  repository-pinned `pnpm browser:ui` session exercised the native window and
+  real preload IPC contract. At
   1440×900, Start retained `None running`, Open web app returned its explicit
   not-opened message, and stable retained `http://127.0.0.1:5050`. Stop moved
   focus to Confirm and Cancel returned focus to Stop. At 375×812, staging used
   `http://127.0.0.1:5150`, Open logs returned its explicit not-opened message,
-  and `body.scrollWidth` equaled the 375px viewport. Emulated
+  and `body.scrollWidth` was 360px within the 375px viewport. Emulated
   `prefers-reduced-motion: reduce` matched and reduced transition/animation
-  durations to `0.001ms`.
-- Direct fixture launch remains unavailable inside the managed macOS worker:
-  both the workspace Electron binary and a valid ad-hoc-signed temporary app
-  bundle were denied before CDP port 9228 became available. The live pass
-  therefore covers the production renderer and fixture preload contract; the
-  native macOS window shell and tray still require a host-capable release
-  environment. No raw browser CLI, Playwright substitute, or unsafe launch
-  bypass was used.
+  durations to `0.001ms`. The browser console and page-error logs were empty;
+  axe reported zero WCAG A/AA violations, with gradient-dependent contrast
+  checks left incomplete.
+- A second host-launched native Electron window used the real desktop
+  controller in read-only use. It reported stable `Healthy and ready`, release
+  `answer-engine-oss:local`, services `api, postgres, redis`, and local URL
+  `http://localhost:5050`. Open web app returned `Opened the stable web app`,
+  while an independent request returned HTTP 200 and `/health` returned
+  `channel: stable`. Switching to staging reported `Not installed` at
+  `http://127.0.0.1:5150`; returning to stable remained healthy.
+- The managed worker could not launch Electron because of its macOS sandbox,
+  so native verification was completed from the host after Alpha Loop's
+  independent review passed. Every browser interaction still used the
+  repository wrapper; no raw browser CLI, Playwright substitute, or unsafe
+  launch bypass was used.
 - Installer regressions cover valid metadata-only adoption, read-only
   inspection, unchanged database/archive fixtures, unrelated occupied-port and
   unavailable-model tolerance, stable-only enforcement, wrong project/channel,
@@ -87,9 +99,10 @@ Executed in the isolated issue #68 worktree on 2026-08-16:
 
 ## Data safety
 
-All adoption tests used temporary synthetic homes. Browser verification used
-only the built production renderer, an in-memory preload-compatible fixture,
-and a temporary static server. Electron launch attempts used fixture mode and a
-temporary packaged copy. No stable runtime lifecycle command ran, and no user
-database, blob, volume, archive, credentials, or release state was read or
-changed.
+All adoption tests used temporary synthetic homes. Fixture-mode browser
+verification used the native Electron window and in-memory controller. Real
+mode was limited to status reads, channel selection, and Open web app; no
+lifecycle action ran. The stable database, blobs, volumes, archive,
+credentials, and release state were not changed. After verification, stable
+remained healthy, `~/.answer-engine/raw-archive` remained 0 B, and the host had
+approximately 1.1 TiB free.
