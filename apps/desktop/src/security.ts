@@ -24,12 +24,20 @@ export function isTrustedDesktopUrl(value: string): boolean {
   }
 }
 
-export function localWebUrl(apiUrl: string, channel: 'stable' | 'staging'): string {
+export interface LocalWebUrlOptions {
+  standaloneWebDevelopment?: boolean;
+}
+
+export function localWebUrl(
+  apiUrl: string,
+  channel: 'stable' | 'staging',
+  options: LocalWebUrlOptions = {},
+): string {
   const url = new URL(apiUrl);
   if (url.protocol !== 'http:' || !['localhost', '127.0.0.1'].includes(url.hostname)) {
     throw new Error('Refusing to open a non-local runtime URL.');
   }
-  url.port = channel === 'stable' ? '3200' : '3300';
+  if (options.standaloneWebDevelopment) url.port = channel === 'stable' ? '3200' : '3300';
   url.pathname = '/';
   url.search = '';
   url.hash = '';

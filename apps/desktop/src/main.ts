@@ -40,7 +40,12 @@ const fixtureIpcEnvironment: DesktopIpcEnvironment = {
   openPath: () => Promise.resolve(''),
   getLaunchAtLogin: () => fixtureLaunchAtLogin,
   setLaunchAtLogin: (enabled) => { fixtureLaunchAtLogin = enabled; },
+  externalActionsEnabled: false,
 };
+
+const liveIpcEnvironment: DesktopIpcEnvironment | undefined = process.env.AE_DESKTOP_WEB_DEV === '1'
+  ? { standaloneWebDevelopment: true }
+  : undefined;
 
 function showWindow(): void {
   if (!mainWindow) return;
@@ -115,7 +120,7 @@ async function start(): Promise<void> {
   app.setName('Answer Engine');
   await app.whenReady();
   protocol.handle('answer-engine', (request) => rendererResponse(join(moduleDirectory, 'renderer'), request.url));
-  registerDesktopIpc(controller, fixture ? fixtureIpcEnvironment : undefined);
+  registerDesktopIpc(controller, fixture ? fixtureIpcEnvironment : liveIpcEnvironment);
   mainWindow = createWindow();
   const icon = nativeImage.createFromPath(join(moduleDirectory, 'assets', 'tray.svg'));
   tray = new Tray(icon.resize({ width: 18, height: 18 }));

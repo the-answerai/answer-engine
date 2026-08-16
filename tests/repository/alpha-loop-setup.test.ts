@@ -82,6 +82,14 @@ describe('Alpha Loop repository posture', () => {
     });
   });
 
+  it('waits for the isolated Compose database without assuming a stable host port', () => {
+    const waitScript = read('scripts/wait-for-postgres.sh');
+
+    expect(waitScript).toContain('docker compose exec -T postgres');
+    expect(waitScript).toContain('pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"');
+    expect(waitScript).not.toContain('DATABASE_PORT:-5433');
+  });
+
   it('tracks the vision, context, canonical templates, and learning storage', () => {
     for (const path of [
       '.alpha-loop/vision.md',

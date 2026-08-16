@@ -24,15 +24,17 @@ describe('stable channel adoption', () => {
     writeFileSync(join(home, 'stable-database.fixture'), 'database unchanged');
     writeFileSync(join(home, 'stable-archive.fixture'), 'archive unchanged');
     const messages: string[] = [];
+    const detectOwnedPorts = vi.fn(async () => new Set<number>());
+    const preflight = vi.fn(() => runPreflight({
+      platform: 'darwin', architecture: 'arm64', totalMemoryBytes: 16 * 1024 ** 3,
+      freeDiskBytes: 60 * 1024 ** 3, nodeVersion: '22.16.0', installation: 'legacy',
+      modelRuntimeAvailable: false, runCommand: async () => { throw new Error('Docker is unavailable'); },
+      probePort: async () => false,
+    }));
 
     await install({ channel: 'stable', home, yes: true }, { write: (message) => messages.push(message) }, {
-      detectOwnedPorts: async () => new Set(),
-      runPreflight: () => runPreflight({
-        platform: 'darwin', architecture: 'arm64', totalMemoryBytes: 16 * 1024 ** 3,
-        freeDiskBytes: 60 * 1024 ** 3, nodeVersion: '22.16.0', installation: 'legacy',
-        modelRuntimeAvailable: true, runCommand: async () => ({ stdout: '' }),
-        probePort: async () => true,
-      }),
+      detectOwnedPorts,
+      runPreflight: preflight,
     });
 
     expect(existsSync(join(home, '.runtime-channel.json'))).toBe(true);
@@ -40,6 +42,8 @@ describe('stable channel adoption', () => {
     expect(readFileSync(join(home, 'stable-database.fixture'), 'utf8')).toBe('database unchanged');
     expect(readFileSync(join(home, 'stable-archive.fixture'), 'utf8')).toBe('archive unchanged');
     expect(messages.join('\n')).toContain('without restarting or changing data');
+    expect(detectOwnedPorts).not.toHaveBeenCalled();
+    expect(preflight).not.toHaveBeenCalled();
   });
 
   it('cancels a new install before creating or changing any file', async () => {

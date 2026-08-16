@@ -124,6 +124,13 @@ channel-aware and destructive actions require the selected home's ownership
 marker. See `docs/local-runtime-channels.md` in the repository for the complete
 resource table, existing-install adoption, and rollback behavior.
 
+A complete pre-channel stable home is adopted before Docker, model-runtime, or
+reserved-port readiness checks. Adoption validates regular non-symlink files,
+the stable Compose project and channel, configuration syntax, and channel
+isolation, then writes only `AE_CHANNEL=stable` and the private ownership
+marker. It does not start services or change database, blob, volume, archive,
+or memory bytes. Invalid or conflicting homes fail closed.
+
 ## Uninstall
 
 ```bash

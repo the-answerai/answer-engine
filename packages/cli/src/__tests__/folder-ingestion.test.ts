@@ -1,7 +1,7 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { Command } from 'commander';
 import { afterEach, describe, expect, it } from 'vitest';
 import { registerFolderCommands } from '../commands/folders.js';
@@ -147,5 +147,24 @@ describe('permissioned folder ingestion', () => {
     expect(first.sha256).toBe(second.sha256);
     expect(first.manifestPath).not.toBe(second.manifestPath);
     expect([firstManifest.relative_path, secondManifest.relative_path]).toEqual(['a.md', 'b.md']);
+  });
+
+  it('refuses archive manifests that redirect reads outside their archive directory', async () => {
+    const root = await temporaryDirectory();
+    const aeHome = await temporaryDirectory();
+    process.env.AE_HOME = aeHome;
+    await writeFile(join(root, 'note.md'), 'approved bytes');
+    const preview = await previewFolder(root);
+    const sourceId = randomUUID();
+    const archived = await archiveApprovedFile(sourceId, root, preview.inventory[0]!);
+    const outsidePath = join(aeHome, 'outside.bin');
+    await writeFile(outsidePath, 'approved bytes');
+    await writeFile(archived.manifestPath, `${JSON.stringify({
+      sha256: archived.sha256,
+      archived_path: relative(join(archived.manifestPath, '..'), outsidePath),
+    })}\n`);
+
+    await expect(archiveApprovedFile(sourceId, root, preview.inventory[0]!))
+      .rejects.toThrow(/archive manifest/i);
   });
 });

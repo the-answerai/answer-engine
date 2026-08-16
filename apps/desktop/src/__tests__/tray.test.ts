@@ -12,6 +12,8 @@ function status(overrides: Partial<DesktopStatus> = {}): DesktopStatus {
     runningServices: ['api'],
     syncInstalled: true,
     syncEnabledByDefault: true,
+    runtimeMode: 'live',
+    legacyAdoptionAvailable: false,
     checkedAt: '2026-08-15T00:00:00.000Z',
     ...overrides,
   };
@@ -31,6 +33,14 @@ describe('presentTrayStatus', () => {
       health: 'Needs repair',
       header: 'STAGING — Needs repair',
       tooltip: 'Answer Engine staging — Needs repair',
+    });
+  });
+
+  it('never presents fixture status as a real healthy service', () => {
+    expect(presentTrayStatus(status({ runtimeMode: 'fixture', healthy: true }))).toEqual({
+      health: 'Demo mode',
+      header: 'DEMO — no runtime',
+      tooltip: 'Answer Engine demo — no local runtime',
     });
   });
 });
