@@ -82,6 +82,34 @@ was not silently authorized or substituted for the requested baseline.
    guided recall; do not substitute mocked command output.
 6. Re-run `pnpm verify` from both clean checkouts and the epic verify-only audit.
 
+## Evidence worksheet to complete
+
+Every cell must link to evidence from the named clean machine. A component test,
+fixture, active personal host, or result copied from the other platform does not
+complete a cell.
+
+| Gate | Clean Apple Silicon 16 GB+ | Clean Windows 11/WSL2 GPU 8 GB+ |
+|---|---|---|
+| Sanitized hardware, OS, Node, Docker, Compose, and model-runtime inventory | Blocked | Blocked |
+| Versioned prompt, package/release checksum, runtime digest, and rollback-input verification | Blocked | Blocked |
+| Prompt-driven preflight, interview, confirmed install, health, and no-login local UI | Blocked | Blocked |
+| Consented first history import with reconciled inventory and sampled lineage | Blocked | Blocked |
+| Folder preview/apply/remove and archive-integrity sample | Blocked | Blocked |
+| Organization preview/apply/undo/reapply with unchanged imported content | Blocked | Blocked |
+| Real Codex and Claude Code MCP/CLI recall events; applicable desktop-client guided recall | Blocked | Blocked |
+| Fresh-chat grounded remember/recall tutorial without copied answer context | Blocked | Blocked |
+| Native desktop/tray behavior, background recovery after reboot, desktop screenshot, and 375px screenshot | Blocked | Blocked |
+| Repair, update, rollback, cancellation, uninstall/reinstall, and preserved stable data | Blocked | Blocked |
+| Concurrent stable/staging mutation with unchanged stable database, archive, credential, volume, and service fingerprints | Blocked | Blocked |
+| Clean-checkout `pnpm verify`, installer/package verification, and final epic verify-only audit | Blocked | Blocked |
+
+Each machine's evidence bundle must record the source commit and immutable
+artifact identifiers; timestamps and command exit status; sanitized commands
+and outputs; before/after fingerprints; client/tool event identifiers; and
+screenshot paths. Never retain secrets, raw imported content, database dumps,
+machine serial numbers, hardware UUIDs, or credential bytes. Fingerprint those
+inputs as a stream when required and retain only the digest.
+
 ## Disk and data safety
 
 No VM or OS image was downloaded. No stable API, database, service, credential,
