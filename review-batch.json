@@ -1,0 +1,20 @@
+{
+  "passed": false,
+  "summary": "The code review warning was fixed and all automated checks pass, but required desktop/mobile browser acceptance remains environment-blocked.",
+  "findings": [
+    {
+      "severity": "critical",
+      "description": "Required live browser verification at desktop and 375px mobile widths is incomplete because the repository browser wrapper cannot connect after Chrome exits before writing its DevTools endpoint in this managed environment.",
+      "fixed": false,
+      "file": "docs/acceptance/issue-68.md",
+      "issueNum": 68
+    },
+    {
+      "severity": "warning",
+      "description": "The mode badge's author-level display rule overrode the HTML hidden attribute, so live launcher mode could incorrectly display the Demo mode badge.",
+      "fixed": true,
+      "file": "apps/desktop/src/renderer/styles.css",
+      "issueNum": 68
+    }
+  ]
+}

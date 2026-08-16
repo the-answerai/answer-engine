@@ -30,6 +30,7 @@ describe('desktop packaging policy', () => {
     expect(html).toContain('Demo mode');
     expect(css).toContain('body[data-channel="staging"]');
     expect(css).toContain('body[data-runtime-mode="fixture"]');
+    expect(css).toContain('[hidden] { display: none !important; }');
     expect(css).toContain('prefers-reduced-motion: reduce');
     expect(renderer).toContain('returnFocus?.focus()');
     expect(renderer).toContain("document.querySelector('#refresh').focus()");
