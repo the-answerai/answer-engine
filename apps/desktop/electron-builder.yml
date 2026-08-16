@@ -1,0 +1,28 @@
+appId: ai.answer-engine.desktop
+productName: Answer Engine
+artifactName: answer-engine-desktop-${version}-${os}-${arch}.${ext}
+directories:
+  output: ../../tmp/desktop-release
+  buildResources: assets
+files:
+  - dist/**/*
+  - package.json
+asar: true
+publish: null
+mac:
+  category: public.app-category.productivity
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  target:
+    - target: dmg
+      arch: [arm64]
+    - target: zip
+      arch: [arm64]
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false

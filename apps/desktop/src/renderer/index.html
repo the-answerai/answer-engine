@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'">
+    <title>Answer Engine</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="renderer.js" defer></script>
+  </head>
+  <body data-channel="stable">
+    <div class="staging-rail" aria-hidden="true">STAGING · ISOLATED DATA · STAGING · ISOLATED DATA</div>
+    <main>
+      <header class="masthead">
+        <div>
+          <p class="eyebrow">Local memory, under your control</p>
+          <h1>Answer Engine</h1>
+        </div>
+        <label class="channel-picker">
+          <span>Runtime channel</span>
+          <select id="channel">
+            <option value="stable">Stable</option>
+            <option value="staging">Staging</option>
+          </select>
+        </label>
+      </header>
+
+      <section id="channel-banner" class="channel-banner" aria-live="polite">
+        <strong id="channel-banner-title">Stable runtime</strong>
+        <span id="channel-banner-copy">Your primary local data and services.</span>
+      </section>
+
+      <section class="status-card" aria-labelledby="status-title">
+        <div class="status-heading">
+          <div>
+            <p class="eyebrow">Current state</p>
+            <h2 id="status-title"><span id="health-dot" class="health-dot"></span><span id="health-label">Checking…</span></h2>
+          </div>
+          <button id="refresh" class="quiet-button" type="button">Refresh</button>
+        </div>
+        <dl class="facts">
+          <div><dt>Release</dt><dd id="release">—</dd></div>
+          <div><dt>Services</dt><dd id="services">—</dd></div>
+          <div><dt>Local URL</dt><dd id="api-url">—</dd></div>
+          <div><dt>Last checked</dt><dd id="checked-at">—</dd></div>
+        </dl>
+        <p id="status-detail" class="status-detail">Reading the selected runtime without changing it.</p>
+      </section>
+
+      <section aria-labelledby="controls-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Lifecycle</p>
+            <h2 id="controls-title">Runtime controls</h2>
+          </div>
+        </div>
+        <div class="controls">
+          <button type="button" data-action="start">Start</button>
+          <button type="button" data-action="restart">Restart</button>
+          <button type="button" data-action="repair">Repair</button>
+          <button type="button" data-action="stop" data-confirm="Stop the selected runtime? The launcher will stay open.">Stop</button>
+          <button type="button" data-action="update" data-confirm="Install only the verified bundled release for this channel?">Update</button>
+          <button type="button" data-action="rollback" data-confirm="Roll back only this channel to its previously verified release?">Rollback</button>
+        </div>
+        <div id="confirmation" class="confirmation" hidden>
+          <p id="confirmation-copy"></p>
+          <div>
+            <button id="confirm-action" class="danger-button" type="button">Confirm</button>
+            <button id="cancel-action" class="quiet-button" type="button">Cancel</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="utility-card" aria-labelledby="utility-title">
+        <div>
+          <p class="eyebrow">Shortcuts</p>
+          <h2 id="utility-title">Open and diagnose</h2>
+        </div>
+        <div class="utility-actions">
+          <button id="open-ui" type="button">Open web app</button>
+          <button id="open-logs" class="quiet-button" type="button">Open logs</button>
+        </div>
+        <label class="login-setting">
+          <input id="launch-at-login" type="checkbox">
+          <span><strong>Launch this control app at login</strong><small>The Answer Engine runtime remains independent and keeps running after this window closes.</small></span>
+        </label>
+      </section>
+
+      <div id="message" class="message" role="status" aria-live="polite"></div>
+    </main>
+  </body>
+</html>
