@@ -94,6 +94,29 @@ describe('channel lifecycle actions', () => {
     expect(runCommand).not.toHaveBeenCalled();
   });
 
+  it.each([
+    'ghcr.io/the-answerai/answer-engine:latest',
+    `example/other@sha256:${'9'.repeat(64)}`,
+  ])('refuses managed runtime image drift in %s before Docker runs', async (image) => {
+    const profile = fixture();
+    const current = `example/current@sha256:${'1'.repeat(64)}`;
+    writeFileSync(profile.releaseFile, `${JSON.stringify({
+      schemaVersion: 1,
+      sourceCommit: TEST_SOURCE_COMMIT,
+      current,
+      previous: current,
+      verifiedAtInstall: true,
+    })}\n`);
+    const environment = readFileSync(profile.credentialsFile, 'utf8')
+      .replace(/^ANSWER_ENGINE_IMAGE=.*$/m, `ANSWER_ENGINE_IMAGE=${image}`);
+    writeFileSync(profile.credentialsFile, environment);
+    const runCommand = vi.fn(async () => ({ stdout: '' }));
+
+    await expect(runLifecycleAction('stop', profile, {}, { runCommand }))
+      .rejects.toThrow(/runtime image.*release state/i);
+    expect(runCommand).not.toHaveBeenCalled();
+  });
+
   it('refuses a changed Compose definition before Docker runs', async () => {
     const profile = fixture();
     writeFileSync(join(profile.home, 'docker-compose.yml'), 'services:\n  api: {}\n');

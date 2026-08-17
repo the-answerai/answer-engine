@@ -107,6 +107,36 @@ function currentRelease(profile: RuntimeChannelProfile): string | undefined {
   return image && DigestReferenceSchema.safeParse(image).success ? image : undefined;
 }
 
+function assertRuntimeImageMatchesReleaseState(profile: RuntimeChannelProfile): void {
+  let metadata;
+  try {
+    metadata = lstatSync(profile.releaseFile);
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return;
+    throw error;
+  }
+  if (metadata.isSymbolicLink() || !metadata.isFile()) {
+    throw new Error('Managed release state must be a regular file and must not be a symbolic link.');
+  }
+  let state: ReleaseState;
+  try {
+    state = ReleaseStateSchema.parse(JSON.parse(readFileSync(profile.releaseFile, 'utf8')));
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`Managed release state is invalid (${reason}).`);
+  }
+  const environment = readFileSync(profile.credentialsFile, 'utf8');
+  const configuredImage = readEnvValue(environment, 'ANSWER_ENGINE_IMAGE');
+  const allowedImages = state.pending
+    ? new Set([state.current, state.pending.from, state.pending.to])
+    : new Set([state.current]);
+  if (!configuredImage || !allowedImages.has(configuredImage)) {
+    throw new Error(
+      `Runtime image ${configuredImage ?? '(missing)'} does not match the managed release state.`,
+    );
+  }
+}
+
 export function parseLifecycleAction(value: string | undefined): LifecycleAction {
   const result = LifecycleActionSchema.safeParse(value ?? 'install');
   if (!result.success) throw new Error(`Unknown action "${value}"; choose ${LifecycleActionSchema.options.join(', ')}.`);
@@ -133,6 +163,7 @@ export function assertRuntimeOwnership(profile: RuntimeChannelProfile): void {
     throw new Error(`Refusing lifecycle action: runtime ownership marker is missing or invalid (${reason}).`);
   }
   assertRuntimeChannelConfiguration(profile);
+  assertRuntimeImageMatchesReleaseState(profile);
 }
 
 async function readChannelHealth(

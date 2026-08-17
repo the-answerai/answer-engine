@@ -91,7 +91,9 @@ const runtimeImage = argument('image');
 const outputDirectory = resolve(argument('output'));
 if (!/^v\d+\.\d+\.\d+$/.test(tag)) fail('tag must be an exact semantic version such as v1.1.0');
 if (!/^[a-f0-9]{40}$/.test(sourceCommit)) fail('commit must be a full 40-character Git commit');
-if (!/@sha256:[a-f0-9]{64}$/.test(runtimeImage)) fail('image must use an exact @sha256 digest');
+if (!/^ghcr\.io\/the-answerai\/answer-engine@sha256:[a-f0-9]{64}$/.test(runtimeImage)) {
+  fail('image must use the official Answer Engine repository with an exact @sha256 digest');
+}
 const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repositoryRoot, encoding: 'utf8' }).trim();
 if (head !== sourceCommit) fail(`checked-out commit ${head} does not match requested ${sourceCommit}`);
 const dirty = execFileSync('git', ['status', '--porcelain', '--untracked-files=all'], {

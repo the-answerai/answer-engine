@@ -37,7 +37,7 @@ jobs:
         run: |
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
           [[ "$SOURCE_COMMIT" =~ ^[a-f0-9]{40}$ ]]
-          [[ "$RUNTIME_IMAGE" =~ @sha256:[a-f0-9]{64}$ ]]
+          [[ "$RUNTIME_IMAGE" =~ ^ghcr\.io/the-answerai/answer-engine@sha256:[a-f0-9]{64}$ ]]
       - name: Check out exact source commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -70,11 +70,15 @@ jobs:
           docker buildx imagetools inspect --raw "$RUNTIME_IMAGE" > "$RUNNER_TEMP/runtime-index.json"
           jq -e '[.manifests[].platform | "\(.os)/\(.architecture)"] | index("linux/arm64") and index("linux/amd64")' "$RUNNER_TEMP/runtime-index.json"
       - name: Build candidate archives, checksums, manifest, and provenance
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          RUNTIME_IMAGE: ${{ inputs.runtime_image }}
         run: |
           node scripts/build-release-assets.mjs \
-            --tag '${{ inputs.tag }}' \
-            --commit '${{ inputs.source_commit }}' \
-            --image '${{ inputs.runtime_image }}' \
+            --tag "$RELEASE_TAG" \
+            --commit "$SOURCE_COMMIT" \
+            --image "$RUNTIME_IMAGE" \
             --output release-candidate
       - name: Verify candidate checksums
         run: (cd release-candidate && sha256sum --check SHA256SUMS)
@@ -103,4 +107,5 @@ jobs:
       - name: Upload to the existing exact-tag release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload '${{ inputs.tag }}' release-candidate/*
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: gh release upload "$RELEASE_TAG" release-candidate/*

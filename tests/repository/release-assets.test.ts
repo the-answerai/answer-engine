@@ -112,6 +112,10 @@ describe('immutable installer release assets', () => {
     expect(workflow).toContain('sha256sum --check SHA256SUMS');
     expect(workflow).toContain('$RUNNER_TEMP/runtime-index.json');
     expect(workflow).not.toContain('> runtime-index.json');
+    expect(workflow).toContain('RUNTIME_IMAGE: ${{ inputs.runtime_image }}');
+    expect(workflow).toContain('--image "$RUNTIME_IMAGE"');
+    expect(workflow).not.toContain("--image '${{ inputs.runtime_image }}'");
+    expect(workflow).toContain('^ghcr\\.io/the-answerai/answer-engine@sha256:');
     expect(workflow).not.toContain('--clobber');
     expect(`${builder}\n${workflow}`).not.toMatch(/npm publish|pnpm publish/);
   });

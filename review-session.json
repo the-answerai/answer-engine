@@ -1,12 +1,18 @@
 {
   "passed": true,
-  "summary": "Holistic session review passed after preventing arbitrary Compose projects from gaining legacy runtime ownership.",
+  "summary": "Holistic session review passed after closing managed-image drift and release-workflow command-injection paths.",
   "findings": [
     {
       "severity": "critical",
-      "description": "Legacy stable adoption accepted any syntactically valid Compose services mapping, then wrote the ownership marker that authorizes later lifecycle execution. An unrelated or hostile Compose project could therefore be blessed for Start or Repair. Adoption now requires the known Answer Engine service, image, command, loopback-port, mount, and volume topology and rejects extra services, host mounts, privileged options, and other unsafe drift before writing metadata.",
+      "description": "Managed lifecycle actions validated channel resources but did not compare ANSWER_ENGINE_IMAGE with .release-state.json, so start, repair, stop, status, or uninstall could execute against a mutable or unrelated image while reporting the verified digest. Lifecycle ownership now requires a regular, valid release-state file and exact environment agreement, while allowing either side of a recorded pending transition so interrupted upgrades and rollbacks remain resumable.",
       "fixed": true,
-      "file": "packages/create/src/legacy-adoption.ts"
+      "file": "packages/create/src/lifecycle.ts"
+    },
+    {
+      "severity": "critical",
+      "description": "The release workflow interpolated runtime_image directly into shell source after validating only an unanchored digest suffix, allowing a crafted workflow-dispatch value to inject commands on the candidate runner. Release inputs now pass through environment variables, the runtime image is anchored to the official content-addressed repository, and the standalone asset builder enforces the same identity.",
+      "fixed": true,
+      "file": ".github/workflows/release-installer.yml"
     }
   ]
 }
