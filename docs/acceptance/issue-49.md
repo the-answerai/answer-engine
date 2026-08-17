@@ -18,7 +18,7 @@ Re-audited on 2026-08-16 in `America/Los_Angeles`:
 | Repository runners | The self-hosted runners API returned `total_count: 0`; the organization hosted-runner API reported that hosted runners are not supported for this organization | No qualifying clean hardware is attached or provisionable through the current repository configuration. |
 | GitHub-hosted ARM macOS | Standard runner: 7 GB; larger M2 runner: 14 GB; nested virtualization unsupported | Below the agreed 16 GB baseline and unable to exercise the Docker-backed runtime. |
 | Windows 11/WSL2 GPU | No provisioned machine or runner | The required supported 8 GB+ GPU path cannot be executed. |
-| Canonical release | npm returns `E404` for `@answer-engine/create@1.1.0`; Git has no `v1.1.0` tag or release; authenticated GitHub Packages queries report no `answer-engine` container package | The copy-pasted immutable install prompt cannot execute. Publishing npm is forbidden by the epic instructions. |
+| Canonical release | #71 removed the npm dependency and added deterministic GitHub Release assets, checksums, provenance, bootstrap scripts, and digest-only runtime validation; no production tag, GitHub Release, or runtime image has been published | The release path is implemented and verified, but a clean machine still has no production artifact to fetch until an explicit human release action. |
 
 GitHub documents the current hosted-runner sizes and the lack of nested
 virtualization for ARM macOS in its
@@ -31,20 +31,20 @@ was not silently authorized or substituted for the requested baseline.
 
 - A fresh checkout of the integrated epic session reused the local pnpm store
   with zero network downloads. `pnpm verify` passed the public-boundary check,
-  all lint/type checks, 117 server tests plus one environment-gated database
-  skip, 185 CLI tests, 63 MCP tests, 129 installer tests, 40 web tests, 18
-  desktop tests, and every build: 552 passing tests total. The session PR's
-  independent `verify` and `container` checks also pass.
+  all lint/type checks, 124 server tests plus one environment-gated database
+  skip, 185 CLI tests, 63 MCP tests, 146 installer tests, 40 web tests, 18
+  desktop tests, and every build: 576 passing tests total. The session PR's
+  independent `verify` and `container` checks also pass at `15c7a1c`.
 - The exact fresh command
   `node ../alpha-loop/dist/cli.js run --verify-only 40` completed with
-  `PARTIAL`. It recognizes 9/10 sub-issues merged, reports 54/62 evaluated
-  criteria met, six partial, and two missing, and marks every #68 criterion met.
-  The remaining operational gaps are real simultaneous Compose channels,
-  immutable fetchable installer inputs, clean baseline installs, live
-  configured client recall, and digest-pinned runtime verification.
-- Issues #41–#48 and #68 are closed and their epic checkboxes are checked. Their
+  `PARTIAL`. It recognizes 10/11 sub-issues merged and reports 65/72 evaluated
+  criteria met, seven partial, zero missing, and zero unclear. Every #68 and
+  #71 criterion is met. The remaining evidence is the two clean-install gates,
+  live Codex/Claude integration and supported-client recall, plus screenshot
+  artifacts for #44, #46, and #47.
+- Issues #41–#48, #68, and #71 are closed and their epic checkboxes are checked. Their
   session changes are integrated through PRs #56, #57, #58, #59/#60, #63,
-  #64, #65, #66, and #70. Each issue has at least one learning file; #43–#48
+  #64, #65, #66, #70, and #72. Each issue has at least one learning file; #43–#48
   and #68 also have dedicated acceptance records.
 - PR #64's missing session-child cross-reference was repaired after the verifier
   failed to associate already-merged #46. The issue timeline now contains a
@@ -57,6 +57,12 @@ was not silently authorized or substituted for the requested baseline.
   stable runtime was healthy at port 5050, the web application returned HTTP
   200, staging remained independently not installed at port 5150, desktop and
   375px checks passed, and no lifecycle mutation ran.
+- #71 provides registry-independent Bash and PowerShell bootstrap assets,
+  deterministic checksums and provenance, explicit dependency policy and
+  consent, strict runtime digest persistence, and a manually gated release
+  workflow. Its local verification, production audit, independent reviews, and
+  PR #55 GitHub checks pass; no release, npm package, or production tag was
+  published.
 - No role, RBAC, team, billing, or enterprise permission-management code was
   found by the public-boundary check. No npm package was published.
 
@@ -65,12 +71,10 @@ was not silently authorized or substituted for the requested baseline.
 1. Provide a genuinely clean Apple Silicon Mac with at least 16 GB RAM and a
    clean Windows 11/WSL2 machine with a supported GPU containing at least 8 GB
    VRAM, or attach equivalent dedicated runners.
-2. Provide an immutable install candidate that the canonical prompt can fetch
-   without violating the no-npm-publication constraint. It must include a
-   reachable versioned prompt, installer/CLI packages or equivalent verified
-   release assets, a digest-pinned runtime image, checksums, and rollback input;
-   otherwise explicitly authorize the release/tag workflow after candidate
-   acceptance.
+2. Explicitly authorize and execute the manually gated release workflow after
+   candidate acceptance so the canonical prompt can fetch a production tag,
+   installer/CLI assets, checksums, provenance, and a digest-pinned runtime
+   image. npm publication is neither required nor allowed.
 3. On both machines, execute the full prompt-driven install, first import,
    folder preview, organization preview/apply/undo, client wiring, fresh-chat
    grounded recall, desktop/tray, reboot recovery, repair, upgrade, rollback,
@@ -113,6 +117,7 @@ inputs as a stream when required and retain only the digest.
 ## Disk and data safety
 
 No VM or OS image was downloaded. No stable API, database, service, credential,
-or memory file was mutated. The 738 MB native-verification worktree was removed
-after #68 completed, this documentation-only worktree has no dependency tree,
-the raw archive remains `0 B`, and the host retains approximately 1.1 TiB free.
+or memory file was mutated. The 738 MB native-verification worktree and the
+862 MB fresh-audit worktree were removed after use, this documentation-only
+worktree has no dependency tree, the raw archive remains `0 B`, and the host
+retains approximately 1.1 TiB free.
