@@ -112,6 +112,30 @@ async function assertPortAvailable(port) {
   });
 }
 
+function composeProjectOwnsPort(project, worktree, port) {
+  try {
+    const ids = execFileSync('docker', [
+      'ps', '--filter', `label=com.docker.compose.project=${project}`, '--format', '{{.ID}}',
+    ], { encoding: 'utf8' }).trim().split(/\r?\n/).filter(Boolean);
+    if (ids.length === 0) return false;
+    const containers = JSON.parse(execFileSync('docker', ['inspect', ...ids], { encoding: 'utf8' }));
+    const expectedConfig = resolve(worktree, 'docker-compose.yml');
+    return containers.some((container) => {
+      const labels = container?.Config?.Labels ?? {};
+      const configFiles = String(labels['com.docker.compose.project.config_files'] ?? '')
+        .split(',').map((path) => resolve(path.trim())).filter(Boolean);
+      const bindings = Object.values(container?.NetworkSettings?.Ports ?? {}).flatMap((value) => value ?? []);
+      return container?.State?.Running === true
+        && labels['com.docker.compose.project'] === project
+        && resolve(String(labels['com.docker.compose.project.working_dir'] ?? '')) === worktree
+        && configFiles.includes(expectedConfig)
+        && bindings.some((binding) => Number(binding?.HostPort) === port);
+    });
+  } catch {
+    return false;
+  }
+}
+
 const worktreeRoot = resolve(git(['rev-parse', '--show-toplevel'], process.cwd()));
 const commonDirectory = resolve(git(['rev-parse', '--path-format=absolute', '--git-common-dir'], worktreeRoot));
 const repositoryRoot = commonRepositoryRoot(commonDirectory);
@@ -169,6 +193,10 @@ for (const [name, port] of Object.entries(ports)) {
   try {
     await assertPortAvailable(port);
   } catch (error) {
+    if (composeProjectOwnsPort(composeProject, worktreeRoot, port)) {
+      process.stdout.write(`[alpha-loop:prepare] reusing ${composeProject} on staging ${name} port ${port}\n`);
+      continue;
+    }
     fail(`staging ${name} port ${port} is unavailable: ${error instanceof Error ? error.message : String(error)}`);
   }
 }

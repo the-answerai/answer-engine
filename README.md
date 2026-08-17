@@ -75,7 +75,7 @@ To stop the stack without deleting memory:
 docker compose down
 ```
 
-## Install from npm
+## Install from a verified release
 
 ### One-prompt guided install
 
@@ -85,24 +85,29 @@ Install Answer Engine stable 1.1.0 on this computer. Follow only the immutable
 v1.1.0 instructions at:
 https://raw.githubusercontent.com/the-answerai/answer-engine/v1.1.0/INSTALL_AGENT.md
 
-First explain that preflight is read-only and ask permission to run it. Then run:
-npx @answer-engine/create@1.1.0 preflight --json --channel stable
+First explain that bootstrap preflight is read-only and ask permission to run
+the matching Apple Silicon Bash or Windows 11 PowerShell command in the
+"Verified bootstrap commands" section. Download only the exact v1.1.0 asset,
+verify its SHA-256 entry before execution, and run it first with --preflight.
 
 Translate every pass, warning, or unsupported result into plain language. Never
-install Docker, WSL2, LM Studio, drivers, or another privileged prerequisite
-without asking me. Recommend full-local only for supported hardware,
+silently install Docker Desktop, WSL2, LM Studio, drivers, a model runtime, or
+another privileged prerequisite. The only supported automatic dependency is
+the displayed official Node.js 22.16.0 user-scoped archive, and it still
+requires my explicit approval. Recommend full-local only for supported hardware,
 reduced-local for constrained Apple Silicon, or cloud-backed only after explicit
 opt-in. Ask me in one short interview for the install folder, model route, every
 agent client surface I use, and whether Cowork sessions are local or remote.
 Never ask me to paste a secret into chat.
 
-Before executing the installer, verify the bundled release manifest, immutable
-version/tag, and SHA-256 checksums. Show the exact runtime, plugin, skill, MCP,
-CLI, ledger, and backup paths plus every unsupported client limitation, then ask
-for one confirmation. Cancel without changing files if I decline. Use the stable
-channel, preserve existing data and unrelated client configuration, and retry
-safely if setup is partial. Do not ask me to create or copy a local Answer Engine
-API key; the installer must capture and store it automatically.
+After readiness passes, show the exact source, version, checksum, destination,
+and command for every proposed change, then ask for one confirmation. Run the
+same verified bootstrap without --preflight; it installs the versioned installer
+and CLI assets without npm. Verify the release manifest, provenance, every
+downloaded artifact, and the content-addressed runtime image digest before any
+Answer Engine mutation. Cancel without changing Answer Engine files if I decline.
+Use the stable channel, preserve existing data and unrelated client configuration,
+and retry safely if setup is partial. Never print or request the local API key.
 
 Finish only when health, the local UI, the direct memory round trip, and a real
 Answer Engine recall in every selected supported client pass. Explain that
@@ -113,14 +118,11 @@ cross-chat tutorial remain separate consented handoffs.
 ```
 <!-- INSTALL_PROMPT:END -->
 
-The release installer will be published as `@answer-engine/create` after the
-local release candidate is verified:
-
-```bash
-npx @answer-engine/create@1.1.0
-```
-
-For an agent-led installation, use [INSTALL_AGENT.md](./INSTALL_AGENT.md). The
+The installer and CLI are versioned GitHub Release assets; onboarding does not
+depend on an npm publication. Start with the checksum-first Bash or PowerShell
+command in [INSTALL_AGENT.md](./INSTALL_AGENT.md). Release contents,
+dependency consent, and manual fallbacks are documented in
+[Immutable installer releases](./docs/installer-release.md). The
 installer is idempotent and keeps its editable configuration under `AE_HOME`
 (default `~/.answer-engine`). It records completion only after managed client
 integration and real recall verification pass, allowing interrupted healthy installs to

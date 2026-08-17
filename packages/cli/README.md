@@ -11,8 +11,11 @@ and evaluation.
 
 ## Install and configure
 
+The checksum-verified Answer Engine GitHub Release bootstrap in the repository's
+`INSTALL_AGENT.md` installs the matching `ae` archive and launcher. The CLI does
+not require an npm publication.
+
 ```bash
-npm install -g @answer-engine/cli@1.1.0
 ae auth login
 ae auth status
 ```

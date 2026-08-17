@@ -1,34 +1,13 @@
 {
   "passed": true,
-  "summary": "All critical and warning findings for the consent-first agent-history import were fixed and verified.",
+  "summary": "The downloaded-release verification gap was fixed; issue #71 now passes the full verification and production audit gates.",
   "findings": [
     {
       "severity": "critical",
-      "description": "Resumed imports trusted API-supplied discovery and source paths without matching the owner-only local manifest, allowing a write-capable API caller to turn the CLI into an arbitrary local JSONL reader.",
+      "description": "The strict downloaded-release verifier and mismatch tests were dead code: production bootstrap only checked files independently against SHA256SUMS, then ignored whether provenance, the download manifest, and the installer-bundled manifest described the same commit, runtime digest, platform, and artifact set. Bootstrap now runs the verifier from a freshly checksum-verified installer archive before writing versioned installer files or launchers.",
       "fixed": true,
-      "file": "packages/cli/src/sync/first-import.ts",
-      "issueNum": 44
-    },
-    {
-      "severity": "warning",
-      "description": "Consent fingerprints and byte estimates covered only the primary transcript even when Claude Code and Cowork imports read additional subagent, audit, metadata, and artifact files, and changed bundles were not rejected after approval.",
-      "fixed": true,
-      "file": "packages/cli/src/sync/first-import.ts",
-      "issueNum": 44
-    },
-    {
-      "severity": "warning",
-      "description": "A permission or discovery failure in one adapter aborted the entire preview instead of reporting a safe source-specific unavailable status and recovery action.",
-      "fixed": true,
-      "file": "packages/cli/src/sync/first-import.ts",
-      "issueNum": 44
-    },
-    {
-      "severity": "warning",
-      "description": "Starting an approved session used a check-then-update without constraining the update by current status, so a concurrent cancellation could be overwritten back to running.",
-      "fixed": true,
-      "file": "src/services/first-import/first-import-service.ts",
-      "issueNum": 44
+      "file": "scripts/release/bootstrap.sh",
+      "issueNum": 71
     }
   ]
 }

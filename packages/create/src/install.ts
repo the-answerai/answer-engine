@@ -9,7 +9,7 @@ import { formatPreflightReport } from './preflight.js';
 import { createPrompt } from './prompt.js';
 import type { Prompt } from './prompt.js';
 import { recommendModelProfile, requireInstallConsent } from './interview.js';
-import { loadReleaseManifest, verifyBundledRelease } from './release.js';
+import { loadReleaseManifestTemplate, verifyBundledRelease } from './release.js';
 import {
   clearInstallationCompletion,
   installationIsComplete,
@@ -57,7 +57,7 @@ export interface InstallDependencies {
   updateIntegrationVerification?: typeof updateIntegrationVerification;
 }
 
-export const INSTALL_AGENT_URL = loadReleaseManifest().promptUrl;
+export const INSTALL_AGENT_URL = loadReleaseManifestTemplate().promptUrl;
 
 export function writeInstallAgentGuidance(output: InstallOutput): void {
   output.write(`Agent-guided configuration: ${INSTALL_AGENT_URL}`);
@@ -171,7 +171,8 @@ export async function install(
     config: { ...modelSetup.config, server: { ...modelSetup.config.server, port: profile.ports.api } },
     runtime: modelSetup.runtime,
     profile,
-  });
+    image: release.images.answerEngine,
+  }, { release });
   assertRuntimeChannelConfiguration(profile);
   await validateRuntimeChannelIsolation(channelProfiles(channel, home));
   output.write(chalk.green(scaffold.changes.length === 0

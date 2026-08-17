@@ -10,24 +10,29 @@ Install Answer Engine stable 1.1.0 on this computer. Follow only the immutable
 v1.1.0 instructions at:
 https://raw.githubusercontent.com/the-answerai/answer-engine/v1.1.0/INSTALL_AGENT.md
 
-First explain that preflight is read-only and ask permission to run it. Then run:
-npx @answer-engine/create@1.1.0 preflight --json --channel stable
+First explain that bootstrap preflight is read-only and ask permission to run
+the matching Apple Silicon Bash or Windows 11 PowerShell command in the
+"Verified bootstrap commands" section. Download only the exact v1.1.0 asset,
+verify its SHA-256 entry before execution, and run it first with --preflight.
 
 Translate every pass, warning, or unsupported result into plain language. Never
-install Docker, WSL2, LM Studio, drivers, or another privileged prerequisite
-without asking me. Recommend full-local only for supported hardware,
+silently install Docker Desktop, WSL2, LM Studio, drivers, a model runtime, or
+another privileged prerequisite. The only supported automatic dependency is
+the displayed official Node.js 22.16.0 user-scoped archive, and it still
+requires my explicit approval. Recommend full-local only for supported hardware,
 reduced-local for constrained Apple Silicon, or cloud-backed only after explicit
 opt-in. Ask me in one short interview for the install folder, model route, every
 agent client surface I use, and whether Cowork sessions are local or remote.
 Never ask me to paste a secret into chat.
 
-Before executing the installer, verify the bundled release manifest, immutable
-version/tag, and SHA-256 checksums. Show the exact runtime, plugin, skill, MCP,
-CLI, ledger, and backup paths plus every unsupported client limitation, then ask
-for one confirmation. Cancel without changing files if I decline. Use the stable
-channel, preserve existing data and unrelated client configuration, and retry
-safely if setup is partial. Do not ask me to create or copy a local Answer Engine
-API key; the installer must capture and store it automatically.
+After readiness passes, show the exact source, version, checksum, destination,
+and command for every proposed change, then ask for one confirmation. Run the
+same verified bootstrap without --preflight; it installs the versioned installer
+and CLI assets without npm. Verify the release manifest, provenance, every
+downloaded artifact, and the content-addressed runtime image digest before any
+Answer Engine mutation. Cancel without changing Answer Engine files if I decline.
+Use the stable channel, preserve existing data and unrelated client configuration,
+and retry safely if setup is partial. Never print or request the local API key.
 
 Finish only when health, the local UI, the direct memory round trip, and a real
 Answer Engine recall in every selected supported client pass. Explain that
@@ -44,16 +49,21 @@ cross-chat tutorial remain separate consented handoffs.
 - Docker with Compose
 - Either LM Studio models or configured cloud model credentials
 
-## Install
+## Verified release install
+
+This package is shipped inside the versioned installer archive and is not
+fetched from npm. Run the checksum-first Apple Silicon Bash or Windows 11/WSL2
+PowerShell bootstrap in the repository's `INSTALL_AGENT.md`; it installs the
+`create-answer-engine` and `ae` launchers in `~/.local/bin`. Then run:
 
 ```bash
-npx @answer-engine/create@1.1.0
+create-answer-engine
 ```
 
 For a non-interactive LM Studio install:
 
 ```bash
-npx @answer-engine/create@1.1.0 --yes \
+create-answer-engine --yes \
   --models "chat=<chat-model-id>,embedding=<embedding-model-id>" \
   --clients codex,claude-code
 ```
@@ -78,7 +88,7 @@ The installer writes a private, redacted ownership ledger under
 byte-stable no-op. Remove only installer-managed entries with:
 
 ```bash
-npx @answer-engine/create@1.1.0 remove-integrations --channel stable
+create-answer-engine remove-integrations --channel stable
 ```
 
 ChatGPT Desktop Codex shares the Personal plugin marketplace and receives MCP
@@ -94,8 +104,9 @@ unavailable instead of receiving unusable Linux-home paths; terminal clients rem
 
 Generated client entries launch the MCP server already built into the
 installer-managed runtime, so they do not fetch an unpublished package when a
-client starts. The runtime image is pinned to
-`ghcr.io/the-answerai/answer-engine:1.1.0`.
+client starts. The published release manifest pins the runtime as
+`ghcr.io/the-answerai/answer-engine@sha256:<release-digest>`; mutable tags are
+never written to a fresh installation.
 Installer containers and volumes use the isolated `answer-engine-local`
 Compose namespace so legacy enterprise state is never adopted implicitly.
 
@@ -114,7 +125,7 @@ preflight [--json]
 --llm-provider <anthropic|openai>
 --embedding-provider <openai>
 --api-key <existing-local-key>
---image <pinned-reference>  # upgrade only
+--image <name@sha256:digest>  # upgrade only; tags are rejected
 --uninstall
 --purge
 ```
@@ -136,8 +147,8 @@ or memory bytes. Invalid or conflicting homes fail closed.
 ## Uninstall
 
 ```bash
-npx @answer-engine/create@1.1.0 uninstall --channel stable
-npx @answer-engine/create@1.1.0 uninstall --channel stable --purge
+create-answer-engine uninstall --channel stable
+create-answer-engine uninstall --channel stable --purge
 ```
 
 Without `--purge`, local configuration and data remain in `AE_HOME`.

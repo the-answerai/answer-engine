@@ -38,7 +38,10 @@ const ComposeSchema = z.object({
 }).passthrough();
 const ConfigSchema = z.record(z.unknown());
 const REQUIRED_FILES = ['docker-compose.yml', '.env.compose', 'config.yaml'] as const;
-const APP_IMAGE = '${ANSWER_ENGINE_IMAGE:-ghcr.io/the-answerai/answer-engine:1.1.0}';
+const LEGACY_APP_IMAGES = new Set([
+  '${ANSWER_ENGINE_IMAGE:-ghcr.io/the-answerai/answer-engine:1.1.0}',
+  '${ANSWER_ENGINE_IMAGE:?Set ANSWER_ENGINE_IMAGE to the verified release digest}',
+]);
 
 function sameStringArray(value: unknown, expected: readonly string[]): boolean {
   return Array.isArray(value)
@@ -84,7 +87,9 @@ function assertLegacyComposeOwnership(
     throw new Error('redis does not use the supported Redis image.');
   }
   for (const name of ['migrate', 'init', 'api'] as const) {
-    assertServiceField(compose.services[name], 'image', APP_IMAGE, name);
+    if (!LEGACY_APP_IMAGES.has(String(compose.services[name].image))) {
+      throw new Error(`${name} has an unexpected image definition.`);
+    }
     assertServiceField(compose.services[name], 'env_file', ['.env.compose'], name);
   }
   assertServiceField(compose.services.postgres, 'command', undefined, 'postgres');

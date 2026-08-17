@@ -9,6 +9,9 @@ import { runCommand as defaultRunCommand } from './process.js';
 export const REQUIRED_PORTS = [5050] as const;
 
 const CheckStatusSchema = z.enum(['pass', 'warning', 'unsupported']);
+const RequirementSchema = z.enum(['required', 'optional']);
+const DependencyStateSchema = z.enum(['ready', 'missing', 'incompatible', 'not-applicable']);
+const InstallPolicySchema = z.enum(['reuse', 'user-consent', 'manual', 'privileged', 'unsupported']);
 const CheckCodeSchema = z.enum([
   'OPERATING_SYSTEM', 'ARCHITECTURE', 'MEMORY', 'DISK', 'GPU', 'NODE_VERSION',
   'DOCKER_DAEMON', 'DOCKER_COMPOSE', 'WSL2', 'MODEL_RUNTIME', 'PORTS', 'INSTALLATION',
@@ -33,6 +36,17 @@ const PreflightCheckSchema = z.object({
   message: z.string().min(1),
   remediation: z.string().min(1).optional(),
   blocking: z.boolean(),
+  requirement: RequirementSchema,
+  dependencyState: DependencyStateSchema,
+  installPolicy: InstallPolicySchema,
+  detectedVersion: z.string().min(1).optional(),
+  proposal: z.object({
+    source: z.string().url(),
+    version: z.string().min(1),
+    command: z.string().min(1),
+    destination: z.string().min(1),
+    verification: z.string().min(1),
+  }).strict().optional(),
 }).strict();
 
 const PreflightResultSchema = z.object({
@@ -134,8 +148,16 @@ export function inspectInstallation(home: string | undefined): InstallationState
 function check(
   code: PreflightCheck['code'], label: string, status: PreflightCheck['status'],
   message: string, remediation?: string, blocking = false,
+  metadata: Partial<Pick<PreflightCheck, 'requirement' | 'dependencyState' | 'installPolicy' | 'detectedVersion' | 'proposal'>> = {},
 ): PreflightCheck {
-  return PreflightCheckSchema.parse({ code, label, status, message, ...(remediation ? { remediation } : {}), blocking });
+  const optional = code === 'GPU' || code === 'MODEL_RUNTIME' || code === 'INSTALLATION';
+  return PreflightCheckSchema.parse({
+    code, label, status, message, ...(remediation ? { remediation } : {}), blocking,
+    requirement: optional ? 'optional' : 'required',
+    dependencyState: status === 'pass' ? 'ready' : status === 'unsupported' ? 'incompatible' : 'missing',
+    installPolicy: status === 'pass' ? 'reuse' : status === 'unsupported' ? 'unsupported' : 'manual',
+    ...metadata,
+  });
 }
 
 async function commandAvailable(command: CommandRunner, name: string, args: string[]): Promise<boolean> {
@@ -145,6 +167,37 @@ async function commandAvailable(command: CommandRunner, name: string, args: stri
   } catch {
     return false;
   }
+}
+
+async function commandVersion(command: CommandRunner, name: string, args: string[]): Promise<string | undefined> {
+  try {
+    const result = await command(name, args);
+    return result.stdout.trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function nodeProposal(
+  systemPlatform: PreflightResult['system']['platform'],
+  architecture: string,
+): PreflightCheck['proposal'] | undefined {
+  const archive = systemPlatform === 'macos' && architecture === 'arm64'
+    ? 'node-v22.16.0-darwin-arm64.tar.xz'
+    : systemPlatform === 'windows-wsl2' && architecture === 'x64'
+      ? 'node-v22.16.0-linux-x64.tar.xz' : undefined;
+  const checksum = systemPlatform === 'macos'
+    ? 'aaf7fc3c936f1b359bc312b63638e41f258689ac2303966ad932cda18c54ea00'
+    : 'f4cb75bb036f0d0eddf6b79d9596df1aaab9ddccd6a20bf489be5abe9467e84e';
+  if (!archive) return undefined;
+  const source = `https://nodejs.org/dist/v22.16.0/${archive}`;
+  return {
+    source,
+    version: '22.16.0',
+    destination: '~/.local/share/answer-engine/node-v22.16.0',
+    command: `download ${source}; verify SHA-256 ${checksum}; extract into ~/.local/share/answer-engine/node-v22.16.0`,
+    verification: `SHA-256 ${checksum} from the official Node.js v22.16.0 SHASUMS256.txt`,
+  };
 }
 
 async function detectNvidiaVram(command: CommandRunner): Promise<number> {
@@ -198,36 +251,53 @@ export async function runPreflight(
   const gpuPass = systemPlatform === 'macos' ? ramGb >= 16 : systemPlatform === 'windows-wsl2' && gpu.vramGb >= 8;
   checks.push(check('GPU', 'GPU', gpuPass ? 'pass' : 'warning',
     gpuPass ? `${gpu.kind} GPU capacity is suitable for full local.` : 'A supported 8 GB+ GPU was not detected.',
-    gpuPass ? undefined : 'Choose reduced-local/cloud-backed, or expose a supported 8 GB+ GPU to WSL2.'));
+    gpuPass ? undefined : 'Choose reduced-local/cloud-backed, or install GPU support manually using the hardware vendor instructions.',
+    false, gpuPass ? {} : { installPolicy: 'privileged' }));
 
   const version = dependencies.nodeVersion ?? process.versions.node;
   const nodeSupported = supportsNode(version);
+  const proposal = nodeSupported ? undefined : nodeProposal(systemPlatform, architecture);
   checks.push(check('NODE_VERSION', 'Node.js', nodeSupported ? 'pass' : 'warning',
     nodeSupported ? `Node.js ${version} is supported.` : `Node.js ${version} is unsupported; Answer Engine requires Node.js 22.16 or newer.`,
-    nodeSupported ? undefined : 'Install Node.js 22.16 or newer, then run this command again.', !nodeSupported));
+    nodeSupported ? undefined : proposal
+      ? 'Approve the displayed official user-scoped Node.js 22.16.0 archive, or install Node.js 22.16+ manually, then rerun readiness.'
+      : 'Install Node.js 22.16 or newer, then run this command again.', !nodeSupported,
+    {
+      detectedVersion: version,
+      ...(!nodeSupported ? { dependencyState: 'incompatible' as const } : {}),
+      ...(proposal ? { proposal, installPolicy: 'user-consent' as const } : {}),
+    }));
 
-  const [dockerReady, composeReady] = await Promise.all([
-    commandAvailable(command, 'docker', ['info']),
-    commandAvailable(command, 'docker', ['compose', 'version']),
+  const [dockerVersion, composeVersion] = await Promise.all([
+    commandVersion(command, 'docker', ['info', '--format', '{{.ServerVersion}}']),
+    commandVersion(command, 'docker', ['compose', 'version', '--short']),
   ]);
+  const dockerReady = dockerVersion !== undefined;
+  const composeMajor = composeVersion?.match(/^v?(\d+)(?:\.|$)/)?.[1];
+  const composeReady = composeMajor !== undefined && Number(composeMajor) >= 2;
   checks.push(check('DOCKER_DAEMON', 'Docker', dockerReady ? 'pass' : 'warning',
-    dockerReady ? 'Docker daemon is reachable.' : 'The Docker daemon is not running or is not reachable.',
-    dockerReady ? undefined : 'Start Docker Desktop (or the Docker daemon), then run this command again.', !dockerReady));
+    dockerReady ? `Docker daemon ${dockerVersion} is reachable.` : 'The Docker daemon is not running or is not reachable.',
+    dockerReady ? undefined : 'Install or start Docker Desktop manually, then run this command again.', !dockerReady,
+    { ...(dockerVersion ? { detectedVersion: dockerVersion } : {}), ...(!dockerReady ? { installPolicy: 'privileged' as const } : {}) }));
   checks.push(check('DOCKER_COMPOSE', 'Docker Compose', composeReady ? 'pass' : 'warning',
-    composeReady ? 'Docker Compose v2 is available.' : 'Docker Compose v2 is not available.',
-    composeReady ? undefined : 'Install Docker Compose v2 so `docker compose version` succeeds.', !composeReady));
+    composeReady ? `Docker Compose ${composeVersion} is available.` : 'Docker Compose v2 is not available.',
+    composeReady ? undefined : 'Install Docker Desktop or Compose v2 manually so `docker compose version --short` succeeds.', !composeReady,
+    { ...(composeVersion ? { detectedVersion: composeVersion } : {}), ...(!composeReady ? { installPolicy: 'privileged' as const } : {}) }));
 
-  const wslReady = systemPlatform !== 'windows-native' && systemPlatform !== 'linux';
+  const wslReady = systemPlatform === 'macos' || systemPlatform === 'windows-wsl2';
   checks.push(check('WSL2', 'WSL2', wslReady ? 'pass' : 'unsupported',
     systemPlatform === 'windows-wsl2' ? 'Windows Subsystem for Linux 2 is active.' : systemPlatform === 'macos'
       ? 'WSL2 is not required on macOS.' : 'Windows WSL2 was not detected.',
-    wslReady ? undefined : 'Install and enter WSL2 on Windows 11 before continuing.'));
+    wslReady ? undefined : 'Follow Microsoft Windows 11 WSL installation instructions, restart if requested, and enter WSL2 before continuing.',
+    !wslReady, !wslReady ? { installPolicy: 'privileged' }
+      : systemPlatform === 'macos' ? { dependencyState: 'not-applicable' } : {}));
 
   const modelRuntimeAvailable = dependencies.modelRuntimeAvailable
     ?? await commandAvailable(command, 'lms', ['version']);
   checks.push(check('MODEL_RUNTIME', 'Model runtime', modelRuntimeAvailable ? 'pass' : 'warning',
     modelRuntimeAvailable ? 'LM Studio is available.' : 'LM Studio was not detected.',
-    modelRuntimeAvailable ? undefined : 'Start LM Studio for local models, or explicitly choose a cloud-backed profile.'));
+    modelRuntimeAvailable ? undefined : 'Install and start a model runtime manually, or explicitly choose a cloud-backed profile.',
+    false, modelRuntimeAvailable ? {} : { installPolicy: 'manual' }));
 
   const probePort = dependencies.probePort ?? isPortFree;
   const ownedPorts = dependencies.ownedPorts ?? new Set<number>();
@@ -277,7 +347,7 @@ export function formatPreflightFailures(failures: PreflightFailure[]): string {
 export function formatPreflightReport(result: PreflightResult, json = false): string {
   if (json) return JSON.stringify(result, null, 2);
   const details = result.checks.map((item) => {
-    const line = `[${item.status.toUpperCase()}] ${item.label}: ${item.message}`;
+    const line = `[${item.status.toUpperCase()}] ${item.label} (${item.requirement}; ${item.installPolicy}): ${item.message}`;
     return item.remediation ? `${line}\n  Next: ${item.remediation}` : line;
   });
   return [`Preflight: ${result.status.toUpperCase()}`, ...details].join('\n');

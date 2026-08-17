@@ -1,9 +1,10 @@
-import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runLifecycleAction } from '../lifecycle.js';
 import { createRuntimeChannelProfile, writeRuntimeOwnershipMarker } from '../runtime-channel.js';
+import { releaseFixture, TEST_SOURCE_COMMIT } from './release-fixture.js';
 
 const tempDirs: string[] = [];
 
@@ -35,6 +36,7 @@ afterEach(() => {
 });
 
 describe('channel lifecycle actions', () => {
+  const release = releaseFixture();
   it('refuses start before Docker when the ownership marker is missing', async () => {
     const profile = fixture('stable');
     rmSync(profile.markerFile);
@@ -50,7 +52,7 @@ describe('channel lifecycle actions', () => {
     async (action) => {
       const profile = fixture();
       writeFileSync(profile.markerFile, JSON.stringify({ channel: 'stable' }));
-      await expect(runLifecycleAction(action, profile, {}, { runCommand: vi.fn() }))
+      await expect(runLifecycleAction(action, profile, {}, { runCommand: vi.fn(), release }))
         .rejects.toThrow(/ownership marker/i);
     },
   );
@@ -64,7 +66,7 @@ describe('channel lifecycle actions', () => {
       writeFileSync(profile.credentialsFile, environment);
       const runCommand = vi.fn(async () => ({ stdout: '' }));
 
-      await expect(runLifecycleAction(action, profile, {}, { runCommand }))
+      await expect(runLifecycleAction(action, profile, {}, { runCommand, release }))
         .rejects.toThrow(/compose project.*expected answer-engine-staging/i);
       expect(runCommand).not.toHaveBeenCalled();
     },
@@ -146,18 +148,44 @@ describe('channel lifecycle actions', () => {
 
     const current = `example/current@sha256:${'1'.repeat(64)}`;
     const next = `example/next@sha256:${'2'.repeat(64)}`;
-    await runLifecycleAction('upgrade', profile, { image: next }, { runCommand, fetchImpl, probePort: async () => true });
-    expect(JSON.parse(readFileSync(profile.releaseFile, 'utf8'))).toEqual({
-      current: next, previous: current, lastAction: 'upgrade',
+    await runLifecycleAction('upgrade', profile, { image: next }, {
+      runCommand, fetchImpl, probePort: async () => true, release,
     });
-    await runLifecycleAction('rollback', profile, {}, { runCommand, fetchImpl, probePort: async () => true });
     expect(JSON.parse(readFileSync(profile.releaseFile, 'utf8'))).toEqual({
-      current, previous: next, lastAction: 'rollback',
+      schemaVersion: 1,
+      sourceCommit: TEST_SOURCE_COMMIT,
+      current: next, previous: current, verifiedAtInstall: false, lastAction: 'upgrade',
+    });
+    await runLifecycleAction('rollback', profile, {}, {
+      runCommand, fetchImpl, probePort: async () => true, release,
+    });
+    expect(JSON.parse(readFileSync(profile.releaseFile, 'utf8'))).toEqual({
+      schemaVersion: 1,
+      sourceCommit: TEST_SOURCE_COMMIT,
+      current, previous: next, verifiedAtInstall: false, lastAction: 'rollback',
     });
 
     const callsAfterRollback = runCommand.mock.calls.length;
-    await runLifecycleAction('rollback', profile, {}, { runCommand, fetchImpl, probePort: async () => true });
+    await runLifecycleAction('rollback', profile, {}, {
+      runCommand, fetchImpl, probePort: async () => true, release,
+    });
     expect(runCommand).toHaveBeenCalledTimes(callsAfterRollback);
+  });
+
+  it.each([
+    'ghcr.io/the-answerai/answer-engine:1.1.0',
+    'ghcr.io/the-answerai/answer-engine:latest',
+    'ghcr.io/the-answerai/answer-engine@sha256:not-a-digest',
+  ])('rejects mutable or malformed upgrade image %s before Docker or file mutation', async (image) => {
+    const profile = fixture();
+    const beforeEnvironment = readFileSync(profile.credentialsFile, 'utf8');
+    const runCommand = vi.fn(async () => ({ stdout: '' }));
+
+    await expect(runLifecycleAction('upgrade', profile, { image }, { runCommand, release }))
+      .rejects.toThrow(/exact @sha256 digest/i);
+    expect(runCommand).not.toHaveBeenCalled();
+    expect(readFileSync(profile.credentialsFile, 'utf8')).toBe(beforeEnvironment);
+    expect(existsSync(profile.releaseFile)).toBe(false);
   });
 
   it('repairs a healthy runtime as an explicit no-op', async () => {
@@ -170,6 +198,27 @@ describe('channel lifecycle actions', () => {
     await runLifecycleAction('repair', profile, {}, { runCommand, fetchImpl, probePort: async () => true });
 
     expect(runCommand.mock.calls.some(([, args]) => args.includes('up'))).toBe(false);
+  });
+
+  it('moves a readable legacy tag to a digest without recording the tag for rollback', async () => {
+    const profile = fixture('stable');
+    const environment = readFileSync(profile.credentialsFile, 'utf8')
+      .replace(/ANSWER_ENGINE_IMAGE=.*/, 'ANSWER_ENGINE_IMAGE=ghcr.io/the-answerai/answer-engine:1.1.0');
+    writeFileSync(profile.credentialsFile, environment);
+    const next = `ghcr.io/the-answerai/answer-engine@sha256:${'3'.repeat(64)}`;
+    const runCommand = vi.fn(async () => ({ stdout: '' }));
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      status: 'healthy', channel: 'stable', uptime: 1,
+    }), { status: 200 }));
+
+    await runLifecycleAction('upgrade', profile, { image: next }, {
+      runCommand, fetchImpl, probePort: async () => true, release,
+    });
+
+    expect(readFileSync(profile.credentialsFile, 'utf8')).toContain(`ANSWER_ENGINE_IMAGE=${next}`);
+    expect(JSON.parse(readFileSync(profile.releaseFile, 'utf8'))).toMatchObject({
+      current: next, previous: next,
+    });
   });
 
   it('resumes a failed upgrade without losing the prior rollback target', async () => {
@@ -189,17 +238,19 @@ describe('channel lifecycle actions', () => {
     }), { status: 200 }));
 
     await expect(runLifecycleAction('upgrade', profile, { image: next }, {
-      runCommand, fetchImpl, probePort: async () => true,
+      runCommand, fetchImpl, probePort: async () => true, release,
     })).rejects.toThrow('simulated interrupted recreate');
     expect(JSON.parse(readFileSync(profile.releaseFile, 'utf8'))).toMatchObject({
       pending: { action: 'upgrade', from: current, to: next },
     });
 
     await runLifecycleAction('upgrade', profile, { image: next }, {
-      runCommand, fetchImpl, probePort: async () => true,
+      runCommand, fetchImpl, probePort: async () => true, release,
     });
     expect(JSON.parse(readFileSync(profile.releaseFile, 'utf8'))).toEqual({
-      current: next, previous: current, lastAction: 'upgrade',
+      schemaVersion: 1,
+      sourceCommit: TEST_SOURCE_COMMIT,
+      current: next, previous: current, verifiedAtInstall: false, lastAction: 'upgrade',
     });
   });
 
@@ -212,7 +263,7 @@ describe('channel lifecycle actions', () => {
 
     await expect(runLifecycleAction('upgrade', profile, {
       image: `example/next@sha256:${'2'.repeat(64)}`,
-    }, { runCommand, probePort: async () => true })).rejects.toThrow(/release state.*symbolic link/i);
+    }, { runCommand, probePort: async () => true, release })).rejects.toThrow(/release state.*symbolic link/i);
     expect(readFileSync(target, 'utf8')).toBe('preserve me\n');
     expect(runCommand.mock.calls.some(([, args]) => args.includes('pull'))).toBe(false);
   });
