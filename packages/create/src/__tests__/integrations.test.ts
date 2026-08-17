@@ -15,6 +15,7 @@ import {
   applyIntegrationPlan,
   buildIntegrationPlan,
   integrationLedgerIsCurrent,
+  migrateLegacyMcpCredentials,
   readIntegrationLedger,
   removeManagedIntegrations,
   resolveDockerExecutable,
@@ -50,6 +51,55 @@ afterEach(() => {
 });
 
 describe('integration plan/apply/remove', () => {
+  it('replaces legacy raw-key MCP entries with keyless managed launchers', () => {
+    const { aeHome, homeDir } = fixture();
+    const claudeConfig = join(homeDir, '.claude.json');
+    const codexConfig = join(homeDir, '.codex', 'config.toml');
+    mkdirSync(join(homeDir, '.codex'), { recursive: true });
+    writeFileSync(claudeConfig, `${JSON.stringify({
+      mcpServers: {
+        notes: { command: 'notes-server' },
+        'answer-engine': {
+          command: 'npx',
+          args: ['-y', '@answer-engine/mcp-server@1.1.0'],
+          env: { ANSWER_ENGINE_API_KEY: 'ae_live_exposed_legacy_key' },
+        },
+      },
+    }, null, 2)}\n`);
+    writeFileSync(codexConfig, [
+      '[mcp_servers.filesystem]',
+      'command = "node"',
+      'args = ["fs.js"]',
+      '',
+      '[mcp_servers.answer-engine]',
+      'command = "npx"',
+      'args = ["-y", "@answer-engine/mcp-server@1.1.0"]',
+      '',
+      '[mcp_servers.answer-engine.env]',
+      'ANSWER_ENGINE_API_KEY = "ae_live_exposed_legacy_key"',
+      '',
+    ].join('\n'));
+
+    const results = migrateLegacyMcpCredentials({
+      aeHome,
+      homeDir,
+      clients: ['claude-code', 'codex'],
+      dockerCommand,
+    });
+
+    expect(results).toHaveLength(2);
+    for (const path of [claudeConfig, codexConfig]) {
+      const contents = readFileSync(path, 'utf8');
+      expect(contents).not.toContain('ae_live_exposed_legacy_key');
+      expect(contents).not.toContain('ANSWER_ENGINE_API_KEY');
+      expect(contents).toContain(dockerCommand);
+      expect(statSync(path).mode & 0o777).toBe(0o600);
+      expect(statSync(`${path}.bak`).mode & 0o777).toBe(0o600);
+    }
+    expect(readFileSync(codexConfig, 'utf8')).toContain('[mcp_servers.filesystem]');
+    expect(readFileSync(claudeConfig, 'utf8')).toContain('notes-server');
+  });
+
   it('shows every target and limitation without secrets before mutation', () => {
     const { aeHome, homeDir } = fixture();
     const plan = buildIntegrationPlan({
