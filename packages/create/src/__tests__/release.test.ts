@@ -6,10 +6,14 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   assertImmutableImageReference,
   loadReleaseManifest,
+  loadReleaseManifestTemplate,
+  RELEASE_RUNTIME_IMAGE_PLACEHOLDER,
+  RELEASE_SOURCE_COMMIT_PLACEHOLDER,
   verifyDownloadedRelease,
   verifyReleaseArtifacts,
   verifyReleaseManifest,
 } from '../release.js';
+import { releaseFixture } from './release-fixture.js';
 
 const tempDirs: string[] = [];
 
@@ -18,22 +22,22 @@ afterEach(() => {
 });
 
 describe('release manifest verification', () => {
-  it('loads the bundled immutable release and verifies every executable template', () => {
-    const manifest = loadReleaseManifest();
+  it('keeps the source manifest non-runnable until the release builder injects verified inputs', () => {
+    const template = loadReleaseManifestTemplate();
 
-    expect(manifest.version).toBe('1.1.0');
-    expect(manifest.tag).toBe('v1.1.0');
-    expect(manifest.promptUrl).toContain('/v1.1.0/INSTALL_AGENT.md');
-    expect(manifest.sourceCommit).toMatch(/^[a-f0-9]{40}$/);
-    expect(manifest.releaseBaseUrl).toContain('/releases/download/v1.1.0');
-    expect(manifest.images.answerEngine).toMatch(/@sha256:[a-f0-9]{64}$/);
-    expect(manifest.images.postgres).toMatch(/@sha256:[a-f0-9]{64}$/);
-    expect(manifest.images.redis).toMatch(/@sha256:[a-f0-9]{64}$/);
-    expect(() => verifyReleaseArtifacts(manifest)).not.toThrow();
+    expect(template.version).toBe('1.1.0');
+    expect(template.tag).toBe('v1.1.0');
+    expect(template.promptUrl).toContain('/v1.1.0/INSTALL_AGENT.md');
+    expect(template.sourceCommit).toBe(RELEASE_SOURCE_COMMIT_PLACEHOLDER);
+    expect(template.images.answerEngine).toBe(RELEASE_RUNTIME_IMAGE_PLACEHOLDER);
+    expect(template.images.postgres).toMatch(/@sha256:[a-f0-9]{64}$/);
+    expect(template.images.redis).toMatch(/@sha256:[a-f0-9]{64}$/);
+    expect(() => loadReleaseManifest()).toThrow(/unresolved source template/i);
+    expect(() => verifyReleaseArtifacts(template)).not.toThrow();
   });
 
   it('rejects version, mutable URL, and mutable image mismatches', () => {
-    const manifest = loadReleaseManifest();
+    const manifest = releaseFixture();
 
     expect(() => verifyReleaseManifest({ ...manifest, tag: 'v1.2.0' })).toThrow(/version.*tag/i);
     expect(() => verifyReleaseManifest({ ...manifest, promptUrl: manifest.promptUrl.replace('/v1.1.0/', '/master/') }))
@@ -49,7 +53,7 @@ describe('release manifest verification', () => {
   });
 
   it('requires exact versioned release asset identities and supported bootstrap inputs', () => {
-    const manifest = loadReleaseManifest();
+    const manifest = releaseFixture();
 
     expect(() => verifyReleaseManifest({
       ...manifest,
@@ -62,17 +66,17 @@ describe('release manifest verification', () => {
   });
 
   it('rejects mutable lifecycle image references', () => {
-    const manifest = loadReleaseManifest();
+    const manifest = releaseFixture();
 
-    expect(assertImmutableImageReference(manifest.images.answerEngine, manifest)).toBe(manifest.images.answerEngine);
-    expect(() => assertImmutableImageReference('ghcr.io/the-answerai/answer-engine:1.1.0', manifest))
+    expect(assertImmutableImageReference(manifest.images.answerEngine)).toBe(manifest.images.answerEngine);
+    expect(() => assertImmutableImageReference('ghcr.io/the-answerai/answer-engine:1.1.0'))
       .toThrow(/exact @sha256 digest/i);
-    expect(() => assertImmutableImageReference('ghcr.io/the-answerai/answer-engine:latest', manifest))
+    expect(() => assertImmutableImageReference('ghcr.io/the-answerai/answer-engine:latest'))
       .toThrow(/exact @sha256 digest/i);
   });
 
   it('requires the official tagged prompt and checksum coverage for every bundled template', () => {
-    const manifest = loadReleaseManifest();
+    const manifest = releaseFixture();
 
     expect(() => verifyReleaseManifest({
       ...manifest,
@@ -93,7 +97,7 @@ describe('release manifest verification', () => {
     tempDirs.push(fixture);
     const template = join(fixture, 'docker-compose.yml');
     writeFileSync(template, 'tampered\n');
-    const manifest = loadReleaseManifest();
+    const manifest = releaseFixture();
     const expected = createHash('sha256').update(readFileSync(template)).digest('hex');
 
     expect(() => verifyReleaseArtifacts({
@@ -105,7 +109,7 @@ describe('release manifest verification', () => {
   it('verifies downloaded identities, platform input, size, and checksum before execution', () => {
     const fixture = mkdtempSync(join(tmpdir(), 'ae-download-release-'));
     tempDirs.push(fixture);
-    const manifest = loadReleaseManifest();
+    const manifest = releaseFixture();
     const names = [
       manifest.assets.installer, manifest.assets.cli, manifest.assets.bashBootstrap,
       manifest.assets.powershellBootstrap, manifest.assets.provenance, 'INSTALL_AGENT.md',

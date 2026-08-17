@@ -18,6 +18,7 @@ import {
 } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 
 function fail(message) {
   process.stderr.write(`[release-assets] ${message}\n`);
@@ -130,12 +131,15 @@ try {
   execFileSync('pnpm', ['--filter', '@answer-engine/cli', 'deploy', '--legacy', '--prod', cliStage], {
     cwd: repositoryRoot, stdio: 'inherit', env: { ...process.env, NODE_ENV: 'production' },
   });
-  const baseManifest = JSON.parse(readFileSync(join(repositoryRoot, 'packages/create/release-manifest.json'), 'utf8'));
-  const pinnedManifest = {
+  const releaseModule = await import(pathToFileURL(join(repositoryRoot, 'packages/create/dist/release.js')).href);
+  const baseManifest = releaseModule.loadReleaseManifestTemplate(
+    join(repositoryRoot, 'packages/create/release-manifest.json'),
+  );
+  const pinnedManifest = releaseModule.verifyReleaseManifest({
     ...baseManifest,
     sourceCommit,
     images: { ...baseManifest.images, answerEngine: runtimeImage },
-  };
+  });
   writeFileSync(join(installerStage, 'release-manifest.json'), `${JSON.stringify(pinnedManifest, null, 2)}\n`);
   pruneDeployMetadata(installerStage);
   pruneDeployMetadata(cliStage);

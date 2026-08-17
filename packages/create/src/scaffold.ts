@@ -16,7 +16,8 @@ import {
 } from '@answer-engine/cli/scaffold';
 import type { ModelRuntime } from './models.js';
 import { createRuntimeChannelProfile, writeRuntimeOwnershipMarker, type RuntimeChannelProfile } from './runtime-channel.js';
-import { assertImmutableImageReference, verifyBundledRelease } from './release.js';
+import { assertImmutableImageReference, verifyBundledRelease, type ReleaseManifest } from './release.js';
+import { ReleaseStateSchema } from './release-state.js';
 import { assertRegularFileTarget, writePrivateFileAtomic } from './safe-file.js';
 
 const templateDirectory = fileURLToPath(new URL('../templates/', import.meta.url));
@@ -41,6 +42,7 @@ export interface ScaffoldResult {
 export interface ScaffoldDependencies {
   generateSecret?: (name: 'key' | 'salt' | 'database') => string;
   templatesDir?: string;
+  release?: ReleaseManifest;
 }
 
 function readOptional(path: string): string {
@@ -170,9 +172,24 @@ export function scaffoldInstallation(
     ? UserConfigSchema.parse(parseYaml(existingConfig) as unknown)
     : UserConfigSchema.parse(input.config);
   const profile = input.profile ?? createRuntimeChannelProfile('stable', { home: input.home });
-  const release = verifyBundledRelease();
-  const runtimeImage = assertImmutableImageReference(input.image ?? release.images.answerEngine, release);
+  const release = dependencies.release ?? verifyBundledRelease();
+  const runtimeImage = assertImmutableImageReference(input.image ?? release.images.answerEngine);
   assertRegularFileTarget(profile.releaseFile, 'Release state');
+  if (existsSync(profile.releaseFile)) {
+    let existingRelease;
+    try {
+      existingRelease = ReleaseStateSchema.parse(JSON.parse(readFileSync(profile.releaseFile, 'utf8')));
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(`Existing release state is invalid; repair it before installation (${reason}).`);
+    }
+    if (existingRelease.pending) {
+      throw new Error(`Existing release has a pending ${existingRelease.pending.action}; resume that lifecycle action.`);
+    }
+    if (existingRelease.current !== runtimeImage) {
+      throw new Error('Existing release differs from this installer; use the guarded upgrade action.');
+    }
+  }
   const templatesDir = dependencies.templatesDir ?? templateDirectory;
   const generateSecret = dependencies.generateSecret
     ?? (() => randomBytes(32).toString('hex'));

@@ -3,7 +3,7 @@ $Version = '1.1.0'
 $Tag = "v$Version"
 $ReleaseBase = "https://github.com/the-answerai/answer-engine/releases/download/$Tag"
 $BashAsset = "answer-engine-bootstrap-v$Version.sh"
-$BashExpected = '0766c145ce5743072d9af406d84de2d63b6d1cd5454948b7ba9a2201328398b9'
+$BashExpected = 'c2f37f7d8ae115d2e73f5a37036e1783ec7a1121fea310b80b7b11aededca994'
 
 if ($ReleaseBase -match '/(latest|heads|master|main)/') {
   throw 'Refusing a floating release input.'

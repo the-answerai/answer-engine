@@ -6,6 +6,8 @@ import { z } from 'zod';
 
 export const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
 export const DigestReferenceSchema = z.string().regex(/^[a-z0-9./_-]+(?::[a-zA-Z0-9._-]+)?@sha256:[a-f0-9]{64}$/);
+export const RELEASE_SOURCE_COMMIT_PLACEHOLDER = '__RELEASE_SOURCE_COMMIT__';
+export const RELEASE_RUNTIME_IMAGE_PLACEHOLDER = '__ANSWER_ENGINE_RUNTIME_IMAGE__';
 const RELEASE_ARTIFACTS = [
   'docker-compose.yml',
   'env.compose.tmpl',
@@ -53,6 +55,14 @@ export const ReleaseManifestSchema = z.object({
 }).strict();
 export type ReleaseManifest = z.infer<typeof ReleaseManifestSchema>;
 
+export const ReleaseManifestTemplateSchema = ReleaseManifestSchema.extend({
+  sourceCommit: z.literal(RELEASE_SOURCE_COMMIT_PLACEHOLDER),
+  images: ReleaseManifestSchema.shape.images.extend({
+    answerEngine: z.literal(RELEASE_RUNTIME_IMAGE_PLACEHOLDER),
+  }).strict(),
+}).strict();
+export type ReleaseManifestTemplate = z.infer<typeof ReleaseManifestTemplateSchema>;
+
 export const ReleaseDownloadManifestSchema = ReleaseManifestSchema.extend({
   releaseArtifacts: z.array(z.object({
     name: z.string().min(1),
@@ -65,14 +75,7 @@ export type ReleaseDownloadManifest = z.infer<typeof ReleaseDownloadManifestSche
 const packageRoot = fileURLToPath(new URL('../', import.meta.url));
 const templatesRoot = fileURLToPath(new URL('../templates/', import.meta.url));
 
-export function verifyReleaseManifest(value: unknown): ReleaseManifest {
-  const parsed = ReleaseManifestSchema.safeParse(value);
-  if (!parsed.success) {
-    const imageFailure = parsed.error.issues.some((issue) => issue.path[0] === 'images');
-    if (imageFailure) throw new Error('Release container references must be versioned or digest-pinned as required.');
-    throw new Error(`Invalid release manifest: ${parsed.error.message}`);
-  }
-  const manifest = parsed.data;
+function verifyManifestMetadata<T extends ReleaseManifest | ReleaseManifestTemplate>(manifest: T): T {
   if (manifest.tag !== `v${manifest.version}`) throw new Error('Release manifest version and tag do not agree.');
   if (!manifest.promptUrl.includes(`/${manifest.tag}/`)) {
     throw new Error('Release prompt URL must use the immutable release tag.');
@@ -108,11 +111,40 @@ export function verifyReleaseManifest(value: unknown): ReleaseManifest {
   return manifest;
 }
 
+export function verifyReleaseManifest(value: unknown): ReleaseManifest {
+  const parsed = ReleaseManifestSchema.safeParse(value);
+  if (!parsed.success) {
+    const unresolved = ReleaseManifestTemplateSchema.safeParse(value);
+    if (unresolved.success) {
+      throw new Error('Release manifest is an unresolved source template; build it with an exact commit and runtime image digest.');
+    }
+    const imageFailure = parsed.error.issues.some((issue) => issue.path[0] === 'images');
+    if (imageFailure) throw new Error('Release container references must be versioned or digest-pinned as required.');
+    throw new Error(`Invalid release manifest: ${parsed.error.message}`);
+  }
+  return verifyManifestMetadata(parsed.data);
+}
+
+export function verifyReleaseManifestTemplate(value: unknown): ReleaseManifestTemplate {
+  const parsed = ReleaseManifestTemplateSchema.safeParse(value);
+  if (!parsed.success) throw new Error(`Invalid release manifest template: ${parsed.error.message}`);
+  return verifyManifestMetadata(parsed.data);
+}
+
 export function loadReleaseManifest(path = join(packageRoot, 'release-manifest.json')): ReleaseManifest {
   return verifyReleaseManifest(JSON.parse(readFileSync(path, 'utf8')));
 }
 
-export function verifyReleaseArtifacts(manifest: ReleaseManifest, root = templatesRoot): void {
+export function loadReleaseManifestTemplate(
+  path = join(packageRoot, 'release-manifest.json'),
+): ReleaseManifestTemplate {
+  return verifyReleaseManifestTemplate(JSON.parse(readFileSync(path, 'utf8')));
+}
+
+export function verifyReleaseArtifacts(
+  manifest: Pick<ReleaseManifest, 'artifacts'>,
+  root = templatesRoot,
+): void {
   for (const artifact of manifest.artifacts) {
     const actual = createHash('sha256').update(readFileSync(join(root, artifact.path))).digest('hex');
     if (actual !== artifact.sha256) throw new Error(`Release artifact checksum mismatch: ${artifact.path}.`);
@@ -165,7 +197,7 @@ export function verifyBundledRelease(): ReleaseManifest {
   return manifest;
 }
 
-export function assertImmutableImageReference(reference: string, manifest = loadReleaseManifest()): string {
+export function assertImmutableImageReference(reference: string): string {
   const value = z.string().trim().min(1).regex(/^\S+$/).parse(reference);
   const parsed = DigestReferenceSchema.safeParse(value);
   if (!parsed.success) throw new Error('Runtime image must be content-addressed with an exact @sha256 digest.');

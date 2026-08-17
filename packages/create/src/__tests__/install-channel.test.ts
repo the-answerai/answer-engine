@@ -7,6 +7,7 @@ import { install } from '../install.js';
 import type { InstallDependencies } from '../install.js';
 import { runPreflight } from '../preflight.js';
 import { createRuntimeChannelProfile } from '../runtime-channel.js';
+import { releaseFixture } from './release-fixture.js';
 
 const tempDirs: string[] = [];
 
@@ -15,6 +16,10 @@ afterEach(() => {
 });
 
 describe('stable channel adoption', () => {
+  const release = releaseFixture();
+  const readyCommand = async (_command: string, args: string[]) => ({
+    stdout: args[0] === 'info' ? '27.0.0' : args[0] === 'compose' ? '2.30.0' : 'ready',
+  });
   it('adds channel ownership to a legacy installer home without touching data or archives', async () => {
     const home = mkdtempSync(join(tmpdir(), 'ae-adopt-'));
     tempDirs.push(home);
@@ -72,13 +77,14 @@ describe('stable channel adoption', () => {
       prompt,
       detectOwnedPorts: async () => new Set(),
       runPreflight: () => runPreflight({
-        platform: 'darwin', architecture: 'arm64', totalMemoryBytes: 12 * 1024 ** 3,
-        freeDiskBytes: 20 * 1024 ** 3, nodeVersion: '22.16.0', installation: 'absent',
-        modelRuntimeAvailable: true, runCommand: async () => ({ stdout: '' }),
+        platform: 'darwin', architecture: 'arm64', totalMemoryBytes: 16 * 1024 ** 3,
+        freeDiskBytes: 80 * 1024 ** 3, nodeVersion: '22.16.0', installation: 'absent',
+        modelRuntimeAvailable: true, runCommand: readyCommand,
         probePort: async () => true,
       }),
       resolveModelSetup: async () => modelSetup,
       selectClients: async () => ['codex'],
+      verifyBundledRelease: () => release,
     })).rejects.toThrow('cancelled before any changes');
 
     expect(readdirSync(home)).toEqual([]);
@@ -118,11 +124,12 @@ describe('stable channel adoption', () => {
       runtime: {},
     };
     const dependencies: InstallDependencies = {
+      verifyBundledRelease: () => release,
       detectOwnedPorts: async () => new Set<number>(),
       runPreflight: () => runPreflight({
         platform: 'darwin', architecture: 'arm64', totalMemoryBytes: 16 * 1024 ** 3,
         freeDiskBytes: 60 * 1024 ** 3, nodeVersion: '22.16.0', installation,
-        modelRuntimeAvailable: true, runCommand: async () => ({ stdout: '' }),
+        modelRuntimeAvailable: true, runCommand: readyCommand,
         probePort: async () => true,
       }),
       runLifecycleAction: async () => ({

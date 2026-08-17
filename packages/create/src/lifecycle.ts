@@ -10,7 +10,13 @@ import { runCommand as defaultRunCommand } from './process.js';
 import { readEnvValue } from './scaffold.js';
 import { uninstall } from './uninstall.js';
 import { assertRuntimeChannelConfiguration, type RuntimeChannelProfile } from './runtime-channel.js';
-import { assertImmutableImageReference, DigestReferenceSchema, verifyBundledRelease } from './release.js';
+import {
+  assertImmutableImageReference,
+  DigestReferenceSchema,
+  verifyBundledRelease,
+  type ReleaseManifest,
+} from './release.js';
+import { ReleaseStateSchema, type ReleaseState } from './release-state.js';
 import { assertRegularFileTarget, writePrivateFileAtomic } from './safe-file.js';
 
 export const LifecycleActionSchema = z.enum([
@@ -29,21 +35,6 @@ const OwnershipMarkerSchema = z.object({
   composeFileSha256: z.string().regex(/^[a-f0-9]{64}$/),
 }).strict();
 
-const ReleaseStateSchema = z.object({
-  schemaVersion: z.literal(1),
-  sourceCommit: z.string().regex(/^[a-f0-9]{40}$/),
-  current: DigestReferenceSchema,
-  previous: DigestReferenceSchema,
-  verifiedAtInstall: z.boolean(),
-  lastAction: z.enum(['upgrade', 'rollback']).optional(),
-  pending: z.object({
-    action: z.enum(['upgrade', 'rollback']),
-    from: DigestReferenceSchema,
-    to: DigestReferenceSchema,
-  }).strict().optional(),
-}).strict();
-type ReleaseState = z.infer<typeof ReleaseStateSchema>;
-
 export interface LifecycleOptions {
   purge?: boolean;
   image?: string;
@@ -55,6 +46,7 @@ export interface LifecycleDependencies {
   sleep?: (milliseconds: number) => Promise<void>;
   healthAttempts?: number;
   probePort?: (port: number) => Promise<boolean>;
+  release?: ReleaseManifest;
 }
 
 async function assertSelectedPortsAvailable(
@@ -212,9 +204,11 @@ export async function runLifecycleAction(
   dependencies: LifecycleDependencies = {},
 ): Promise<LifecycleStatus | void> {
   const command = dependencies.runCommand ?? defaultRunCommand;
-  const manifest = action === 'upgrade' || action === 'rollback' ? verifyBundledRelease() : undefined;
+  const manifest = action === 'upgrade' || action === 'rollback'
+    ? dependencies.release ?? verifyBundledRelease()
+    : undefined;
   const requestedImage = action === 'upgrade'
-    ? assertImmutableImageReference(options.image ?? manifest!.images.answerEngine, manifest!)
+    ? assertImmutableImageReference(options.image ?? manifest!.images.answerEngine)
     : undefined;
   if (action === 'status' && !existsSync(profile.markerFile)) {
     return {
@@ -298,7 +292,7 @@ export async function runLifecycleAction(
     if (release.lastAction === 'rollback' && !release.pending) return;
     const from = release.pending?.action === 'rollback' ? release.pending.from : release.current;
     const to = release.pending?.action === 'rollback' ? release.pending.to : release.previous;
-    assertImmutableImageReference(to, manifest);
+    assertImmutableImageReference(to);
     replaceEnvAssignment(profile.credentialsFile, 'ANSWER_ENGINE_IMAGE', to);
     writeReleaseState(profile.releaseFile, {
       schemaVersion: 1, sourceCommit: release.sourceCommit, verifiedAtInstall: release.verifiedAtInstall,

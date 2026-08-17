@@ -41,9 +41,10 @@ runs an npm publish step.
 
 Every dispatch first uploads a candidate artifact. GitHub Release publication
 is a separate `publish_release=true` job protected by the `production-release`
-environment and rechecks all hashes. An unattended implementation run must stop
-at the candidate. Signing, publication, and clean-machine macOS/Windows execution
-remain explicit release acceptance in issue #49.
+environment and rechecks all hashes. Publication refuses to replace any existing
+asset at the exact tag; corrections require a new version and tag. An unattended
+implementation run must stop at the candidate. Signing, publication, and clean-
+machine macOS/Windows execution remain explicit release acceptance in issue #49.
 
 To reproduce a candidate after package builds:
 
@@ -60,6 +61,13 @@ node scripts/build-release-assets.mjs \
 
 Fresh install scaffolding has no mutable image fallback. It writes the verified
 manifest digest to `.env.compose` and `.release-state.json` before Docker starts.
+The checked-in manifest is deliberately non-runnable: its source commit and
+Answer Engine image are explicit template markers. Only the exact-commit release
+builder replaces them, and it runs the strict runtime manifest verifier before
+creating an archive. A source checkout therefore cannot invent or silently trust
+a plausible digest.
+An install retry must match that recorded digest; changing versions through the
+install path fails closed and directs the user to guarded upgrade instead.
 Upgrade accepts only `@sha256:` references; rollback selects only a previously
 verified digest. A legacy stable install remains inspectable and adoptable, but
 its old mutable tag is not recorded as a rollback target. Its first upgrade must

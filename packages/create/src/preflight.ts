@@ -91,12 +91,6 @@ export interface PreflightDependencies {
   requiredPorts?: readonly number[];
 }
 
-export interface DependencyRemediationDependencies {
-  confirm(proposal: NonNullable<PreflightCheck['proposal']>): Promise<boolean>;
-  install(proposal: NonNullable<PreflightCheck['proposal']>): Promise<void>;
-  rerun(): Promise<PreflightResult>;
-}
-
 export async function isPortFree(port: number): Promise<boolean> {
   return new Promise((resolve) => {
     const server = createServer();
@@ -178,7 +172,7 @@ async function commandAvailable(command: CommandRunner, name: string, args: stri
 async function commandVersion(command: CommandRunner, name: string, args: string[]): Promise<string | undefined> {
   try {
     const result = await command(name, args);
-    return result.stdout.trim() || 'available (version not reported)';
+    return result.stdout.trim() || undefined;
   } catch {
     return undefined;
   }
@@ -279,7 +273,8 @@ export async function runPreflight(
     commandVersion(command, 'docker', ['compose', 'version', '--short']),
   ]);
   const dockerReady = dockerVersion !== undefined;
-  const composeReady = composeVersion !== undefined && !/^v?1(?:\.|$)/.test(composeVersion);
+  const composeMajor = composeVersion?.match(/^v?(\d+)(?:\.|$)/)?.[1];
+  const composeReady = composeMajor !== undefined && Number(composeMajor) >= 2;
   checks.push(check('DOCKER_DAEMON', 'Docker', dockerReady ? 'pass' : 'warning',
     dockerReady ? `Docker daemon ${dockerVersion} is reachable.` : 'The Docker daemon is not running or is not reachable.',
     dockerReady ? undefined : 'Install or start Docker Desktop manually, then run this command again.', !dockerReady,
@@ -356,18 +351,4 @@ export function formatPreflightReport(result: PreflightResult, json = false): st
     return item.remediation ? `${line}\n  Next: ${item.remediation}` : line;
   });
   return [`Preflight: ${result.status.toUpperCase()}`, ...details].join('\n');
-}
-
-export async function remediateSupportedDependencies(
-  result: PreflightResult,
-  dependencies: DependencyRemediationDependencies,
-): Promise<PreflightResult> {
-  const proposals = result.checks.flatMap((item) => item.installPolicy === 'user-consent' && item.proposal
-    ? [item.proposal] : []);
-  if (proposals.length === 0) return result;
-  for (const proposal of proposals) {
-    if (!await dependencies.confirm(proposal)) return result;
-    await dependencies.install(proposal);
-  }
-  return dependencies.rerun();
 }

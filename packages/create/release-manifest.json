@@ -2,11 +2,11 @@
   "schemaVersion": 2,
   "version": "1.1.0",
   "tag": "v1.1.0",
-  "sourceCommit": "7e11fc44a03371432ed23fc1bd4ea81e61a221bb",
+  "sourceCommit": "__RELEASE_SOURCE_COMMIT__",
   "promptUrl": "https://raw.githubusercontent.com/the-answerai/answer-engine/v1.1.0/INSTALL_AGENT.md",
   "releaseBaseUrl": "https://github.com/the-answerai/answer-engine/releases/download/v1.1.0",
   "images": {
-    "answerEngine": "ghcr.io/the-answerai/answer-engine@sha256:c0fa1c0f0771800e40b678ff42c43f1c26e322020bec9cd713d7198dd0ab165f",
+    "answerEngine": "__ANSWER_ENGINE_RUNTIME_IMAGE__",
     "postgres": "pgvector/pgvector:pg16@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b",
     "redis": "redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2"
   },

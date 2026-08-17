@@ -67,8 +67,8 @@ jobs:
         env:
           RUNTIME_IMAGE: ${{ inputs.runtime_image }}
         run: |
-          docker buildx imagetools inspect --raw "$RUNTIME_IMAGE" > runtime-index.json
-          jq -e '[.manifests[].platform | "\(.os)/\(.architecture)"] | index("linux/arm64") and index("linux/amd64")' runtime-index.json
+          docker buildx imagetools inspect --raw "$RUNTIME_IMAGE" > "$RUNNER_TEMP/runtime-index.json"
+          jq -e '[.manifests[].platform | "\(.os)/\(.architecture)"] | index("linux/arm64") and index("linux/amd64")' "$RUNNER_TEMP/runtime-index.json"
       - name: Build candidate archives, checksums, manifest, and provenance
         run: |
           node scripts/build-release-assets.mjs \
@@ -103,4 +103,4 @@ jobs:
       - name: Upload to the existing exact-tag release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload '${{ inputs.tag }}' release-candidate/* --clobber
+        run: gh release upload '${{ inputs.tag }}' release-candidate/*

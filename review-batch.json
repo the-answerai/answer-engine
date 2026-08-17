@@ -1,34 +1,62 @@
 {
   "passed": true,
-  "summary": "All critical and warning findings for the consent-first agent-history import were fixed and verified.",
+  "summary": "All immutable-release provenance, bootstrap idempotency, dependency detection, and lifecycle-state review findings for issue #71 were fixed and verified.",
   "findings": [
     {
       "severity": "critical",
-      "description": "Resumed imports trusted API-supplied discovery and source paths without matching the owner-only local manifest, allowing a write-capable API caller to turn the CLI into an arbitrary local JSONL reader.",
+      "description": "The checked-in manifest claimed a syntactically valid Answer Engine runtime digest without registry evidence, allowing source-checkout installs to treat fabricated metadata as release truth. It is now a non-runnable template; only the exact-commit builder injects and revalidates an explicit registry-inspected digest.",
       "fixed": true,
-      "file": "packages/cli/src/sync/first-import.ts",
-      "issueNum": 44
+      "file": "packages/create/release-manifest.json",
+      "issueNum": 71
+    },
+    {
+      "severity": "critical",
+      "description": "The release workflow wrote runtime-index.json into the checkout immediately before invoking a builder that rejects dirty or untracked checkouts, so every candidate build would fail.",
+      "fixed": true,
+      "file": ".github/workflows/release-installer.yml",
+      "issueNum": 71
+    },
+    {
+      "severity": "critical",
+      "description": "Protected publication used gh release upload --clobber, allowing exact-tag installer assets to be replaced in place despite the immutable download contract.",
+      "fixed": true,
+      "file": ".github/workflows/release-installer.yml",
+      "issueNum": 71
+    },
+    {
+      "severity": "critical",
+      "description": "When bootstrap installed the supported user-scoped Node runtime, it created raw JavaScript symlink launchers that depended on a future shell PATH and therefore failed after bootstrap exited on machines without a system Node installation.",
+      "fixed": true,
+      "file": "scripts/release/bootstrap.sh",
+      "issueNum": 71
+    },
+    {
+      "severity": "critical",
+      "description": "An interrupted bootstrap that had already installed managed Node did not reuse it on rerun and instead refused the existing destination, breaking required bootstrap idempotency.",
+      "fixed": true,
+      "file": "scripts/release/bootstrap.sh",
+      "issueNum": 71
     },
     {
       "severity": "warning",
-      "description": "Consent fingerprints and byte estimates covered only the primary transcript even when Claude Code and Cowork imports read additional subagent, audit, metadata, and artifact files, and changed bundles were not rejected after approval.",
+      "description": "Compose detection accepted blank or arbitrary successful command output as Compose v2, allowing a required incompatible dependency to pass readiness.",
       "fixed": true,
-      "file": "packages/cli/src/sync/first-import.ts",
-      "issueNum": 44
+      "file": "packages/create/src/preflight.ts",
+      "issueNum": 71
     },
     {
       "severity": "warning",
-      "description": "A permission or discovery failure in one adapter aborted the entire preview instead of reporting a safe source-specific unavailable status and recovery action.",
+      "description": "Rerunning a different installer version rewrote ANSWER_ENGINE_IMAGE while preserving the old release-state digest, splitting status and rollback state from the runtime configuration.",
       "fixed": true,
-      "file": "packages/cli/src/sync/first-import.ts",
-      "issueNum": 44
+      "file": "packages/create/src/scaffold.ts",
+      "issueNum": 71
     },
     {
       "severity": "warning",
-      "description": "Starting an approved session used a check-then-update without constraining the update by current status, so a concurrent cancellation could be overwritten back to running.",
+      "description": "Consent and rerun coverage exercised an exported remediation helper that no production bootstrap path called, leaving the real shell dependency flow untested.",
       "fixed": true,
-      "file": "src/services/first-import/first-import-service.ts",
-      "issueNum": 44
+      "file": "tests/repository/release-assets.test.ts",
+      "issueNum": 71
     }
   ]
 }

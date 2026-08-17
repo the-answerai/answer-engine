@@ -7,6 +7,7 @@ RELEASE_BASE="https://github.com/the-answerai/answer-engine/releases/download/${
 INSTALLER_ASSET="answer-engine-installer-v${VERSION}.tgz"
 CLI_ASSET="answer-engine-cli-v${VERSION}.tgz"
 NODE_VERSION=22.16.0
+NODE_DESTINATION="${HOME}/.local/share/answer-engine/node-v${NODE_VERSION}"
 MODE=install
 APPROVE_NODE=false
 for argument in "$@"; do
@@ -62,6 +63,11 @@ node_supported() {
   node -e 'const [a,b,c]=process.versions.node.split(".").map(Number); process.exit(a>22||(a===22&&(b>16||(b===16&&c>=0)))?0:1)'
 }
 
+if [ -x "$NODE_DESTINATION/bin/node" ]; then
+  PATH="$NODE_DESTINATION/bin:$PATH"
+  export PATH
+fi
+
 OS="$(uname -s)"
 ARCH="$(uname -m)"
 if [ "$OS" = Darwin ] && [ "$ARCH" = arm64 ]; then
@@ -94,7 +100,6 @@ if [ "$MODE" = install ] && [ "$REQUIRED_READY" != true ]; then exit 2; fi
 
 if ! node_supported; then
   NODE_URL="https://nodejs.org/dist/v${NODE_VERSION}/${NODE_ARCHIVE}"
-  NODE_DESTINATION="${HOME}/.local/share/answer-engine/node-v${NODE_VERSION}"
   printf 'Missing required dependency: Node.js %s+\n' "$NODE_VERSION"
   printf 'Source: %s\nVersion: %s\nDestination: %s\n' "$NODE_URL" "$NODE_VERSION" "$NODE_DESTINATION"
   printf 'Command: download, verify SHA-256 %s, and extract the official archive.\n' "$NODE_SHA256"
@@ -171,20 +176,39 @@ else
   INSTALL_STAGING=
 fi
 mkdir -p "$BIN_ROOT"
+shell_literal() {
+  printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
+}
 install_launcher() {
   target="$1"
   launcher="$2"
+  temporary_launcher="${launcher}.tmp.$$"
+  # shellcheck disable=SC2016 -- these variables expand when the generated launcher runs.
+  printf '#!/bin/sh\nNODE_EXECUTABLE=%s\ntarget=%s\nexec "$NODE_EXECUTABLE" "$target" "$@"\n' \
+    "$(shell_literal "$NODE_EXECUTABLE")" "$(shell_literal "$target")" > "$temporary_launcher"
+  chmod 700 "$temporary_launcher"
   if [ -L "$launcher" ]; then
     [ "$(readlink "$launcher")" = "$target" ] || {
+      rm -f "$temporary_launcher"
       printf 'Refusing to replace an existing launcher: %s\n' "$launcher" >&2
       exit 1
     }
+    rm "$launcher"
   elif [ -e "$launcher" ]; then
+    if cmp -s "$temporary_launcher" "$launcher"; then
+      rm "$temporary_launcher"
+      return
+    fi
+    rm -f "$temporary_launcher"
     printf 'Refusing to replace an existing launcher: %s\n' "$launcher" >&2
     exit 1
-  else
-    ln -s "$target" "$launcher"
   fi
+  mv "$temporary_launcher" "$launcher"
+}
+NODE_EXECUTABLE="$(command -v node)"
+[ -n "$NODE_EXECUTABLE" ] && [ -x "$NODE_EXECUTABLE" ] || {
+  printf '%s\n' 'A compatible Node.js executable was not available for the installed launchers.' >&2
+  exit 1
 }
 install_launcher "$INSTALL_ROOT/installer/dist/index.js" "$BIN_ROOT/create-answer-engine"
 install_launcher "$INSTALL_ROOT/cli/dist/index.js" "$BIN_ROOT/ae"

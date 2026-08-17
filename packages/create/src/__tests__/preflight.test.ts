@@ -2,10 +2,12 @@ import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { formatPreflightReport, remediateSupportedDependencies, runPreflight } from '../preflight.js';
+import { formatPreflightReport, runPreflight } from '../preflight.js';
 import type { CommandRunner } from '../process.js';
 
-const successRunner: CommandRunner = vi.fn(() => Promise.resolve({ stdout: '' }));
+const successRunner: CommandRunner = vi.fn((_command, args) => Promise.resolve({
+  stdout: args[0] === 'info' ? '27.0.0' : args[0] === 'compose' ? '2.30.0' : 'ready',
+}));
 const supportedHost = {
   platform: 'darwin' as const,
   architecture: 'arm64',
@@ -24,7 +26,7 @@ describe('runPreflight', () => {
   it('passes the supported Apple Silicon baseline with ordered read-only checks', async () => {
     const runCommand = vi.fn(async (command: string, args: string[]) => {
       if (command === 'docker' && args[0] === 'info') return { stdout: 'Server Version: 27' };
-      if (command === 'docker') return { stdout: 'Docker Compose version v2.35.1' };
+      if (command === 'docker') return { stdout: '2.35.1' };
       if (command === 'lms') return { stdout: '0.3.20' };
       throw new Error(`Unexpected command: ${command}`);
     });
@@ -43,8 +45,9 @@ describe('runPreflight', () => {
   });
 
   it('passes the supported Windows 11 WSL2 baseline with an 8 GB Nvidia GPU', async () => {
-    const runCommand = vi.fn(async (command: string) => ({
-      stdout: command === 'nvidia-smi' ? '8192\n' : 'ready\n',
+    const runCommand = vi.fn(async (command: string, args: string[]) => ({
+      stdout: command === 'nvidia-smi' ? '8192\n'
+        : args[0] === 'info' ? '27.0.0\n' : args[0] === 'compose' ? '2.30.0\n' : 'ready\n',
     }));
     const result = await runPreflight({
       platform: 'linux', architecture: 'x64', osRelease: '5.15-microsoft-standard-WSL2',
@@ -170,31 +173,20 @@ describe('runPreflight', () => {
     });
   });
 
-  it('installs a supported dependency only after consent and reruns readiness', async () => {
-    const missing = await runPreflight({
-      ...supportedHost, nodeVersion: '20.0.0', runCommand: successRunner,
+  it.each(['', 'available', 'v1.29.2'])('rejects non-v2 Compose version output %j', async (composeVersion) => {
+    const result = await runPreflight({
+      ...supportedHost,
+      nodeVersion: '22.16.0',
+      runCommand: vi.fn(async (_command: string, args: string[]) => ({
+        stdout: args[0] === 'info' ? '27.0.0' : composeVersion,
+      })),
       probePort: vi.fn(async () => true),
     });
-    const ready = await runPreflight({
-      ...supportedHost, nodeVersion: '22.16.0', runCommand: successRunner,
-      probePort: vi.fn(async () => true),
-    });
-    const install = vi.fn(async () => undefined);
-    const rerun = vi.fn(async () => ready);
 
-    const refused = await remediateSupportedDependencies(missing, {
-      confirm: async () => false, install, rerun,
+    expect(result.ok).toBe(false);
+    expect(result.checks.find((item) => item.code === 'DOCKER_COMPOSE')).toMatchObject({
+      status: 'warning', blocking: true, installPolicy: 'privileged',
     });
-    expect(refused).toBe(missing);
-    expect(install).not.toHaveBeenCalled();
-    expect(rerun).not.toHaveBeenCalled();
-
-    const remediated = await remediateSupportedDependencies(missing, {
-      confirm: async (proposal) => proposal.version === '22.16.0', install, rerun,
-    });
-    expect(install).toHaveBeenCalledOnce();
-    expect(rerun).toHaveBeenCalledOnce();
-    expect(remediated).toBe(ready);
   });
 
   it('does not propose the Apple Silicon Node archive for an unsupported architecture', async () => {
