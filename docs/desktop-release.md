@@ -17,7 +17,30 @@ installed runtime and its data unchanged.
 - Update accepts only the release embedded in the verified installer manifest;
   rollback accepts only its recorded, verified predecessor. Neither action
   removes the runtime home or persistent volumes.
+- The manifest records the exact source commit, release asset identities, and
+  `ghcr.io/the-answerai/answer-engine@sha256:...` runtime. Mutable tags are not
+  install, update, or rollback inputs. See [Immutable installer releases](./installer-release.md).
 - Uninstall and purge are deliberately absent from the desktop controls.
+- The packaged web application is served by the installed API origin (`5050`
+  for stable and `5150` for staging). The launcher preserves that validated
+  origin when opening the app. Ports `3200` and `3300` are used only when
+  `AE_DESKTOP_WEB_DEV=1` explicitly selects a standalone Vite development UI.
+- A pre-channel stable home is shown as adoptable only after the installer's
+  file, project, channel, known Compose topology, configuration, and isolation
+  validation passes. Extra services, host mounts, privileged options, and
+  unexpected images, commands, ports, mounts, or volumes are rejected. The
+  confirmed Adopt action writes ownership metadata only; it does not start the
+  runtime or migrate user data. Invalid legacy homes remain unmanaged and show
+  the validation error.
+
+## Fixture mode
+
+`pnpm --filter @answer-engine/desktop fixture` is a simulated UI preview. The
+window and tray label it as Demo mode, status reports no installed or healthy
+runtime, and lifecycle controls change no external state. Open-web and
+open-logs requests return an explicit not-opened result; they never claim that
+a disabled fixture side effect succeeded. Use normal launcher mode for real
+runtime verification.
 
 ## Build and sign
 

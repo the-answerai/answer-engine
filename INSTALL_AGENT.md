@@ -18,24 +18,29 @@ Install Answer Engine stable 1.1.0 on this computer. Follow only the immutable
 v1.1.0 instructions at:
 https://raw.githubusercontent.com/the-answerai/answer-engine/v1.1.0/INSTALL_AGENT.md
 
-First explain that preflight is read-only and ask permission to run it. Then run:
-npx @answer-engine/create@1.1.0 preflight --json --channel stable
+First explain that bootstrap preflight is read-only and ask permission to run
+the matching Apple Silicon Bash or Windows 11 PowerShell command in the
+"Verified bootstrap commands" section. Download only the exact v1.1.0 asset,
+verify its SHA-256 entry before execution, and run it first with --preflight.
 
 Translate every pass, warning, or unsupported result into plain language. Never
-install Docker, WSL2, LM Studio, drivers, or another privileged prerequisite
-without asking me. Recommend full-local only for supported hardware,
+silently install Docker Desktop, WSL2, LM Studio, drivers, a model runtime, or
+another privileged prerequisite. The only supported automatic dependency is
+the displayed official Node.js 22.16.0 user-scoped archive, and it still
+requires my explicit approval. Recommend full-local only for supported hardware,
 reduced-local for constrained Apple Silicon, or cloud-backed only after explicit
 opt-in. Ask me in one short interview for the install folder, model route, every
 agent client surface I use, and whether Cowork sessions are local or remote.
 Never ask me to paste a secret into chat.
 
-Before executing the installer, verify the bundled release manifest, immutable
-version/tag, and SHA-256 checksums. Show the exact runtime, plugin, skill, MCP,
-CLI, ledger, and backup paths plus every unsupported client limitation, then ask
-for one confirmation. Cancel without changing files if I decline. Use the stable
-channel, preserve existing data and unrelated client configuration, and retry
-safely if setup is partial. Do not ask me to create or copy a local Answer Engine
-API key; the installer must capture and store it automatically.
+After readiness passes, show the exact source, version, checksum, destination,
+and command for every proposed change, then ask for one confirmation. Run the
+same verified bootstrap without --preflight; it installs the versioned installer
+and CLI assets without npm. Verify the release manifest, provenance, every
+downloaded artifact, and the content-addressed runtime image digest before any
+Answer Engine mutation. Cancel without changing Answer Engine files if I decline.
+Use the stable channel, preserve existing data and unrelated client configuration,
+and retry safely if setup is partial. Never print or request the local API key.
 
 Finish only when health, the local UI, the direct memory round trip, and a real
 Answer Engine recall in every selected supported client pass. Explain that
@@ -77,10 +82,57 @@ it does not replace the user's-data check in steps 5 and 6.
 
 ## 1. Check prerequisites
 
-Ask before running this read-only command:
+### Verified bootstrap commands
+
+Ask before downloading into a temporary folder and running the read-only
+preflight. On Apple Silicon macOS, use:
 
 ```bash
-npx @answer-engine/create@1.1.0 preflight --channel stable
+AE_RELEASE_URL=https://github.com/the-answerai/answer-engine/releases/download/v1.1.0
+AE_BOOTSTRAP=answer-engine-bootstrap-v1.1.0.sh
+AE_EXPECTED=c1e65b8943709ede0109b2af566f72fd3b97d311261f44df6e64cf136db304bb
+AE_STAGE="$(mktemp -d)"
+trap 'rm -rf "$AE_STAGE"' EXIT HUP INT TERM
+curl --fail --location --proto '=https' --tlsv1.2 "$AE_RELEASE_URL/SHA256SUMS" -o "$AE_STAGE/SHA256SUMS"
+curl --fail --location --proto '=https' --tlsv1.2 "$AE_RELEASE_URL/$AE_BOOTSTRAP" -o "$AE_STAGE/$AE_BOOTSTRAP"
+AE_LISTED="$(awk -v name="$AE_BOOTSTRAP" '$2 == name { print $1 }' "$AE_STAGE/SHA256SUMS")"
+test "$AE_LISTED" = "$AE_EXPECTED"
+printf '%s  %s\n' "$AE_EXPECTED" "$AE_STAGE/$AE_BOOTSTRAP" | shasum -a 256 -c -
+bash "$AE_STAGE/$AE_BOOTSTRAP" --preflight
+```
+
+On Windows 11 x64 in PowerShell, use:
+
+```powershell
+$ReleaseUrl = 'https://github.com/the-answerai/answer-engine/releases/download/v1.1.0'
+$Bootstrap = 'answer-engine-bootstrap-v1.1.0.ps1'
+$Expected = '8adf1b0720b40354ef660c669824c79d197d49671fb61d161f3d40b7b6ada519'
+$Stage = Join-Path ([IO.Path]::GetTempPath()) ('answer-engine-' + [Guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory $Stage | Out-Null
+try {
+  Invoke-WebRequest "$ReleaseUrl/SHA256SUMS" -OutFile "$Stage/SHA256SUMS"
+  Invoke-WebRequest "$ReleaseUrl/$Bootstrap" -OutFile "$Stage/$Bootstrap"
+  $Line = Get-Content "$Stage/SHA256SUMS" | Where-Object { $_ -match "^[a-f0-9]{64}\s+\*?$([regex]::Escape($Bootstrap))$" } | Select-Object -First 1
+  if (-not $Line -or ($Line -split '\s+')[0] -ne $Expected) { throw 'Release checksum does not match the pinned bootstrap checksum.' }
+  $Actual = (Get-FileHash -Algorithm SHA256 "$Stage/$Bootstrap").Hash.ToLowerInvariant()
+  if ($Actual -ne $Expected) { throw 'Bootstrap checksum mismatch; refusing execution.' }
+  & "$Stage/$Bootstrap" --preflight
+} finally {
+  Remove-Item -LiteralPath $Stage -Recurse -Force -ErrorAction SilentlyContinue
+}
+```
+
+Both commands use the exact `v1.1.0` GitHub Release path and verify the
+bootstrap before execution. After readiness and dependency consent, rerun the
+same checksum-first command without `--preflight`; add `--approve-node` only after
+the user approves the displayed official Node source, version, checksum,
+destination, and command. Do not substitute `/latest`, a branch URL, or an
+unverified local copy.
+
+The installed launcher provides the read-only structured check:
+
+```bash
+create-answer-engine preflight --json --channel stable
 # Use --json when the agent will interpret the result.
 ```
 
@@ -132,7 +184,7 @@ export AE_HOME="${AE_HOME:-$HOME/.answer-engine}"
 LM Studio example, using IDs returned by `/v1/models`:
 
 ```bash
-npx @answer-engine/create@1.1.0 --yes \
+create-answer-engine --yes \
   --channel stable \
   --home "$AE_HOME" \
   --models chat=<loaded-chat-id>,embedding=<loaded-embedding-id> \
@@ -143,7 +195,7 @@ npx @answer-engine/create@1.1.0 --yes \
 OpenAI example (the user enters the key in the local shell):
 
 ```bash
-npx @answer-engine/create@1.1.0 --yes \
+create-answer-engine --yes \
   --channel stable \
   --home "$AE_HOME" \
   --llm-provider openai \
@@ -158,7 +210,7 @@ npx @answer-engine/create@1.1.0 --yes \
 Anthropic chat with OpenAI embeddings:
 
 ```bash
-npx @answer-engine/create@1.1.0 --yes \
+create-answer-engine --yes \
   --channel stable \
   --home "$AE_HOME" \
   --llm-provider anthropic \
@@ -194,16 +246,17 @@ The installer stores a redacted ownership ledger and private backups under
 `$AE_HOME/integrations`. To reverse client integration without removing memory:
 
 ```bash
-npx @answer-engine/create@1.1.0 remove-integrations \
+create-answer-engine remove-integrations \
   --channel stable --home "$AE_HOME"
 ```
 
 ## 4. Add the selected sources
 
-Install the matching CLI if necessary:
+The verified bootstrap installs the matching CLI asset. If `ae` is missing,
+rerun that same exact-version bootstrap; do not fetch an npm package:
 
 ```bash
-command -v ae >/dev/null 2>&1 || npm install --global @answer-engine/cli@1.1.0
+command -v ae >/dev/null 2>&1 || { echo 'Rerun the verified v1.1.0 bootstrap.' >&2; exit 1; }
 cp "$AE_HOME/config.yaml" "$AE_HOME/config.yaml.before-sources"
 chmod 600 "$AE_HOME/config.yaml.before-sources"
 ```
@@ -316,11 +369,11 @@ same phrase.
 Preserve data:
 
 ```bash
-npx @answer-engine/create@1.1.0 uninstall --channel stable --home "$AE_HOME"
+create-answer-engine uninstall --channel stable --home "$AE_HOME"
 ```
 
 Delete data only after explicit user confirmation:
 
 ```bash
-npx @answer-engine/create@1.1.0 uninstall --channel stable --purge --home "$AE_HOME"
+create-answer-engine uninstall --channel stable --purge --home "$AE_HOME"
 ```

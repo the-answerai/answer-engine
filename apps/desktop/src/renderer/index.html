@@ -8,13 +8,13 @@
     <link rel="stylesheet" href="styles.css">
     <script src="renderer.js" defer></script>
   </head>
-  <body data-channel="stable">
+  <body data-channel="stable" data-runtime-mode="live">
     <div class="staging-rail" aria-hidden="true">STAGING · ISOLATED DATA · STAGING · ISOLATED DATA</div>
     <main>
       <header class="masthead">
         <div>
           <p class="eyebrow">Local memory, under your control</p>
-          <h1>Answer Engine</h1>
+          <h1>Answer Engine <span id="mode-badge" class="mode-badge" hidden>Demo mode</span></h1>
         </div>
         <label class="channel-picker">
           <span>Runtime channel</span>
@@ -55,12 +55,13 @@
           </div>
         </div>
         <div class="controls">
+          <button type="button" data-action="adopt" data-confirm="Adopt this verified legacy stable home? This adds ownership metadata only and does not start services or migrate data." hidden>Adopt legacy install</button>
           <button type="button" data-action="start">Start</button>
           <button type="button" data-action="restart">Restart</button>
           <button type="button" data-action="repair">Repair</button>
-          <button type="button" data-action="stop" data-confirm="Stop the selected runtime? The launcher will stay open.">Stop</button>
-          <button type="button" data-action="update" data-confirm="Install only the verified bundled release for this channel?">Update</button>
-          <button type="button" data-action="rollback" data-confirm="Roll back only this channel to its previously verified release?">Rollback</button>
+          <button class="quiet-button" type="button" data-action="stop" data-confirm="Stop the selected runtime? The launcher will stay open.">Stop</button>
+          <button class="quiet-button" type="button" data-action="update" data-confirm="Install only the verified bundled release for this channel?">Update</button>
+          <button class="quiet-button" type="button" data-action="rollback" data-confirm="Roll back only this channel to its previously verified release?">Rollback</button>
         </div>
         <div id="confirmation" class="confirmation" hidden>
           <p id="confirmation-copy"></p>

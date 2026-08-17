@@ -71,12 +71,15 @@ overwritten.
 
 ## Install and remove
 
+Run the checksum-verified release bootstrap in `INSTALL_AGENT.md` first; these
+commands use the installed launcher and never fetch an npm package.
+
 ```bash
-npx @answer-engine/create@1.1.0 install \
+create-answer-engine install \
   --channel stable \
   --clients codex,claude-code
 
-npx @answer-engine/create@1.1.0 remove-integrations \
+create-answer-engine remove-integrations \
   --channel stable
 ```
 

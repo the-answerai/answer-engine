@@ -82,6 +82,14 @@ describe('Alpha Loop repository posture', () => {
     });
   });
 
+  it('waits for the isolated Compose database without assuming a stable host port', () => {
+    const waitScript = read('scripts/wait-for-postgres.sh');
+
+    expect(waitScript).toContain('docker compose exec -T postgres');
+    expect(waitScript).toContain('pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"');
+    expect(waitScript).not.toContain('DATABASE_PORT:-5433');
+  });
+
   it('tracks the vision, context, canonical templates, and learning storage', () => {
     for (const path of [
       '.alpha-loop/vision.md',
@@ -152,12 +160,14 @@ describe('Alpha Loop repository posture', () => {
     expect(read('.gitignore')).toContain('.alpha-loop-runtime/');
   });
 
-  it('replaces a colliding generated Compose identity before worktree setup continues', () => {
+  it('replaces a colliding generated Compose identity and reuses only its own running project', async () => {
     const fixtureRoot = mkdtempSync(join(root, '.alpha-loop-runtime-test-'));
     const sourceRepository = join(fixtureRoot, 'source');
     const worktree = join(sourceRepository, '.worktrees', 'session-epic-40-test');
     const stableHome = join(fixtureRoot, 'stable-home');
+    const fakeBin = join(fixtureRoot, 'fake-bin');
     const script = join(root, 'scripts/prepare-alpha-loop-worktree.mjs');
+    let listener: ReturnType<typeof spawn> | undefined;
     const git = (cwd: string, args: readonly string[]) => {
       const result = spawnSync('git', args, { cwd, encoding: 'utf8' });
       expect(result.status, result.stderr).toBe(0);
@@ -251,6 +261,48 @@ describe('Alpha Loop repository posture', () => {
       expect(repeated.status, repeated.stderr).toBe(0);
       expect(readFileSync(credentialPath, 'utf8')).toBe(credentials);
 
+      mkdirSync(fakeBin, { recursive: true });
+      const ownedContainer = [{
+        Config: { Labels: {
+          'com.docker.compose.project': bootstrap.composeProject,
+          'com.docker.compose.project.working_dir': worktree,
+          'com.docker.compose.project.config_files': join(worktree, 'docker-compose.yml'),
+        } },
+        State: { Running: true },
+        NetworkSettings: { Ports: { '5000/tcp': [{ HostPort: String(bootstrap.ports.api) }] } },
+      }];
+      writeFileSync(join(fakeBin, 'docker'), `#!/usr/bin/env bash
+if [[ "$1" == "ps" ]]; then printf 'owned-container\\n'; exit 0; fi
+if [[ "$1" == "inspect" ]]; then printf '%s\\n' '${JSON.stringify(ownedContainer)}'; exit 0; fi
+exit 2
+`);
+      chmodSync(join(fakeBin, 'docker'), 0o755);
+      listener = spawn(process.execPath, ['-e', [
+        "const net=require('node:net')",
+        `net.createServer().listen(${bootstrap.ports.api},'127.0.0.1',()=>process.stdout.write('ready\\n'))`,
+      ].join(';')], { stdio: ['ignore', 'pipe', 'inherit'] });
+      await once(listener.stdout!, 'data');
+
+      const resumed = spawnSync(process.execPath, [script], {
+        cwd: worktree,
+        encoding: 'utf8',
+        env: { ...environment, PATH: `${fakeBin}:${process.env.PATH ?? ''}` },
+      });
+      expect(resumed.status, resumed.stderr).toBe(0);
+      expect(resumed.stdout).toContain(`reusing ${bootstrap.composeProject}`);
+
+      writeFileSync(join(fakeBin, 'docker'), '#!/usr/bin/env bash\nexit 0\n');
+      const foreignListener = spawnSync(process.execPath, [script], {
+        cwd: worktree,
+        encoding: 'utf8',
+        env: { ...environment, PATH: `${fakeBin}:${process.env.PATH ?? ''}` },
+      });
+      expect(foreignListener.status).not.toBe(0);
+      expect(foreignListener.stderr).toContain(`staging api port ${bootstrap.ports.api} is unavailable`);
+      listener.kill('SIGTERM');
+      await once(listener, 'exit');
+      listener = undefined;
+
       const collision = spawnSync(process.execPath, [script], {
         cwd: worktree,
         encoding: 'utf8',
@@ -284,6 +336,7 @@ describe('Alpha Loop repository posture', () => {
       expect(homeCollision.status).not.toBe(0);
       expect(homeCollision.stderr).toContain('staging home overlaps stable home');
     } finally {
+      listener?.kill('SIGTERM');
       if (existsSync(worktree)) {
         spawnSync('git', ['worktree', 'remove', '--force', worktree], {
           cwd: sourceRepository,

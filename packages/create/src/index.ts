@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
-import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { readFileSync, realpathSync } from 'node:fs';
 import chalk from 'chalk';
 import { Command } from 'commander';
 import { install } from './install.js';
@@ -43,7 +43,7 @@ export function buildProgram(): Command {
     .option('--embedding-model <id>', 'embedding model ID')
     .option('--embedding-dimension <number>', 'LM Studio embedding width', '768')
     .option('--api-key <key>', 'existing local Answer Engine API key')
-    .option('--image <reference>', 'pinned image reference for upgrade')
+    .option('--image <reference>', 'content-addressed name@sha256 digest for upgrade')
     .option('--uninstall', 'stop and remove the local Compose stack')
     .option('--purge', 'with uninstall, also delete selected-channel volumes and AE_HOME')
     .option('--json', 'emit machine-readable JSON (preflight and status)');
@@ -103,8 +103,11 @@ export async function run(argv: string[] = process.argv): Promise<void> {
   else process.stdout.write(`${channel} ${action} completed.\n`);
 }
 
-const invokedUrl = process.argv[1] ? pathToFileURL(process.argv[1]).href : undefined;
-if (invokedUrl === import.meta.url) {
+const invokedPath = process.argv[1];
+const isEntrypoint = invokedPath
+  ? realpathSync(invokedPath) === realpathSync(fileURLToPath(import.meta.url))
+  : false;
+if (isEntrypoint) {
   run().catch((error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
     process.stderr.write(`${chalk.red('Answer Engine setup failed:')} ${message}\n`);

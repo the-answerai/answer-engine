@@ -60,6 +60,18 @@ const ManifestSchema: z.ZodType<FolderDiscoveryManifest> = z.object({
     change: z.enum(['added', 'changed', 'unchanged', 'missing', 'excluded']).optional() }).strict()),
 }).strict();
 
+const ArchiveManifestSchema = z.object({
+  version: z.literal(1),
+  source_path: z.string().min(1),
+  relative_path: z.string().min(1),
+  archived_path: z.literal('source.bin'),
+  size: z.number().int().nonnegative(),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/),
+  adapter_name: z.literal(FOLDER_ADAPTER_NAME),
+  adapter_version: z.literal(FOLDER_ADAPTER_VERSION),
+  created_at: z.string().datetime(),
+}).strict();
+
 function slash(path: string): string { return path.split(sep).join('/'); }
 function hash(value: Buffer | string): string { return createHash('sha256').update(value).digest('hex'); }
 function metadataFingerprint(relativePath: string, size: number, mtimeMs: number): string {
@@ -288,9 +300,25 @@ export async function archiveApprovedFile(sourceId: string, rootPath: string, it
   const manifestPath = join(directory, 'manifest.json');
   assertInside(archiveRoot, directory);
   try {
-    const existing = JSON.parse(await readFile(manifestPath, 'utf8')) as { sha256?: string; archived_path?: string };
-    const existingBytes = await readFile(join(directory, existing.archived_path ?? 'source.bin'));
-    if (existing.sha256 !== sha256 || hash(existingBytes) !== sha256) throw new Error('Folder archive integrity check failed');
+    const parsed = ArchiveManifestSchema.safeParse(JSON.parse(await readFile(manifestPath, 'utf8')));
+    if (!parsed.success) throw new Error('Folder archive manifest is invalid');
+    const existing = parsed.data;
+    if (existing.source_path !== sourcePath || existing.relative_path !== item.relativePath
+      || existing.sha256 !== sha256 || existing.size !== bytes.byteLength) {
+      throw new Error('Folder archive manifest does not match the approved source');
+    }
+    const existingPath = join(directory, existing.archived_path);
+    assertInside(directory, existingPath);
+    const existingHandle = await open(existingPath, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0));
+    let existingBytes: Buffer;
+    try {
+      const metadata = await existingHandle.stat();
+      if (!metadata.isFile()) throw new Error('Folder archive payload must be a regular file');
+      existingBytes = await existingHandle.readFile();
+    } finally {
+      await existingHandle.close();
+    }
+    if (hash(existingBytes) !== sha256) throw new Error('Folder archive integrity check failed');
     return { bytes: existingBytes, sha256, manifestPath };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;

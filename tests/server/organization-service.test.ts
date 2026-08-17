@@ -12,6 +12,7 @@ const tagId = randomUUID();
 const libraryId = randomUUID();
 const planId = randomUUID();
 const now = new Date('2026-08-15T20:00:00.000Z');
+const preciseNow = '2026-08-15T20:00:00.000123Z';
 
 function contentRows(updatedAt = now) {
   return [
@@ -106,11 +107,11 @@ describe('OrganizationService', () => {
       }
       if (sql.includes('INSERT INTO tags')) {
         tagActive = true;
-        return { rows: [{ id: tagId, updated_at: now }], rowCount: 1 };
+        return { rows: [{ id: tagId, updated_at: preciseNow }], rowCount: 1 };
       }
       if (sql.includes('UPDATE tags SET is_active=true')) {
         tagActive = true;
-        return { rows: [{ updated_at: now }], rowCount: 1 };
+        return { rows: [{ updated_at: preciseNow }], rowCount: 1 };
       }
       if (sql.includes('SELECT id FROM tags')) return { rows: [{ id: tagId }], rowCount: 1 };
       if (sql.includes('INSERT INTO content_tags')) return { rows: [{ content_id: firstId }, { content_id: secondId }], rowCount: 2 };
@@ -121,11 +122,11 @@ describe('OrganizationService', () => {
       }
       if (sql.includes('INSERT INTO libraries')) {
         libraryActive = true;
-        return { rows: [{ id: libraryId, updated_at: now }], rowCount: 1 };
+        return { rows: [{ id: libraryId, updated_at: preciseNow }], rowCount: 1 };
       }
       if (sql.includes('UPDATE libraries SET is_active=true')) {
         libraryActive = true;
-        return { rows: [{ updated_at: now }], rowCount: 1 };
+        return { rows: [{ updated_at: preciseNow }], rowCount: 1 };
       }
       if (sql.includes("SET status='applied'")) {
         record = { ...record, status: 'applied', decisions: parameters[2], apply_result: parameters[3], applied_at: now };
@@ -170,6 +171,11 @@ describe('OrganizationService', () => {
     expect(transactionCalls.filter((sql) => sql === 'COMMIT')).toHaveLength(4);
     expect(transactionCalls.filter((sql) => sql.includes('INSERT INTO tags'))).toHaveLength(1);
     expect(transactionCalls.filter((sql) => sql.includes('INSERT INTO libraries'))).toHaveLength(1);
+    expect(transactionCalls.filter((sql) => sql.includes('TO_CHAR('))).toHaveLength(4);
+    expect(applied.applyResult).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'tag.create', updatedAt: preciseNow }),
+      expect.objectContaining({ type: 'library.create', updatedAt: preciseNow }),
+    ]));
     expect(transactionCalls.some((sql) => /DELETE FROM content_items/i.test(sql))).toBe(false);
     expect(transactionCalls.some((sql) => sql.includes("metadata->>'organizationPlanId'"))).toBe(true);
   });

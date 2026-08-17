@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   runLifecycleAction: vi.fn(),
   validateRuntimeChannelIsolation: vi.fn(),
+  inspectLegacyStableInstallation: vi.fn(),
+  adoptLegacyStableInstallation: vi.fn(),
 }));
 
 vi.mock('@answer-engine/create/lifecycle', () => ({
@@ -16,6 +18,10 @@ vi.mock('@answer-engine/create/runtime-channel', () => ({
   }),
   channelProfiles: () => [{ channel: 'stable' }, { channel: 'staging' }],
   validateRuntimeChannelIsolation: mocks.validateRuntimeChannelIsolation,
+}));
+vi.mock('@answer-engine/create/legacy-adoption', () => ({
+  inspectLegacyStableInstallation: mocks.inspectLegacyStableInstallation,
+  adoptLegacyStableInstallation: mocks.adoptLegacyStableInstallation,
 }));
 
 import { FixtureRuntimeController, LocalRuntimeController } from '../runtime-controller.js';
@@ -40,6 +46,9 @@ describe('LocalRuntimeController', () => {
   beforeEach(() => {
     mocks.runLifecycleAction.mockReset();
     mocks.validateRuntimeChannelIsolation.mockReset();
+    mocks.inspectLegacyStableInstallation.mockReset();
+    mocks.inspectLegacyStableInstallation.mockResolvedValue({ state: 'unavailable' });
+    mocks.adoptLegacyStableInstallation.mockReset();
   });
 
   it('validates channel isolation and delegates only the selected action', async () => {
@@ -66,13 +75,50 @@ describe('LocalRuntimeController', () => {
     expect(mocks.runLifecycleAction).toHaveBeenNthCalledWith(2, 'start', expect.objectContaining({ channel: 'stable' }));
     expect(mocks.runLifecycleAction).toHaveBeenNthCalledWith(3, 'status', expect.objectContaining({ channel: 'stable' }));
   });
+
+  it('reports and adopts an eligible legacy stable home without starting it', async () => {
+    mocks.runLifecycleAction.mockResolvedValue(lifecycleStatus('stable'));
+    mocks.inspectLegacyStableInstallation.mockResolvedValue({
+      state: 'available', message: 'A legacy stable installation can be adopted safely.',
+    });
+    mocks.adoptLegacyStableInstallation.mockResolvedValue({ state: 'adopted' });
+    const controller = new LocalRuntimeController();
+
+    await expect(controller.getStatus('stable')).resolves.toMatchObject({
+      runtimeMode: 'live', legacyAdoptionAvailable: true,
+    });
+    await controller.run({ channel: 'stable', action: 'adopt' });
+
+    expect(mocks.adoptLegacyStableInstallation).toHaveBeenCalledOnce();
+    expect(mocks.runLifecycleAction).not.toHaveBeenCalledWith('start', expect.anything());
+  });
+
+  it('reports completed adoption even when live status cannot refresh afterward', async () => {
+    mocks.runLifecycleAction
+      .mockResolvedValueOnce(lifecycleStatus('stable'))
+      .mockRejectedValueOnce(new Error('Docker is unavailable'));
+    mocks.inspectLegacyStableInstallation.mockResolvedValue({
+      state: 'available', message: 'A legacy stable installation can be adopted safely.',
+    });
+    mocks.adoptLegacyStableInstallation.mockResolvedValue({ state: 'adopted' });
+
+    await expect(new LocalRuntimeController().run({ channel: 'stable', action: 'adopt' }))
+      .resolves.toMatchObject({
+        runtimeMode: 'live', installed: true, healthy: false, legacyAdoptionAvailable: false,
+      });
+  });
 });
 
 describe('FixtureRuntimeController', () => {
-  it('changes only in-memory fixture state', async () => {
+  it('identifies demo mode without claiming a real runtime is healthy', async () => {
     const controller = new FixtureRuntimeController();
-    expect((await controller.getStatus('stable')).healthy).toBe(true);
-    expect((await controller.run({ channel: 'stable', action: 'stop' })).healthy).toBe(false);
-    expect((await controller.getStatus('staging')).healthy).toBe(false);
+    const status = await controller.getStatus('stable');
+    expect(status).toMatchObject({
+      runtimeMode: 'fixture', installed: false, healthy: false, runningServices: [], syncInstalled: false,
+    });
+    expect(status.release).toBeUndefined();
+    await expect(controller.run({ channel: 'stable', action: 'start' })).resolves.toMatchObject({
+      runtimeMode: 'fixture', installed: false, healthy: false, runningServices: [],
+    });
   });
 });

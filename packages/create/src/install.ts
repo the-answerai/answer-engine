@@ -1,6 +1,5 @@
-import { join, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import chalk from 'chalk';
 import { activateApiKey, detectOwnedPorts, startStack } from './docker.js';
 import { parseModelSpec, prepareLmStudioModels, resolveModelSetup } from './models.js';
@@ -10,7 +9,7 @@ import { formatPreflightReport } from './preflight.js';
 import { createPrompt } from './prompt.js';
 import type { Prompt } from './prompt.js';
 import { recommendModelProfile, requireInstallConsent } from './interview.js';
-import { loadReleaseManifest, verifyBundledRelease } from './release.js';
+import { loadReleaseManifestTemplate, verifyBundledRelease } from './release.js';
 import {
   clearInstallationCompletion,
   installationIsComplete,
@@ -18,7 +17,6 @@ import {
 } from './install-state.js';
 import { runLifecycleAction } from './lifecycle.js';
 import { scaffoldInstallation } from './scaffold.js';
-import { readEnvValue } from './scaffold.js';
 import { verifyClientIntegrations, verifyMemoryRoundTrip } from './verify.js';
 import { selectClients } from './wire.js';
 import {
@@ -33,8 +31,11 @@ import {
   createRuntimeChannelProfile,
   parseRuntimeChannel,
   validateRuntimeChannelIsolation,
-  writeRuntimeOwnershipMarker,
 } from './runtime-channel.js';
+import {
+  adoptLegacyStableInstallation,
+  inspectLegacyStableInstallation,
+} from './legacy-adoption.js';
 
 export interface InstallOutput {
   write(message: string): void;
@@ -56,7 +57,7 @@ export interface InstallDependencies {
   updateIntegrationVerification?: typeof updateIntegrationVerification;
 }
 
-export const INSTALL_AGENT_URL = loadReleaseManifest().promptUrl;
+export const INSTALL_AGENT_URL = loadReleaseManifestTemplate().promptUrl;
 
 export function writeInstallAgentGuidance(output: InstallOutput): void {
   output.write(`Agent-guided configuration: ${INSTALL_AGENT_URL}`);
@@ -86,6 +87,23 @@ export async function install(
   if (channel === 'staging' && requestedClients && requestedClients.trim().toLowerCase() !== 'none') {
     throw new Error('Staging cannot write global client configuration; use --clients none.');
   }
+
+  const legacy = await inspectLegacyStableInstallation(profile);
+  if (legacy.state === 'invalid') throw new Error(legacy.message);
+  if (legacy.state === 'available') {
+    if (prompt) {
+      if (!prompt.confirm) throw new Error('Interactive confirmation is unavailable.');
+      const confirmed = await prompt.confirm(
+        `Adopt the existing stable installation at ${home} without restarting or changing data?`,
+        false,
+      );
+      if (!confirmed) throw new Error('Setup cancelled before any changes were made.');
+    }
+    await adoptLegacyStableInstallation(profile);
+    output.write(chalk.green(`Adopted the existing stable installation at ${home} without restarting or changing data.`));
+    return;
+  }
+
   output.write(chalk.cyan('1/6 Preflight'));
   const ownedPorts = await (dependencies.detectOwnedPorts ?? detectOwnedPorts)(home, {}, profile);
   const preflight = await (dependencies.runPreflight ?? runPreflight)({
@@ -101,27 +119,6 @@ export async function install(
 
   const recommendation = recommendModelProfile(preflight);
   output.write(`  Recommended profile: ${recommendation.label}. ${recommendation.reason}`);
-
-  const legacyFiles = ['docker-compose.yml', '.env.compose', 'config.yaml']
-    .map((name) => join(home, name));
-  if (channel === 'stable' && legacyFiles.every(existsSync) && !existsSync(profile.markerFile)) {
-    if (prompt) await requireInstallConsent(prompt, { home, profile: recommendation.id, agents: [] });
-    const envPath = join(home, '.env.compose');
-    const environment = readFileSync(envPath, 'utf8');
-    const project = readEnvValue(environment, 'COMPOSE_PROJECT_NAME');
-    if (project !== profile.composeProject) {
-      throw new Error(`Refusing stable adoption: existing Compose project is ${project ?? '(missing)'}.`);
-    }
-    assertRuntimeChannelConfiguration(profile, { allowMissingChannel: true });
-    if (!readEnvValue(environment, 'AE_CHANNEL')) {
-      writeFileSync(envPath, `${environment.trimEnd()}\nAE_CHANNEL=stable\n`, { encoding: 'utf8', mode: 0o600 });
-      chmodSync(envPath, 0o600);
-    }
-    writeRuntimeOwnershipMarker(profile);
-    assertRuntimeChannelConfiguration(profile);
-    output.write(chalk.green(`Adopted the existing stable installation at ${home} without restarting or changing data.`));
-    return;
-  }
 
   if (preflight.installation === 'managed') {
     const status = await (dependencies.runLifecycleAction ?? runLifecycleAction)('status', profile);
@@ -174,7 +171,8 @@ export async function install(
     config: { ...modelSetup.config, server: { ...modelSetup.config.server, port: profile.ports.api } },
     runtime: modelSetup.runtime,
     profile,
-  });
+    image: release.images.answerEngine,
+  }, { release });
   assertRuntimeChannelConfiguration(profile);
   await validateRuntimeChannelIsolation(channelProfiles(channel, home));
   output.write(chalk.green(scaffold.changes.length === 0

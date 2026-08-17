@@ -7,6 +7,13 @@ export interface TrayPresentation {
 }
 
 export function presentTrayStatus(status: DesktopStatus): TrayPresentation {
+  if (status.runtimeMode === 'fixture') {
+    return {
+      health: 'Demo mode',
+      header: 'DEMO — no runtime',
+      tooltip: 'Answer Engine demo — no local runtime',
+    };
+  }
   const health = status.healthy ? 'Healthy' : status.installed ? 'Needs repair' : 'Not installed';
   return {
     health,

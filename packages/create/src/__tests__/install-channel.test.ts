@@ -7,6 +7,7 @@ import { install } from '../install.js';
 import type { InstallDependencies } from '../install.js';
 import { runPreflight } from '../preflight.js';
 import { createRuntimeChannelProfile } from '../runtime-channel.js';
+import { releaseFixture } from './release-fixture.js';
 
 const tempDirs: string[] = [];
 
@@ -15,24 +16,34 @@ afterEach(() => {
 });
 
 describe('stable channel adoption', () => {
+  const release = releaseFixture();
+  const readyCommand = async (_command: string, args: string[]) => ({
+    stdout: args[0] === 'info' ? '27.0.0' : args[0] === 'compose' ? '2.30.0' : 'ready',
+  });
   it('adds channel ownership to a legacy installer home without touching data or archives', async () => {
     const home = mkdtempSync(join(tmpdir(), 'ae-adopt-'));
     tempDirs.push(home);
-    writeFileSync(join(home, 'docker-compose.yml'), 'services: {}\n');
+    const compose = readFileSync(new URL('../../templates/docker-compose.yml', import.meta.url), 'utf8')
+      .replace('{{POSTGRES_VOLUME}}', 'answer-engine-local_postgres_data')
+      .replace('{{REDIS_VOLUME}}', 'answer-engine-local_redis_data')
+      .replace('{{BLOBS_VOLUME}}', 'answer-engine-local_answerengine_blobs');
+    writeFileSync(join(home, 'docker-compose.yml'), compose);
     writeFileSync(join(home, '.env.compose'), 'COMPOSE_PROJECT_NAME=answer-engine-local\nENCRYPTION_KEY=stable-secret\n');
     writeFileSync(join(home, 'config.yaml'), 'models: {}\n');
     writeFileSync(join(home, 'stable-database.fixture'), 'database unchanged');
     writeFileSync(join(home, 'stable-archive.fixture'), 'archive unchanged');
     const messages: string[] = [];
+    const detectOwnedPorts = vi.fn(async () => new Set<number>());
+    const preflight = vi.fn(() => runPreflight({
+      platform: 'darwin', architecture: 'arm64', totalMemoryBytes: 16 * 1024 ** 3,
+      freeDiskBytes: 60 * 1024 ** 3, nodeVersion: '22.16.0', installation: 'legacy',
+      modelRuntimeAvailable: false, runCommand: async () => { throw new Error('Docker is unavailable'); },
+      probePort: async () => false,
+    }));
 
     await install({ channel: 'stable', home, yes: true }, { write: (message) => messages.push(message) }, {
-      detectOwnedPorts: async () => new Set(),
-      runPreflight: () => runPreflight({
-        platform: 'darwin', architecture: 'arm64', totalMemoryBytes: 16 * 1024 ** 3,
-        freeDiskBytes: 60 * 1024 ** 3, nodeVersion: '22.16.0', installation: 'legacy',
-        modelRuntimeAvailable: true, runCommand: async () => ({ stdout: '' }),
-        probePort: async () => true,
-      }),
+      detectOwnedPorts,
+      runPreflight: preflight,
     });
 
     expect(existsSync(join(home, '.runtime-channel.json'))).toBe(true);
@@ -40,6 +51,8 @@ describe('stable channel adoption', () => {
     expect(readFileSync(join(home, 'stable-database.fixture'), 'utf8')).toBe('database unchanged');
     expect(readFileSync(join(home, 'stable-archive.fixture'), 'utf8')).toBe('archive unchanged');
     expect(messages.join('\n')).toContain('without restarting or changing data');
+    expect(detectOwnedPorts).not.toHaveBeenCalled();
+    expect(preflight).not.toHaveBeenCalled();
   });
 
   it('cancels a new install before creating or changing any file', async () => {
@@ -64,13 +77,14 @@ describe('stable channel adoption', () => {
       prompt,
       detectOwnedPorts: async () => new Set(),
       runPreflight: () => runPreflight({
-        platform: 'darwin', architecture: 'arm64', totalMemoryBytes: 12 * 1024 ** 3,
-        freeDiskBytes: 20 * 1024 ** 3, nodeVersion: '22.16.0', installation: 'absent',
-        modelRuntimeAvailable: true, runCommand: async () => ({ stdout: '' }),
+        platform: 'darwin', architecture: 'arm64', totalMemoryBytes: 16 * 1024 ** 3,
+        freeDiskBytes: 80 * 1024 ** 3, nodeVersion: '22.16.0', installation: 'absent',
+        modelRuntimeAvailable: true, runCommand: readyCommand,
         probePort: async () => true,
       }),
       resolveModelSetup: async () => modelSetup,
       selectClients: async () => ['codex'],
+      verifyBundledRelease: () => release,
     })).rejects.toThrow('cancelled before any changes');
 
     expect(readdirSync(home)).toEqual([]);
@@ -110,11 +124,12 @@ describe('stable channel adoption', () => {
       runtime: {},
     };
     const dependencies: InstallDependencies = {
+      verifyBundledRelease: () => release,
       detectOwnedPorts: async () => new Set<number>(),
       runPreflight: () => runPreflight({
         platform: 'darwin', architecture: 'arm64', totalMemoryBytes: 16 * 1024 ** 3,
         freeDiskBytes: 60 * 1024 ** 3, nodeVersion: '22.16.0', installation,
-        modelRuntimeAvailable: true, runCommand: async () => ({ stdout: '' }),
+        modelRuntimeAvailable: true, runCommand: readyCommand,
         probePort: async () => true,
       }),
       runLifecycleAction: async () => ({

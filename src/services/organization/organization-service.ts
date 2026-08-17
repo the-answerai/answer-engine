@@ -58,6 +58,15 @@ interface PlanRecord {
   updated_at: Date;
 }
 
+interface PreciseTimestampRow {
+  updated_at: string;
+}
+
+const PRECISE_UPDATED_AT = `TO_CHAR(
+  updated_at AT TIME ZONE 'UTC',
+  'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'
+) AS updated_at`;
+
 const ApplyResultSchema = z.array(z.discriminatedUnion('type', [
   z.object({
     type: z.literal('tag.create'), suggestionId: z.string(), resourceId: z.string().uuid(),
@@ -427,31 +436,31 @@ export class OrganizationService {
             if (existing.rows[0].metadata?.organizationPlanId !== planId) {
               throw new ConflictError(`Inactive tag slug ${suggestion.tag.slug} requires manual review`);
             }
-            const reactivated = await client.query<{ updated_at: Date }>(
+            const reactivated = await client.query<PreciseTimestampRow>(
               `UPDATE tags SET is_active=true,label=$3,description=$4,category=$5,color=$6,metadata=$7
-                WHERE tenant_id=$1 AND id=$2 RETURNING updated_at`,
+                WHERE tenant_id=$1 AND id=$2 RETURNING ${PRECISE_UPDATED_AT}`,
               [principal.tenantId, existing.rows[0].id, suggestion.tag.label,
                 suggestion.tag.description, suggestion.tag.category, suggestion.tag.color,
                 { organizationPlanId: planId, confidence: suggestion.confidence }],
             );
             results.push({
               type: 'tag.create', suggestionId: suggestion.id, resourceId: existing.rows[0].id,
-              created: false, reactivated: true, updatedAt: reactivated.rows[0]!.updated_at.toISOString(),
+              created: false, reactivated: true, updatedAt: reactivated.rows[0]!.updated_at,
             });
             continue;
           }
           if (existing.rows[0]) {
             results.push({ type: 'tag.create', suggestionId: suggestion.id, resourceId: existing.rows[0].id, created: false, reactivated: false, updatedAt: null });
           } else {
-            const created = await client.query<{ id: string; updated_at: Date }>(
+            const created = await client.query<{ id: string } & PreciseTimestampRow>(
               `INSERT INTO tags (tenant_id,slug,label,description,category,color,metadata)
-               VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id,updated_at`,
+               VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id,${PRECISE_UPDATED_AT}`,
               [principal.tenantId, suggestion.tag.slug, suggestion.tag.label,
                 suggestion.tag.description, suggestion.tag.category, suggestion.tag.color,
                 { organizationPlanId: planId, confidence: suggestion.confidence }],
             );
             const row = created.rows[0]!;
-            results.push({ type: 'tag.create', suggestionId: suggestion.id, resourceId: row.id, created: true, reactivated: false, updatedAt: row.updated_at.toISOString() });
+            results.push({ type: 'tag.create', suggestionId: suggestion.id, resourceId: row.id, created: true, reactivated: false, updatedAt: row.updated_at });
           }
         } else if (suggestion.type === 'tag.assign') {
           const tag = await client.query<{ id: string }>(
@@ -480,31 +489,31 @@ export class OrganizationService {
             if (existing.rows[0].metadata?.organizationPlanId !== planId) {
               throw new ConflictError(`Inactive library slug ${suggestion.library.slug} requires manual review`);
             }
-            const reactivated = await client.query<{ updated_at: Date }>(
+            const reactivated = await client.query<PreciseTimestampRow>(
               `UPDATE libraries SET is_active=true,name=$3,description=$4,filter_predicate=$5,metadata=$6
-                WHERE tenant_id=$1 AND id=$2 RETURNING updated_at`,
+                WHERE tenant_id=$1 AND id=$2 RETURNING ${PRECISE_UPDATED_AT}`,
               [principal.tenantId, existing.rows[0].id, suggestion.library.name,
                 suggestion.library.description, suggestion.library.filter,
                 { organizationPlanId: planId, confidence: suggestion.confidence }],
             );
             results.push({
               type: 'library.create', suggestionId: suggestion.id, resourceId: existing.rows[0].id,
-              created: false, reactivated: true, updatedAt: reactivated.rows[0]!.updated_at.toISOString(),
+              created: false, reactivated: true, updatedAt: reactivated.rows[0]!.updated_at,
             });
             continue;
           }
           if (existing.rows[0]) {
             results.push({ type: 'library.create', suggestionId: suggestion.id, resourceId: existing.rows[0].id, created: false, reactivated: false, updatedAt: null });
           } else {
-            const created = await client.query<{ id: string; updated_at: Date }>(
+            const created = await client.query<{ id: string } & PreciseTimestampRow>(
               `INSERT INTO libraries (tenant_id,name,slug,description,filter_predicate,metadata,created_by)
-               VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id,updated_at`,
+               VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id,${PRECISE_UPDATED_AT}`,
               [principal.tenantId, suggestion.library.name, suggestion.library.slug,
                 suggestion.library.description, suggestion.library.filter,
                 { organizationPlanId: planId, confidence: suggestion.confidence }, principal.apiKeyId],
             );
             const row = created.rows[0]!;
-            results.push({ type: 'library.create', suggestionId: suggestion.id, resourceId: row.id, created: true, reactivated: false, updatedAt: row.updated_at.toISOString() });
+            results.push({ type: 'library.create', suggestionId: suggestion.id, resourceId: row.id, created: true, reactivated: false, updatedAt: row.updated_at });
           }
         }
       }

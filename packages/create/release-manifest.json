@@ -1,21 +1,35 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "version": "1.1.0",
   "tag": "v1.1.0",
+  "sourceCommit": "__RELEASE_SOURCE_COMMIT__",
   "promptUrl": "https://raw.githubusercontent.com/the-answerai/answer-engine/v1.1.0/INSTALL_AGENT.md",
+  "releaseBaseUrl": "https://github.com/the-answerai/answer-engine/releases/download/v1.1.0",
   "images": {
-    "answerEngine": "ghcr.io/the-answerai/answer-engine:1.1.0",
+    "answerEngine": "__ANSWER_ENGINE_RUNTIME_IMAGE__",
     "postgres": "pgvector/pgvector:pg16@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b",
     "redis": "redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2"
   },
+  "assets": {
+    "installer": "answer-engine-installer-v1.1.0.tgz",
+    "cli": "answer-engine-cli-v1.1.0.tgz",
+    "bashBootstrap": "answer-engine-bootstrap-v1.1.0.sh",
+    "powershellBootstrap": "answer-engine-bootstrap-v1.1.0.ps1",
+    "checksums": "SHA256SUMS",
+    "provenance": "provenance.json"
+  },
+  "bootstrapInputs": [
+    { "platform": "macos", "architecture": "arm64", "bootstrap": "bash" },
+    { "platform": "windows-wsl2", "architecture": "x64", "bootstrap": "powershell" }
+  ],
   "artifacts": [
     {
       "path": "docker-compose.yml",
-      "sha256": "742d68c9e9437ebbb0edc9b92bd9875355949abe05eb44257cf6d9d0eae8de3f"
+      "sha256": "c22121e7967d1e0846eaf87298b146783cf061058de7b311e4d2244a82b22c62"
     },
     {
       "path": "env.compose.tmpl",
-      "sha256": "7819ac70ba3ec78801bd1a3bb5e892234445b7118afde357342cd995b94ba71e"
+      "sha256": "82066cd34acdafc9bb13fac2e1c77a3a09c5cb67c270dcca2d5ef701c656a7d3"
     },
     {
       "path": "integrations/answer-engine/.claude-plugin/plugin.json",
@@ -55,7 +69,7 @@
     },
     {
       "path": "integrations/answer-engine/references/safety.md",
-      "sha256": "ebf520b8d64a8dac131b67eb478f63f49dfb97161cbb9df59c7f91a94ded0beb"
+      "sha256": "782e96bdd76ff5e5d2dc909c616dae3a61b89c7d01f1d8e185ad89ceec0b7961"
     },
     {
       "path": "integrations/answer-engine/references/tools.md",
