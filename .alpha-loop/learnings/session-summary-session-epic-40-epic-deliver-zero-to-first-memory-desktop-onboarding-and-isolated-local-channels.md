@@ -1,16 +1,16 @@
 # Session Summary: session/epic-40-epic-deliver-zero-to-first-memory-desktop-onboarding-and-isolated-local-channels
 
 ## Overview
-- The session processed one issue and produced useful regression coverage for legacy adoption, fixture truthfulness, production URL selection, and ownership refusal.
+- Issue #71 succeeded without retries, replacing an unpublished npm dependency with immutable, checksum-verified installer assets and platform-aware bootstrap coverage.
 
 ## Recurring Patterns
-- Preserve dangling symlinks when detecting legacy homes by using filesystem metadata rather than target-following existence checks.
+- Supply-chain verification must validate individual checksums and consistent identity across provenance, manifests, commit, runtime digest, platform, and artifact set before persistent mutation.
 
 ## Recurring Anti-Patterns
-- Using `existsSync` for security-sensitive path classification can miss dangling symlinks and prevent fail-closed behavior.
+- Security-critical verification logic can become ineffective when it is disconnected from the production bootstrap path.
 
 ## Recommendations
-- Update `.agents/skills/agent-browser/SKILL.md` with an approved recovery procedure for failed host-prepared browser sessions.
+- Update `.agents/skills/alpha-loop-runner/SKILL.md` to require tracing every security-critical verifier through the actual production execution path.
 
 ## Metrics
 | Metric | Value |

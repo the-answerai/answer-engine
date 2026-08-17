@@ -1,16 +1,16 @@
 {
   "name": "session/epic-40-epic-deliver-zero-to-first-memory-desktop-onboarding-and-isolated-local-channels",
   "branch": "session/epic-40-epic-deliver-zero-to-first-memory-desktop-onboarding-and-isolated-local-channels",
-  "completed": "2026-08-16T23:05:19.078Z",
+  "completed": "2026-08-17T03:11:14.242Z",
   "results": [
     {
-      "issueNum": 68,
-      "title": "fix: adopt legacy stable installs and open the real desktop web runtime",
-      "status": "failure",
-      "prUrl": "https://github.com/the-answerai/answer-engine/pull/69",
-      "testsPassing": false,
+      "issueNum": 71,
+      "title": "feat: ship immutable installer downloads and dependency-aware bootstrap",
+      "status": "success",
+      "prUrl": "https://github.com/the-answerai/answer-engine/pull/72",
+      "testsPassing": true,
       "verifyPassing": true,
-      "duration": 2756,
+      "duration": 812,
       "filesChanged": 6
     }
   ],
@@ -350,6 +350,76 @@
       "stage_success": true,
       "started_at": "2026-08-16T22:14:42.077Z",
       "issue_num": 68
+    },
+    {
+      "stage": "batch-plan",
+      "model": "",
+      "endpoint": "default",
+      "tokens_in": 177670,
+      "tokens_out": 136669,
+      "cost_usd": 0,
+      "wall_time_s": 361.388,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "stage_success": true,
+      "started_at": "2026-08-17T01:46:46.395Z",
+      "issue_num": 71
+    },
+    {
+      "stage": "batch-implement",
+      "model": "",
+      "endpoint": "default",
+      "tokens_in": 6826343,
+      "tokens_out": 5251033,
+      "cost_usd": 0,
+      "wall_time_s": 1943.675,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "stage_success": true,
+      "started_at": "2026-08-17T01:52:47.827Z",
+      "issue_num": 71
+    },
+    {
+      "stage": "batch-plan",
+      "model": "",
+      "endpoint": "default",
+      "tokens_in": 83222,
+      "tokens_out": 64017,
+      "cost_usd": 0,
+      "wall_time_s": 201.645,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "stage_success": true,
+      "started_at": "2026-08-17T02:45:21.106Z",
+      "issue_num": 71
+    },
+    {
+      "stage": "batch-implement",
+      "model": "",
+      "endpoint": "default",
+      "tokens_in": 21943,
+      "tokens_out": 16879,
+      "cost_usd": 0,
+      "wall_time_s": 57.944,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "stage_success": true,
+      "started_at": "2026-08-17T02:48:42.782Z",
+      "issue_num": 71
+    },
+    {
+      "stage": "batch-review",
+      "model": "",
+      "endpoint": "default",
+      "tokens_in": 460119,
+      "tokens_out": 353938,
+      "cost_usd": 0,
+      "wall_time_s": 524.493,
+      "tool_calls": 0,
+      "tool_errors": 0,
+      "stage_success": true,
+      "started_at": "2026-08-17T02:50:01.881Z",
+      "issue_num": 71
     }
   ]
 }
