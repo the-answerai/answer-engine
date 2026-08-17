@@ -46,6 +46,21 @@ asset at the exact tag; corrections require a new version and tag. An unattended
 implementation run must stop at the candidate. Signing, publication, and clean-
 machine macOS/Windows execution remain explicit release acceptance in issue #49.
 
+The separately dispatched `Runtime image release` workflow supplies the required
+runtime digest. It validates the same exact tag and commit, proves that the tag
+resolves to that commit, and limits `packages: write` to its production-release
+job. It publishes the fixed `ghcr.io/the-answerai/answer-engine` image for both
+`linux/amd64` and `linux/arm64`, verifies the resulting manifest list, and uploads
+the immutable `image@sha256:...` reference as a workflow artifact. It does not
+publish `latest`; release manifests and lifecycle state use only the recorded
+digest.
+
+The production order is: merge reviewed source to `master`, create the exact
+semantic tag at that commit, run `Runtime image release`, pass its recorded digest
+to `Installer release assets`, independently verify the candidate, and only then
+publish the existing exact-tag GitHub Release. Never reuse a tag or replace a
+published asset.
+
 To reproduce a candidate after package builds:
 
 ```bash
