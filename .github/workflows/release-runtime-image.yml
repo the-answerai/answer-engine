@@ -1,0 +1,102 @@
+name: Runtime image release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Exact semantic release tag (for example v1.1.0)
+        required: true
+        type: string
+      source_commit:
+        description: Full 40-character source commit
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production-release
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Validate immutable inputs
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$SOURCE_COMMIT" =~ ^[a-f0-9]{40}$ ]]
+      - name: Check out exact source commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_commit }}
+      - name: Require the exact tag
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          git fetch --no-tags origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          test "$(git rev-parse "$RELEASE_TAG^{commit}")" = "$SOURCE_COMMIT"
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Prepare fixed image metadata
+        id: metadata
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          IMAGE=ghcr.io/the-answerai/answer-engine
+          VERSION="${RELEASE_TAG#v}"
+          {
+            echo "image=$IMAGE"
+            echo "version=$VERSION"
+            echo "commit_tag=sha-$SOURCE_COMMIT"
+          } >> "$GITHUB_OUTPUT"
+      - name: Build and publish the multi-platform runtime image
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ steps.metadata.outputs.image }}:${{ steps.metadata.outputs.version }}
+            ${{ steps.metadata.outputs.image }}:${{ inputs.tag }}
+            ${{ steps.metadata.outputs.image }}:${{ steps.metadata.outputs.commit_tag }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/the-answerai/answer-engine
+            org.opencontainers.image.version=${{ inputs.tag }}
+            org.opencontainers.image.revision=${{ inputs.source_commit }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Verify and record the immutable runtime digest
+        env:
+          IMAGE: ${{ steps.metadata.outputs.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          [[ "$DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+          docker buildx imagetools inspect --raw "$IMAGE@$DIGEST" > "$RUNNER_TEMP/runtime-index.json"
+          jq -e '[.manifests[].platform | "\(.os)/\(.architecture)"] | index("linux/arm64") and index("linux/amd64")' "$RUNNER_TEMP/runtime-index.json"
+          printf '%s@%s\n' "$IMAGE" "$DIGEST" > "$RUNNER_TEMP/runtime-image.txt"
+          printf 'Published `%s@%s`\n' "$IMAGE" "$DIGEST" >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload immutable runtime reference
+        uses: actions/upload-artifact@604373da6381bf24206979c74d06a550515601b9 # v4.6.2
+        with:
+          name: runtime-image-${{ inputs.tag }}-${{ inputs.source_commit }}
+          path: ${{ runner.temp }}/runtime-image.txt
+          if-no-files-found: error

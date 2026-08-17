@@ -96,6 +96,7 @@ describe('immutable installer release assets', () => {
   it('builds candidates from exact inputs without an npm publication step', () => {
     const builder = read('scripts/build-release-assets.mjs');
     const workflow = read('.github/workflows/release-installer.yml');
+    const runtimeWorkflow = read('.github/workflows/release-runtime-image.yml');
     const sourceManifest = read('packages/create/release-manifest.json');
 
     expect(builder).toContain('checked-out commit');
@@ -117,7 +118,21 @@ describe('immutable installer release assets', () => {
     expect(workflow).not.toContain("--image '${{ inputs.runtime_image }}'");
     expect(workflow).toContain('^ghcr\\.io/the-answerai/answer-engine@sha256:');
     expect(workflow).not.toContain('--clobber');
-    expect(`${builder}\n${workflow}`).not.toMatch(/npm publish|pnpm publish/);
+    expect(runtimeWorkflow).toContain('workflow_dispatch:');
+    expect(runtimeWorkflow).toContain('environment: production-release');
+    expect(runtimeWorkflow).toContain('packages: write');
+    expect(runtimeWorkflow).toContain('^v[0-9]+\\.[0-9]+\\.[0-9]+$');
+    expect(runtimeWorkflow).toContain('^[a-f0-9]{40}$');
+    expect(runtimeWorkflow).toContain('git rev-parse "$RELEASE_TAG^{commit}"');
+    expect(runtimeWorkflow).toContain('IMAGE=ghcr.io/the-answerai/answer-engine');
+    expect(runtimeWorkflow).toContain('platforms: linux/amd64,linux/arm64');
+    expect(runtimeWorkflow).toContain('push: true');
+    expect(runtimeWorkflow).toContain('^sha256:[a-f0-9]{64}$');
+    expect(runtimeWorkflow).toContain('$RUNNER_TEMP/runtime-index.json');
+    expect(runtimeWorkflow).toContain('runtime-image-${{ inputs.tag }}-${{ inputs.source_commit }}');
+    expect(runtimeWorkflow).toContain('docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8');
+    expect(runtimeWorkflow).toContain('docker/login-action@dbcb813823bdd20940b903addbd779551569679f');
+    expect(`${builder}\n${workflow}\n${runtimeWorkflow}`).not.toMatch(/npm publish|pnpm publish/);
   });
 
   it.each([
