@@ -32,20 +32,22 @@ The no-action installer remains an alias for stable install. Every action also
 accepts `--channel staging` and an optional channel-specific `--home`.
 
 ```bash
-npx @answer-engine/create@1.1.0 install --channel stable
-npx @answer-engine/create@1.1.0 install --channel staging --clients none
-npx @answer-engine/create@1.1.0 start --channel staging
-npx @answer-engine/create@1.1.0 stop --channel staging
-npx @answer-engine/create@1.1.0 status --channel staging
-npx @answer-engine/create@1.1.0 repair --channel staging
-npx @answer-engine/create@1.1.0 upgrade --channel staging --image <pinned-image>
-npx @answer-engine/create@1.1.0 rollback --channel staging
-npx @answer-engine/create@1.1.0 uninstall --channel staging
-npx @answer-engine/create@1.1.0 uninstall --channel staging --purge
+create-answer-engine install --channel stable
+create-answer-engine install --channel staging --clients none
+create-answer-engine start --channel staging
+create-answer-engine stop --channel staging
+create-answer-engine status --channel staging
+create-answer-engine repair --channel staging
+create-answer-engine upgrade --channel staging --image <name@sha256:64-hex-digest>
+create-answer-engine rollback --channel staging
+create-answer-engine uninstall --channel staging
+create-answer-engine uninstall --channel staging --purge
 ```
 
-Upgrade records the previous pinned image. Rollback swaps only that recorded
-pair and refuses when no previous release exists. Repair and upgrade preserve
+Upgrade rejects tags and records only a verified content-addressed digest.
+Rollback swaps only a previously recorded digest pair and refuses when no
+verified previous release exists. A legacy mutable image remains readable but
+does not become a rollback target. Repair and upgrade preserve
 the selected channel's credentials and volumes. Purge deletes only the
 ownership-verified selected home and volumes.
 
@@ -60,7 +62,7 @@ An installer-managed `~/.answer-engine` remains stable. Adopt it without
 restarting containers or touching database/archive bytes:
 
 ```bash
-npx @answer-engine/create@1.1.0 install --channel stable
+create-answer-engine install --channel stable
 ```
 
 For an existing home, this validates that the home and required Compose,

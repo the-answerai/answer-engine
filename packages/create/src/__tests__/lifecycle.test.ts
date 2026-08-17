@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -148,16 +148,36 @@ describe('channel lifecycle actions', () => {
     const next = `example/next@sha256:${'2'.repeat(64)}`;
     await runLifecycleAction('upgrade', profile, { image: next }, { runCommand, fetchImpl, probePort: async () => true });
     expect(JSON.parse(readFileSync(profile.releaseFile, 'utf8'))).toEqual({
-      current: next, previous: current, lastAction: 'upgrade',
+      schemaVersion: 1,
+      sourceCommit: '7e11fc44a03371432ed23fc1bd4ea81e61a221bb',
+      current: next, previous: current, verifiedAtInstall: false, lastAction: 'upgrade',
     });
     await runLifecycleAction('rollback', profile, {}, { runCommand, fetchImpl, probePort: async () => true });
     expect(JSON.parse(readFileSync(profile.releaseFile, 'utf8'))).toEqual({
-      current, previous: next, lastAction: 'rollback',
+      schemaVersion: 1,
+      sourceCommit: '7e11fc44a03371432ed23fc1bd4ea81e61a221bb',
+      current, previous: next, verifiedAtInstall: false, lastAction: 'rollback',
     });
 
     const callsAfterRollback = runCommand.mock.calls.length;
     await runLifecycleAction('rollback', profile, {}, { runCommand, fetchImpl, probePort: async () => true });
     expect(runCommand).toHaveBeenCalledTimes(callsAfterRollback);
+  });
+
+  it.each([
+    'ghcr.io/the-answerai/answer-engine:1.1.0',
+    'ghcr.io/the-answerai/answer-engine:latest',
+    'ghcr.io/the-answerai/answer-engine@sha256:not-a-digest',
+  ])('rejects mutable or malformed upgrade image %s before Docker or file mutation', async (image) => {
+    const profile = fixture();
+    const beforeEnvironment = readFileSync(profile.credentialsFile, 'utf8');
+    const runCommand = vi.fn(async () => ({ stdout: '' }));
+
+    await expect(runLifecycleAction('upgrade', profile, { image }, { runCommand }))
+      .rejects.toThrow(/exact @sha256 digest/i);
+    expect(runCommand).not.toHaveBeenCalled();
+    expect(readFileSync(profile.credentialsFile, 'utf8')).toBe(beforeEnvironment);
+    expect(existsSync(profile.releaseFile)).toBe(false);
   });
 
   it('repairs a healthy runtime as an explicit no-op', async () => {
@@ -170,6 +190,27 @@ describe('channel lifecycle actions', () => {
     await runLifecycleAction('repair', profile, {}, { runCommand, fetchImpl, probePort: async () => true });
 
     expect(runCommand.mock.calls.some(([, args]) => args.includes('up'))).toBe(false);
+  });
+
+  it('moves a readable legacy tag to a digest without recording the tag for rollback', async () => {
+    const profile = fixture('stable');
+    const environment = readFileSync(profile.credentialsFile, 'utf8')
+      .replace(/ANSWER_ENGINE_IMAGE=.*/, 'ANSWER_ENGINE_IMAGE=ghcr.io/the-answerai/answer-engine:1.1.0');
+    writeFileSync(profile.credentialsFile, environment);
+    const next = `ghcr.io/the-answerai/answer-engine@sha256:${'3'.repeat(64)}`;
+    const runCommand = vi.fn(async () => ({ stdout: '' }));
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      status: 'healthy', channel: 'stable', uptime: 1,
+    }), { status: 200 }));
+
+    await runLifecycleAction('upgrade', profile, { image: next }, {
+      runCommand, fetchImpl, probePort: async () => true,
+    });
+
+    expect(readFileSync(profile.credentialsFile, 'utf8')).toContain(`ANSWER_ENGINE_IMAGE=${next}`);
+    expect(JSON.parse(readFileSync(profile.releaseFile, 'utf8'))).toMatchObject({
+      current: next, previous: next,
+    });
   });
 
   it('resumes a failed upgrade without losing the prior rollback target', async () => {
@@ -199,7 +240,9 @@ describe('channel lifecycle actions', () => {
       runCommand, fetchImpl, probePort: async () => true,
     });
     expect(JSON.parse(readFileSync(profile.releaseFile, 'utf8'))).toEqual({
-      current: next, previous: current, lastAction: 'upgrade',
+      schemaVersion: 1,
+      sourceCommit: '7e11fc44a03371432ed23fc1bd4ea81e61a221bb',
+      current: next, previous: current, verifiedAtInstall: false, lastAction: 'upgrade',
     });
   });
 

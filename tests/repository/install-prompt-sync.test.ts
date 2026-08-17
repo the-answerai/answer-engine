@@ -20,7 +20,9 @@ describe('canonical one-prompt installer copy', () => {
 
     expect(promptBlock('README.md')).toBe(canonical);
     expect(promptBlock('packages/create/README.md')).toBe(canonical);
-    expect(canonical).toContain('@answer-engine/create@1.1.0 preflight --json');
+    expect(canonical).toContain('verify its SHA-256 entry before execution');
+    expect(canonical).toContain('versioned installer\nand CLI assets without npm');
+    expect(canonical).not.toContain('npx @answer-engine/create');
     expect(canonical).toContain('/v1.1.0/');
     expect(canonical).not.toContain('/master/');
   });

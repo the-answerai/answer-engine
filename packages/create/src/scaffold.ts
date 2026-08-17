@@ -16,6 +16,8 @@ import {
 } from '@answer-engine/cli/scaffold';
 import type { ModelRuntime } from './models.js';
 import { createRuntimeChannelProfile, writeRuntimeOwnershipMarker, type RuntimeChannelProfile } from './runtime-channel.js';
+import { assertImmutableImageReference, verifyBundledRelease } from './release.js';
+import { assertRegularFileTarget, writePrivateFileAtomic } from './safe-file.js';
 
 const templateDirectory = fileURLToPath(new URL('../templates/', import.meta.url));
 
@@ -24,6 +26,7 @@ export interface ScaffoldInput {
   config: UserConfig;
   runtime?: ModelRuntime;
   profile?: RuntimeChannelProfile;
+  image?: string;
 }
 
 export interface ScaffoldResult {
@@ -95,6 +98,7 @@ function replacements(
   apiKey: string | undefined,
   databasePassword: string,
   profile: RuntimeChannelProfile,
+  runtimeImage: string,
 ): Record<string, string> {
   const localChat = config.models.chat_provider === 'lmstudio';
   const localEmbedding = config.models.embedding_provider === 'lmstudio';
@@ -113,6 +117,7 @@ function replacements(
     REDIS_VOLUME: envValue(profile.volumes.redis),
     BLOBS_VOLUME: envValue(profile.volumes.blobs),
     HISTORY_SYNC_ENABLED: String(profile.sync.enabledByDefault),
+    ANSWER_ENGINE_IMAGE: envValue(runtimeImage),
     CHAT_PROVIDER: envValue(config.models.chat_provider),
     CHAT_MODEL: envValue(config.models.chat),
     EMBEDDING_PROVIDER: envValue(config.models.embedding_provider),
@@ -165,6 +170,9 @@ export function scaffoldInstallation(
     ? UserConfigSchema.parse(parseYaml(existingConfig) as unknown)
     : UserConfigSchema.parse(input.config);
   const profile = input.profile ?? createRuntimeChannelProfile('stable', { home: input.home });
+  const release = verifyBundledRelease();
+  const runtimeImage = assertImmutableImageReference(input.image ?? release.images.answerEngine, release);
+  assertRegularFileTarget(profile.releaseFile, 'Release state');
   const templatesDir = dependencies.templatesDir ?? templateDirectory;
   const generateSecret = dependencies.generateSecret
     ?? (() => randomBytes(32).toString('hex'));
@@ -197,6 +205,7 @@ export function scaffoldInstallation(
         apiKey,
         databasePassword,
         profile,
+        runtimeImage,
       ),
     );
   if (writeAtomicIfChanged(composePath, compose)) changes.push('docker-compose.yml');
@@ -210,10 +219,22 @@ export function scaffoldInstallation(
       apiKey,
       databasePassword,
       profile,
+      runtimeImage,
     ),
   );
   if (writeAtomicIfChanged(envPath, environment, 0o600)) changes.push('.env.compose');
   writeRuntimeOwnershipMarker(profile);
+  const releaseState = `${JSON.stringify({
+    schemaVersion: 1,
+    sourceCommit: release.sourceCommit,
+    current: runtimeImage,
+    previous: runtimeImage,
+    verifiedAtInstall: true,
+  })}\n`;
+  if (!existsSync(profile.releaseFile)) {
+    writePrivateFileAtomic(profile.releaseFile, releaseState, 'Release state');
+    changes.push('.release-state.json');
+  }
 
   return {
     home: input.home,

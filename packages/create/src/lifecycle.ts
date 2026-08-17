@@ -10,7 +10,7 @@ import { runCommand as defaultRunCommand } from './process.js';
 import { readEnvValue } from './scaffold.js';
 import { uninstall } from './uninstall.js';
 import { assertRuntimeChannelConfiguration, type RuntimeChannelProfile } from './runtime-channel.js';
-import { assertImmutableImageReference, verifyBundledRelease } from './release.js';
+import { assertImmutableImageReference, DigestReferenceSchema, verifyBundledRelease } from './release.js';
 import { assertRegularFileTarget, writePrivateFileAtomic } from './safe-file.js';
 
 export const LifecycleActionSchema = z.enum([
@@ -30,13 +30,16 @@ const OwnershipMarkerSchema = z.object({
 }).strict();
 
 const ReleaseStateSchema = z.object({
-  current: z.string().trim().min(1).regex(/^\S+$/),
-  previous: z.string().trim().min(1).regex(/^\S+$/),
+  schemaVersion: z.literal(1),
+  sourceCommit: z.string().regex(/^[a-f0-9]{40}$/),
+  current: DigestReferenceSchema,
+  previous: DigestReferenceSchema,
+  verifiedAtInstall: z.boolean(),
   lastAction: z.enum(['upgrade', 'rollback']).optional(),
   pending: z.object({
     action: z.enum(['upgrade', 'rollback']),
-    from: z.string().trim().min(1).regex(/^\S+$/),
-    to: z.string().trim().min(1).regex(/^\S+$/),
+    from: DigestReferenceSchema,
+    to: DigestReferenceSchema,
   }).strict().optional(),
 }).strict();
 type ReleaseState = z.infer<typeof ReleaseStateSchema>;
@@ -98,7 +101,7 @@ function syncServiceStatus(profile: RuntimeChannelProfile): LifecycleStatus['syn
   };
 }
 
-function currentRelease(profile: RuntimeChannelProfile): string {
+function currentRelease(profile: RuntimeChannelProfile): string | undefined {
   if (existsSync(profile.releaseFile)) {
     try {
       const parsed = ReleaseStateSchema.safeParse(JSON.parse(readFileSync(profile.releaseFile, 'utf8')));
@@ -108,8 +111,8 @@ function currentRelease(profile: RuntimeChannelProfile): string {
     }
   }
   const environment = existsSync(profile.credentialsFile) ? readFileSync(profile.credentialsFile, 'utf8') : '';
-  return readEnvValue(environment, 'ANSWER_ENGINE_IMAGE')
-    ?? 'ghcr.io/the-answerai/answer-engine:1.1.0';
+  const image = readEnvValue(environment, 'ANSWER_ENGINE_IMAGE');
+  return image && DigestReferenceSchema.safeParse(image).success ? image : undefined;
 }
 
 export function parseLifecycleAction(value: string | undefined): LifecycleAction {
@@ -209,6 +212,10 @@ export async function runLifecycleAction(
   dependencies: LifecycleDependencies = {},
 ): Promise<LifecycleStatus | void> {
   const command = dependencies.runCommand ?? defaultRunCommand;
+  const manifest = action === 'upgrade' || action === 'rollback' ? verifyBundledRelease() : undefined;
+  const requestedImage = action === 'upgrade'
+    ? assertImmutableImageReference(options.image ?? manifest!.images.answerEngine, manifest!)
+    : undefined;
   if (action === 'status' && !existsSync(profile.markerFile)) {
     return {
       channel: profile.channel, home: profile.home, composeProject: profile.composeProject,
@@ -250,12 +257,12 @@ export async function runLifecycleAction(
     return;
   }
   if (action === 'upgrade') {
-    const manifest = verifyBundledRelease();
     assertRegularFileTarget(profile.releaseFile, 'Release state');
     const environment = readFileSync(profile.credentialsFile, 'utf8');
-    const current = readEnvValue(environment, 'ANSWER_ENGINE_IMAGE')
-      ?? 'ghcr.io/the-answerai/answer-engine:1.1.0';
-    const next = assertImmutableImageReference(options.image ?? manifest.images.answerEngine, manifest);
+    const configuredCurrent = readEnvValue(environment, 'ANSWER_ENGINE_IMAGE');
+    const configuredIsImmutable = Boolean(configuredCurrent && DigestReferenceSchema.safeParse(configuredCurrent).success);
+    const current = configuredIsImmutable ? configuredCurrent! : requestedImage!;
+    const next = requestedImage!;
     let pendingFrom = current;
     if (existsSync(profile.releaseFile)) {
       try {
@@ -265,22 +272,25 @@ export async function runLifecycleAction(
         // A fresh guarded upgrade replaces malformed non-secret release history.
       }
     }
-    if (next === current) {
+    if (next === current && configuredIsImmutable) {
       const health = await readChannelHealth(profile, { ...dependencies, healthAttempts: 1 });
       if (health.healthy && pendingFrom === current) return;
     } else {
       replaceEnvAssignment(profile.credentialsFile, 'ANSWER_ENGINE_IMAGE', next);
     }
     writeReleaseState(profile.releaseFile, {
+      schemaVersion: 1, sourceCommit: manifest!.sourceCommit, verifiedAtInstall: false,
       current: pendingFrom, previous: pendingFrom,
       pending: { action: 'upgrade', from: pendingFrom, to: next },
     });
     await recreate(profile, command, dependencies, true);
-    writeReleaseState(profile.releaseFile, { current: next, previous: pendingFrom, lastAction: 'upgrade' });
+    writeReleaseState(profile.releaseFile, {
+      schemaVersion: 1, sourceCommit: manifest!.sourceCommit, verifiedAtInstall: false,
+      current: next, previous: pendingFrom, lastAction: 'upgrade',
+    });
     return;
   }
   if (action === 'rollback') {
-    const manifest = verifyBundledRelease();
     assertRegularFileTarget(profile.releaseFile, 'Release state');
     let release;
     try { release = ReleaseStateSchema.parse(JSON.parse(readFileSync(profile.releaseFile, 'utf8'))); }
@@ -291,10 +301,14 @@ export async function runLifecycleAction(
     assertImmutableImageReference(to, manifest);
     replaceEnvAssignment(profile.credentialsFile, 'ANSWER_ENGINE_IMAGE', to);
     writeReleaseState(profile.releaseFile, {
+      schemaVersion: 1, sourceCommit: release.sourceCommit, verifiedAtInstall: release.verifiedAtInstall,
       current: from, previous: to, pending: { action: 'rollback', from, to },
     });
     await recreate(profile, command, dependencies, true);
-    writeReleaseState(profile.releaseFile, { current: to, previous: from, lastAction: 'rollback' });
+    writeReleaseState(profile.releaseFile, {
+      schemaVersion: 1, sourceCommit: release.sourceCommit, verifiedAtInstall: release.verifiedAtInstall,
+      current: to, previous: from, lastAction: 'rollback',
+    });
     return;
   }
 

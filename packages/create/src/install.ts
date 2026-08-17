@@ -171,6 +171,7 @@ export async function install(
     config: { ...modelSetup.config, server: { ...modelSetup.config.server, port: profile.ports.api } },
     runtime: modelSetup.runtime,
     profile,
+    image: release.images.answerEngine,
   });
   assertRuntimeChannelConfiguration(profile);
   await validateRuntimeChannelIsolation(channelProfiles(channel, home));

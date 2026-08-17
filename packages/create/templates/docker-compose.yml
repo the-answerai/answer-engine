@@ -1,4 +1,4 @@
-x-answer-engine-image: &answer-engine-image "${ANSWER_ENGINE_IMAGE:-ghcr.io/the-answerai/answer-engine:1.1.0}"
+x-answer-engine-image: &answer-engine-image "${ANSWER_ENGINE_IMAGE:?Set ANSWER_ENGINE_IMAGE to the verified release digest}"
 
 services:
   postgres:

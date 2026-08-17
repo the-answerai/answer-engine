@@ -2,7 +2,7 @@ import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { formatPreflightReport, runPreflight } from '../preflight.js';
+import { formatPreflightReport, remediateSupportedDependencies, runPreflight } from '../preflight.js';
 import type { CommandRunner } from '../process.js';
 
 const successRunner: CommandRunner = vi.fn(() => Promise.resolve({ stdout: '' }));
@@ -84,7 +84,7 @@ describe('runPreflight', () => {
 
     expect(result.status).toBe('warning');
     expect(result.checks.filter((check) => check.status !== 'pass').every((check) => Boolean(check.remediation))).toBe(true);
-    expect(formatPreflightReport(result)).toContain('[WARNING] Memory: 12 GB detected');
+    expect(formatPreflightReport(result)).toContain('[WARNING] Memory (required; manual): 12 GB detected');
     expect(JSON.parse(formatPreflightReport(result, true))).toEqual(result);
   });
 
@@ -112,7 +112,7 @@ describe('runPreflight', () => {
     });
 
     expect(result.status).toBe('unsupported');
-    expect(result.checks.find((item) => item.code === 'WSL2')?.remediation).toContain('Install and enter WSL2');
+    expect(result.checks.find((item) => item.code === 'WSL2')?.remediation).toContain('enter WSL2');
   });
 
   it('reports every failed prerequisite with an exact remediation', async () => {
@@ -128,15 +128,15 @@ describe('runPreflight', () => {
     expect(result.failures).toEqual(expect.arrayContaining([
       expect.objectContaining({
         code: 'NODE_VERSION',
-        fix: 'Install Node.js 22.16 or newer, then run this command again.',
+        fix: expect.stringContaining('official user-scoped Node.js 22.16.0 archive'),
       }),
       expect.objectContaining({
         code: 'DOCKER_DAEMON',
-        fix: 'Start Docker Desktop (or the Docker daemon), then run this command again.',
+        fix: 'Install or start Docker Desktop manually, then run this command again.',
       }),
       expect.objectContaining({
         code: 'DOCKER_COMPOSE',
-        fix: 'Install Docker Compose v2 so `docker compose version` succeeds.',
+        fix: 'Install Docker Desktop or Compose v2 manually so `docker compose version --short` succeeds.',
       }),
       expect.objectContaining({
         code: 'PORT_IN_USE',
@@ -144,6 +144,68 @@ describe('runPreflight', () => {
         fix: 'Stop the process using port 5050, then run this command again.',
       }),
     ]));
+  });
+
+  it('classifies reusable, consented, privileged, and optional dependencies', async () => {
+    const result = await runPreflight({
+      ...supportedHost,
+      nodeVersion: '20.19.0',
+      modelRuntimeAvailable: false,
+      runCommand: vi.fn(async (command: string) => {
+        if (command === 'docker') throw new Error('missing');
+        return { stdout: '' };
+      }),
+      probePort: vi.fn(async () => true),
+    });
+
+    expect(result.checks.find((item) => item.code === 'NODE_VERSION')).toMatchObject({
+      requirement: 'required', dependencyState: 'incompatible', installPolicy: 'user-consent',
+      detectedVersion: '20.19.0', proposal: { source: expect.stringContaining('node-v22.16.0-darwin-arm64') },
+    });
+    expect(result.checks.find((item) => item.code === 'DOCKER_DAEMON')).toMatchObject({
+      requirement: 'required', installPolicy: 'privileged', blocking: true,
+    });
+    expect(result.checks.find((item) => item.code === 'MODEL_RUNTIME')).toMatchObject({
+      requirement: 'optional', installPolicy: 'manual', blocking: false,
+    });
+  });
+
+  it('installs a supported dependency only after consent and reruns readiness', async () => {
+    const missing = await runPreflight({
+      ...supportedHost, nodeVersion: '20.0.0', runCommand: successRunner,
+      probePort: vi.fn(async () => true),
+    });
+    const ready = await runPreflight({
+      ...supportedHost, nodeVersion: '22.16.0', runCommand: successRunner,
+      probePort: vi.fn(async () => true),
+    });
+    const install = vi.fn(async () => undefined);
+    const rerun = vi.fn(async () => ready);
+
+    const refused = await remediateSupportedDependencies(missing, {
+      confirm: async () => false, install, rerun,
+    });
+    expect(refused).toBe(missing);
+    expect(install).not.toHaveBeenCalled();
+    expect(rerun).not.toHaveBeenCalled();
+
+    const remediated = await remediateSupportedDependencies(missing, {
+      confirm: async (proposal) => proposal.version === '22.16.0', install, rerun,
+    });
+    expect(install).toHaveBeenCalledOnce();
+    expect(rerun).toHaveBeenCalledOnce();
+    expect(remediated).toBe(ready);
+  });
+
+  it('does not propose the Apple Silicon Node archive for an unsupported architecture', async () => {
+    const result = await runPreflight({
+      ...supportedHost, architecture: 'x64', nodeVersion: '20.0.0', runCommand: successRunner,
+      probePort: vi.fn(async () => true),
+    });
+
+    const node = result.checks.find((item) => item.code === 'NODE_VERSION');
+    expect(node).toMatchObject({ installPolicy: 'manual' });
+    expect(node).not.toHaveProperty('proposal');
   });
 
   it.each([

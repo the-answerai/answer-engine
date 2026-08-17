@@ -1,0 +1,106 @@
+name: Installer release assets
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Exact semantic release tag (for example v1.1.0)
+        required: true
+        type: string
+      source_commit:
+        description: Full 40-character source commit
+        required: true
+        type: string
+      runtime_image:
+        description: Published multi-platform Answer Engine image using @sha256
+        required: true
+        type: string
+      publish_release:
+        description: Publish assets to the existing protected GitHub Release
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Validate immutable inputs
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+          RUNTIME_IMAGE: ${{ inputs.runtime_image }}
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$SOURCE_COMMIT" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$RUNTIME_IMAGE" =~ @sha256:[a-f0-9]{64}$ ]]
+      - name: Check out exact source commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_commit }}
+      - name: Require the exact tag before a protected publication
+        if: ${{ inputs.publish_release }}
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          git fetch --no-tags origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          test "$(git rev-parse "$RELEASE_TAG^{commit}")" = "$SOURCE_COMMIT"
+      - name: Install pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 10.33.0
+      - name: Use Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22.16.0
+          cache: pnpm
+      - name: Install exact dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Verify source
+        run: pnpm verify
+      - name: Resolve required runtime platforms at the exact digest
+        env:
+          RUNTIME_IMAGE: ${{ inputs.runtime_image }}
+        run: |
+          docker buildx imagetools inspect --raw "$RUNTIME_IMAGE" > runtime-index.json
+          jq -e '[.manifests[].platform | "\(.os)/\(.architecture)"] | index("linux/arm64") and index("linux/amd64")' runtime-index.json
+      - name: Build candidate archives, checksums, manifest, and provenance
+        run: |
+          node scripts/build-release-assets.mjs \
+            --tag '${{ inputs.tag }}' \
+            --commit '${{ inputs.source_commit }}' \
+            --image '${{ inputs.runtime_image }}' \
+            --output release-candidate
+      - name: Verify candidate checksums
+        run: (cd release-candidate && sha256sum --check SHA256SUMS)
+      - name: Upload candidate without publishing
+        uses: actions/upload-artifact@604373da6381bf24206979c74d06a550515601b9 # v4.6.2
+        with:
+          name: installer-${{ inputs.tag }}-${{ inputs.source_commit }}
+          path: release-candidate/*
+          if-no-files-found: error
+
+  publish:
+    if: ${{ inputs.publish_release }}
+    needs: candidate
+    runs-on: ubuntu-latest
+    environment: production-release
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified candidate
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: installer-${{ inputs.tag }}-${{ inputs.source_commit }}
+          path: release-candidate
+      - name: Reverify candidate before protected publication
+        run: (cd release-candidate && sha256sum --check SHA256SUMS)
+      - name: Upload to the existing exact-tag release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload '${{ inputs.tag }}' release-candidate/* --clobber

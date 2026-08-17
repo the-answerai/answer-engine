@@ -4,8 +4,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 
-const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
-const DigestReferenceSchema = z.string().regex(/@sha256:[a-f0-9]{64}$/);
+export const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
+export const DigestReferenceSchema = z.string().regex(/^[a-z0-9./_-]+(?::[a-zA-Z0-9._-]+)?@sha256:[a-f0-9]{64}$/);
 const RELEASE_ARTIFACTS = [
   'docker-compose.yml',
   'env.compose.tmpl',
@@ -25,18 +25,42 @@ const RELEASE_ARTIFACTS = [
   'integrations/answer-engine/skills/use-answer-engine/SKILL.md',
 ] as const;
 export const ReleaseManifestSchema = z.object({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   version: z.string().regex(/^\d+\.\d+\.\d+$/),
   tag: z.string().regex(/^v\d+\.\d+\.\d+$/),
+  sourceCommit: z.string().regex(/^[a-f0-9]{40}$/),
   promptUrl: z.string().url(),
+  releaseBaseUrl: z.string().url(),
   images: z.object({
-    answerEngine: z.string().regex(/^ghcr\.io\/the-answerai\/answer-engine:\d+\.\d+\.\d+$/),
+    answerEngine: DigestReferenceSchema,
     postgres: DigestReferenceSchema,
     redis: DigestReferenceSchema,
   }).strict(),
+  assets: z.object({
+    installer: z.string().min(1),
+    cli: z.string().min(1),
+    bashBootstrap: z.string().min(1),
+    powershellBootstrap: z.string().min(1),
+    checksums: z.literal('SHA256SUMS'),
+    provenance: z.literal('provenance.json'),
+  }).strict(),
+  bootstrapInputs: z.array(z.object({
+    platform: z.enum(['macos', 'windows-wsl2']),
+    architecture: z.enum(['arm64', 'x64']),
+    bootstrap: z.enum(['bash', 'powershell']),
+  }).strict()).length(2),
   artifacts: z.array(z.object({ path: z.string().min(1), sha256: Sha256Schema }).strict()).min(1),
 }).strict();
 export type ReleaseManifest = z.infer<typeof ReleaseManifestSchema>;
+
+export const ReleaseDownloadManifestSchema = ReleaseManifestSchema.extend({
+  releaseArtifacts: z.array(z.object({
+    name: z.string().min(1),
+    sha256: Sha256Schema,
+    bytes: z.number().int().positive(),
+  }).strict()).min(6),
+}).strict();
+export type ReleaseDownloadManifest = z.infer<typeof ReleaseDownloadManifestSchema>;
 
 const packageRoot = fileURLToPath(new URL('../', import.meta.url));
 const templatesRoot = fileURLToPath(new URL('../templates/', import.meta.url));
@@ -57,9 +81,26 @@ export function verifyReleaseManifest(value: unknown): ReleaseManifest {
   if (manifest.promptUrl !== expectedPromptUrl) {
     throw new Error('Release prompt URL must use the official tagged release.');
   }
-  if (!manifest.images.answerEngine.endsWith(`:${manifest.version}`)) {
-    throw new Error('Answer Engine runtime image must match the installer version.');
+  const expectedReleaseBaseUrl = `https://github.com/the-answerai/answer-engine/releases/download/${manifest.tag}`;
+  if (manifest.releaseBaseUrl !== expectedReleaseBaseUrl) {
+    throw new Error('Release asset URL must use the official immutable release tag.');
   }
+  const expectedAssets = {
+    installer: `answer-engine-installer-v${manifest.version}.tgz`,
+    cli: `answer-engine-cli-v${manifest.version}.tgz`,
+    bashBootstrap: `answer-engine-bootstrap-v${manifest.version}.sh`,
+    powershellBootstrap: `answer-engine-bootstrap-v${manifest.version}.ps1`,
+    checksums: 'SHA256SUMS' as const,
+    provenance: 'provenance.json' as const,
+  };
+  if (JSON.stringify(manifest.assets) !== JSON.stringify(expectedAssets)) {
+    throw new Error('Release asset identities must match the immutable installer version.');
+  }
+  const bootstrapInputs = [...manifest.bootstrapInputs]
+    .map((input) => `${input.platform}/${input.architecture}/${input.bootstrap}`).sort();
+  if (JSON.stringify(bootstrapInputs) !== JSON.stringify([
+    'macos/arm64/bash', 'windows-wsl2/x64/powershell',
+  ])) throw new Error('Release bootstrap inputs must exactly cover supported platforms.');
   const artifactPaths = manifest.artifacts.map((artifact) => artifact.path).sort();
   if (JSON.stringify(artifactPaths) !== JSON.stringify([...RELEASE_ARTIFACTS].sort())) {
     throw new Error('Release checksums must exactly cover every bundled executable template.');
@@ -78,6 +119,42 @@ export function verifyReleaseArtifacts(manifest: ReleaseManifest, root = templat
   }
 }
 
+export function verifyDownloadedRelease(
+  value: unknown,
+  root: string,
+  platform: 'macos' | 'windows-wsl2',
+  architecture: 'arm64' | 'x64',
+): ReleaseDownloadManifest {
+  const parsed = ReleaseDownloadManifestSchema.safeParse(value);
+  if (!parsed.success) throw new Error(`Invalid release download manifest: ${parsed.error.message}`);
+  const { releaseArtifacts, ...bundledManifest } = parsed.data;
+  const manifest = verifyReleaseManifest(bundledManifest);
+  const bootstrap = manifest.bootstrapInputs.find((input) => (
+    input.platform === platform && input.architecture === architecture
+  ));
+  if (!bootstrap) throw new Error(`Release does not support ${platform}/${architecture}.`);
+  const expectedNames = [
+    manifest.assets.installer,
+    manifest.assets.cli,
+    manifest.assets.bashBootstrap,
+    manifest.assets.powershellBootstrap,
+    manifest.assets.provenance,
+    'INSTALL_AGENT.md',
+  ].sort();
+  const actualNames = releaseArtifacts.map((artifact) => artifact.name).sort();
+  if (JSON.stringify(actualNames) !== JSON.stringify(expectedNames)) {
+    throw new Error('Release download artifacts do not match the manifest identities.');
+  }
+  for (const artifact of releaseArtifacts) {
+    const path = join(root, artifact.name);
+    const contents = readFileSync(path);
+    if (contents.byteLength !== artifact.bytes) throw new Error(`Release artifact size mismatch: ${artifact.name}.`);
+    const actual = createHash('sha256').update(contents).digest('hex');
+    if (actual !== artifact.sha256) throw new Error(`Release artifact checksum mismatch: ${artifact.name}.`);
+  }
+  return parsed.data;
+}
+
 export function verifyBundledRelease(): ReleaseManifest {
   const manifest = loadReleaseManifest();
   const packageManifest = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')) as { version?: unknown };
@@ -90,8 +167,7 @@ export function verifyBundledRelease(): ReleaseManifest {
 
 export function assertImmutableImageReference(reference: string, manifest = loadReleaseManifest()): string {
   const value = z.string().trim().min(1).regex(/^\S+$/).parse(reference);
-  if (value !== manifest.images.answerEngine && !/@sha256:[a-f0-9]{64}$/.test(value)) {
-    throw new Error('Runtime image must equal the release image or be digest-pinned with @sha256.');
-  }
-  return value;
+  const parsed = DigestReferenceSchema.safeParse(value);
+  if (!parsed.success) throw new Error('Runtime image must be content-addressed with an exact @sha256 digest.');
+  return parsed.data;
 }

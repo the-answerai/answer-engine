@@ -1,6 +1,7 @@
 import {
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -45,19 +46,26 @@ describe('scaffoldInstallation', () => {
     });
 
     expect(parseYaml(readFileSync(result.configPath, 'utf8'))).toEqual(config);
-    expect(readFileSync(result.composePath, 'utf8')).toContain(
-      'ghcr.io/the-answerai/answer-engine:1.1.0',
-    );
+    expect(readFileSync(result.composePath, 'utf8')).toContain('${ANSWER_ENGINE_IMAGE:?');
     expect(readFileSync(result.envPath, 'utf8')).toContain(
       'COMPOSE_PROJECT_NAME=answer-engine-local',
     );
     const env = readFileSync(result.envPath, 'utf8');
+    expect(env).toContain(
+      `ANSWER_ENGINE_IMAGE=ghcr.io/the-answerai/answer-engine@sha256:${'c0fa1c0f0771800e40b678ff42c43f1c26e322020bec9cd713d7198dd0ab165f'}`,
+    );
     expect(env).toContain('AUTH_MODE=api_key');
     expect(env).toContain('LOCAL_UI_AUTO_AUTH=true');
     expect(env).toContain('STORAGE_DRIVER=local');
     expect(env).toContain(`ENCRYPTION_KEY=${'a'.repeat(64)}`);
     expect(statSync(result.configPath).mode & 0o777).toBe(0o600);
     expect(statSync(result.envPath).mode & 0o777).toBe(0o600);
+    expect(JSON.parse(readFileSync(join(home, '.release-state.json'), 'utf8'))).toMatchObject({
+      schemaVersion: 1,
+      current: expect.stringMatching(/@sha256:[a-f0-9]{64}$/),
+      previous: expect.stringMatching(/@sha256:[a-f0-9]{64}$/),
+      verifiedAtInstall: true,
+    });
   });
 
   it('preserves encryption material and the one-time API key on re-run', () => {
@@ -103,5 +111,14 @@ describe('scaffoldInstallation', () => {
     expect(compose).toContain('name: answer-engine-staging-postgres');
     expect(compose).toContain('name: answer-engine-staging-redis');
     expect(compose).toContain('name: answer-engine-staging-blobs');
+  });
+
+  it('rejects a mutable install image before creating runtime files', () => {
+    const home = tempHome();
+
+    expect(() => scaffoldInstallation({
+      home, config, image: 'ghcr.io/the-answerai/answer-engine:1.1.0',
+    })).toThrow(/exact @sha256 digest/i);
+    expect(readdirSync(home)).toEqual([]);
   });
 });

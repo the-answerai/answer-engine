@@ -17,6 +17,9 @@ installed runtime and its data unchanged.
 - Update accepts only the release embedded in the verified installer manifest;
   rollback accepts only its recorded, verified predecessor. Neither action
   removes the runtime home or persistent volumes.
+- The manifest records the exact source commit, release asset identities, and
+  `ghcr.io/the-answerai/answer-engine@sha256:...` runtime. Mutable tags are not
+  install, update, or rollback inputs. See [Immutable installer releases](./installer-release.md).
 - Uninstall and purge are deliberately absent from the desktop controls.
 - The packaged web application is served by the installed API origin (`5050`
   for stable and `5150` for staging). The launcher preserves that validated
