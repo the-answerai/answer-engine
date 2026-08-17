@@ -94,6 +94,13 @@ jobs:
           jq -e '[.manifests[].platform | "\(.os)/\(.architecture)"] | index("linux/arm64") and index("linux/amd64")' "$RUNNER_TEMP/runtime-index.json"
           printf '%s@%s\n' "$IMAGE" "$DIGEST" > "$RUNNER_TEMP/runtime-image.txt"
           printf 'Published `%s@%s`\n' "$IMAGE" "$DIGEST" >> "$GITHUB_STEP_SUMMARY"
+      - name: Make the fixed runtime package publicly pullable
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method PATCH \
+            /orgs/the-answerai/packages/container/answer-engine \
+            --field visibility=public
       - name: Upload immutable runtime reference
         uses: actions/upload-artifact@604373da6381bf24206979c74d06a550515601b9 # v4.6.2
         with:

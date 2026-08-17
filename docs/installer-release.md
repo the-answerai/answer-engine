@@ -53,7 +53,10 @@ job. It publishes the fixed `ghcr.io/the-answerai/answer-engine` image for both
 `linux/amd64` and `linux/arm64`, verifies the resulting manifest list, and uploads
 the immutable `image@sha256:...` reference as a workflow artifact. It does not
 publish `latest`; release manifests and lifecycle state use only the recorded
-digest.
+digest. After manifest verification, the workflow sets only this fixed runtime
+package to public visibility so a clean machine can pull the recorded digest
+without GitHub credentials. The repository and source release retain their
+independent visibility settings.
 
 The production order is: merge reviewed source to `master`, create the exact
 semantic tag at that commit, run `Runtime image release`, pass its recorded digest
