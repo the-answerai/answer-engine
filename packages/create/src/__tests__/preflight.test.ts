@@ -120,6 +120,7 @@ describe('runPreflight', () => {
 
   it('reports every failed prerequisite with an exact remediation', async () => {
     const result = await runPreflight({
+      ...supportedHost,
       nodeVersion: '18.19.0',
       runCommand: vi.fn((_command, args) => Promise.reject(new Error(
         args[0] === 'info' ? 'daemon unavailable' : 'compose unavailable',
