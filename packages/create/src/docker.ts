@@ -7,6 +7,7 @@ import {
 import { join } from 'node:path';
 import type { CommandRunner } from './process.js';
 import { runCommand as defaultRunCommand } from './process.js';
+import { createRuntimeChannelProfile, type RuntimeChannelProfile } from './runtime-channel.js';
 
 export interface DockerDependencies {
   runCommand?: CommandRunner;
@@ -54,6 +55,7 @@ export async function activateApiKey(
   envPath: string,
   apiKey: string,
   dependencies: DockerDependencies = {},
+  profile: RuntimeChannelProfile = createRuntimeChannelProfile('stable', { home }),
 ): Promise<void> {
   persistApiKey(envPath, apiKey);
   const command = dependencies.runCommand ?? defaultRunCommand;
@@ -62,12 +64,15 @@ export async function activateApiKey(
     dependencies.fetchImpl ?? fetch,
     dependencies.sleep ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))),
     dependencies.healthAttempts ?? 180,
+    profile.apiUrl,
+    profile.channel,
   );
 }
 
 export async function detectOwnedPorts(
   home: string,
   dependencies: Pick<DockerDependencies, 'runCommand'> = {},
+  profile: RuntimeChannelProfile = createRuntimeChannelProfile('stable', { home }),
 ): Promise<Set<number>> {
   const owned = new Set<number>();
   if (!existsSync(join(home, 'docker-compose.yml'))) return owned;
@@ -77,7 +82,9 @@ export async function detectOwnedPorts(
       'ps', '--services', '--status', 'running',
     ]));
     const services = new Set(stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean));
-    if (services.has('api')) owned.add(5050);
+    if (services.has('api')) owned.add(profile.ports.api);
+    if (services.has('postgres')) owned.add(profile.ports.database);
+    if (services.has('redis')) owned.add(profile.ports.redis);
   } catch {
     // Preflight will produce the actionable Docker failure. A stale home does
     // not grant ownership of occupied ports.
@@ -89,22 +96,34 @@ async function waitForHealth(
   fetchImpl: typeof fetch,
   sleep: (milliseconds: number) => Promise<void>,
   attempts: number,
+  apiUrl = 'http://127.0.0.1:5050',
+  expectedChannel: RuntimeChannelProfile['channel'] = 'stable',
 ): Promise<void> {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
-      const response = await fetchImpl('http://localhost:5050/health');
-      if (response.ok) return;
-    } catch {
+      const response = await fetchImpl(`${apiUrl}/health`);
+      if (response.ok) {
+        const payload = await response.json() as { status?: unknown; channel?: unknown };
+        if (payload.channel !== expectedChannel) {
+          throw new Error(
+            `Health endpoint reported channel ${String(payload.channel ?? '(missing)')}, expected ${expectedChannel}.`,
+          );
+        }
+        if (payload.status === 'healthy') return;
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith('Health endpoint reported channel')) throw error;
       // The API is expected to refuse connections while Compose starts.
     }
     if (attempt + 1 < attempts) await sleep(1_000);
   }
-  throw new Error('Answer Engine did not become healthy at http://localhost:5050/health.');
+  throw new Error(`Answer Engine did not become healthy at ${apiUrl}/health.`);
 }
 
 export async function startStack(
   home: string,
   dependencies: DockerDependencies = {},
+  profile: RuntimeChannelProfile = createRuntimeChannelProfile('stable', { home }),
 ): Promise<string | undefined> {
   const command = dependencies.runCommand ?? defaultRunCommand;
   const fetchImpl = dependencies.fetchImpl ?? fetch;
@@ -112,7 +131,13 @@ export async function startStack(
     ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
   await command('docker', composeArgs(home, ['up', '-d', '--remove-orphans']));
   try {
-    await waitForHealth(fetchImpl, sleep, dependencies.healthAttempts ?? 180);
+    await waitForHealth(
+      fetchImpl,
+      sleep,
+      dependencies.healthAttempts ?? 180,
+      profile.apiUrl,
+      profile.channel,
+    );
   } catch (error) {
     const diagnostics = await command('docker', composeArgs(home, [
       'logs', '--no-color', '--tail', '100', 'migrate', 'init', 'api',

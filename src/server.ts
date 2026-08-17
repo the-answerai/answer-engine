@@ -18,7 +18,7 @@ async function start(): Promise<void> {
     env.LOCAL_WORKER_POLL_MS,
   );
   server.listen(env.PORT, env.HOST, () => {
-    logger.info('Answer Engine API started', { host: env.HOST, port: env.PORT });
+    logger.info('Answer Engine API started', { host: env.HOST, port: env.PORT, channel: env.AE_CHANNEL });
   });
   const shutdown = (signal: NodeJS.Signals) => {
     logger.info('Shutting down Answer Engine API', { signal });

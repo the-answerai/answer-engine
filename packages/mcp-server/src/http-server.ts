@@ -11,13 +11,14 @@ import {
 } from 'node:http';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
-import { AnswerEngineClient, parseLibraryScope } from './api-client.js';
+import { AnswerEngineClient, parseLibraryScope, type McpClientId } from './api-client.js';
 import { createAnswerEngineMcpServer, resolveServerCapabilities } from './server.js';
 
 export interface StartHttpServerOptions {
   port: number;
   apiUrl: string;
   apiKey: string;
+  clientId?: McpClientId;
   host?: string;
   library?: string;
   path?: string;
@@ -111,10 +112,11 @@ function authenticateApiKey(
   return constantTimeEquals(requestApiKey, expectedApiKey) ? 'ok' : 'invalid';
 }
 
-function createClient(options: Pick<StartHttpServerOptions, 'apiUrl' | 'apiKey' | 'library'>): AnswerEngineClient {
+function createClient(options: Pick<StartHttpServerOptions, 'apiUrl' | 'apiKey' | 'clientId' | 'library'>): AnswerEngineClient {
   return new AnswerEngineClient({
     apiUrl: options.apiUrl,
     apiKey: options.apiKey,
+    clientId: options.clientId,
     ...parseLibraryScope(options.library),
   });
 }

@@ -15,12 +15,20 @@ import type {
   ImportItem,
   ImportPreview,
   ImportResult,
+  FirstImportSession,
+  FirstImportSourceId,
+  FolderSource,
   Library,
   LibraryFilter,
   LibraryMemberPage,
   LineageResult,
   LocalSettings,
   MintedAccessToken,
+  OrganizationDecision,
+  OrganizationPlan,
+  RecallClientCapability,
+  RecallTutorial,
+  RecallTutorialClient,
   PageMeta,
   Recipe,
   RecipeInput,
@@ -80,9 +88,24 @@ function json(method: string, body?: unknown): RequestInit {
   return { method, ...(body === undefined ? {} : { body: JSON.stringify(body) }) };
 }
 
-export async function health(): Promise<boolean> {
+export interface HealthStatus {
+  status: string;
+  uptime: number;
+  channel: 'stable' | 'staging';
+}
+
+export async function health(): Promise<HealthStatus> {
   const response = await fetch('/health');
-  return response.ok;
+  if (!response.ok) throw new Error(`Health check failed (${response.status})`);
+  const payload = await response.json() as Partial<HealthStatus>;
+  if (
+    payload.status !== 'healthy'
+    || typeof payload.uptime !== 'number'
+    || (payload.channel !== 'stable' && payload.channel !== 'staging')
+  ) {
+    throw new Error('Health check returned an invalid runtime channel identity.');
+  }
+  return payload as HealthStatus;
 }
 
 export async function initializeLocalUiSession(): Promise<void> {
@@ -185,6 +208,65 @@ export function previewImport(items: ImportItem[], libraryId?: string): Promise<
 
 export function importContent(items: ImportItem[], libraryId?: string): Promise<ImportResult> {
   return request('/api/v1/content/import', json('POST', { items, ...(libraryId ? { libraryId } : {}) }));
+}
+
+export function createOrganizationProposal(input: { useModel: boolean; limit: number }): Promise<OrganizationPlan> {
+  return request('/api/v1/organization-plans', json('POST', input));
+}
+
+export function listOrganizationPlans(): Promise<OrganizationPlan[]> {
+  return request('/api/v1/organization-plans');
+}
+
+export function applyOrganizationPlan(planId: string, decisions: OrganizationDecision[]): Promise<OrganizationPlan> {
+  return request(`/api/v1/organization-plans/${encodeURIComponent(planId)}/apply`, json('POST', { decisions }));
+}
+
+export function undoOrganizationPlan(planId: string): Promise<OrganizationPlan> {
+  return request(`/api/v1/organization-plans/${encodeURIComponent(planId)}/undo`, json('POST'));
+}
+
+export function recallTutorialCapabilities(environment: 'native' | 'wsl' = 'native'): Promise<RecallClientCapability[]> {
+  return request(`/api/v1/recall-tutorials/capabilities?environment=${environment}`);
+}
+export function listRecallTutorials(): Promise<RecallTutorial[]> { return request('/api/v1/recall-tutorials'); }
+export function createRecallTutorial(input: { writeClient: RecallTutorialClient; recallClient: RecallTutorialClient; environment: 'native' | 'wsl' }): Promise<RecallTutorial> {
+  return request('/api/v1/recall-tutorials', json('POST', input));
+}
+export function checkRecallTutorial(id: string, reportedFailure?: 'runtime' | 'wiring' | 'access' | 'indexing' | 'retrieval'): Promise<RecallTutorial> {
+  return request(`/api/v1/recall-tutorials/${encodeURIComponent(id)}/check`, json('POST', reportedFailure ? { reportedFailure } : {}));
+}
+
+export function latestFirstImport(): Promise<FirstImportSession | null> {
+  return request('/api/v1/first-imports/latest');
+}
+
+export function approveFirstImport(sessionId: string, sourceIds: FirstImportSourceId[]): Promise<FirstImportSession> {
+  return request(`/api/v1/first-imports/${encodeURIComponent(sessionId)}/approve`, json('POST', { sourceIds }));
+}
+
+export function cancelFirstImport(sessionId: string): Promise<FirstImportSession> {
+  return request(`/api/v1/first-imports/${encodeURIComponent(sessionId)}/cancel`, json('POST'));
+}
+
+export function retryFirstImport(sessionId: string): Promise<FirstImportSession> {
+  return request(`/api/v1/first-imports/${encodeURIComponent(sessionId)}/retry`, json('POST'));
+}
+
+export function latestFolderSource(): Promise<FolderSource | null> {
+  return request('/api/v1/folder-sources/latest');
+}
+export function approveFolderRun(runId: string): Promise<FolderSource> {
+  return request(`/api/v1/folder-sources/runs/${encodeURIComponent(runId)}/approve`, json('POST'));
+}
+export function cancelFolderRun(runId: string): Promise<FolderSource> {
+  return request(`/api/v1/folder-sources/runs/${encodeURIComponent(runId)}/cancel`, json('POST'));
+}
+export function retryFolderRun(runId: string): Promise<FolderSource> {
+  return request(`/api/v1/folder-sources/runs/${encodeURIComponent(runId)}/retry`, json('POST'));
+}
+export function prepareFolderRemoval(sourceId: string, retention: 'keep' | 'delete'): Promise<FolderSource> {
+  return request(`/api/v1/folder-sources/${encodeURIComponent(sourceId)}/remove`, json('POST', { retention }));
 }
 
 export async function importMemory(input: { title: string; content: string }): Promise<void> {

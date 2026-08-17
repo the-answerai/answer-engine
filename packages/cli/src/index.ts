@@ -10,10 +10,14 @@ import { registerContentCommands } from './commands/content.js';
 import { registerSystemCommands } from './commands/system.js';
 import { registerImportCommands } from './commands/import.js';
 import { registerSyncCommands } from './commands/sync.js';
+import { registerFolderCommands } from './commands/folders.js';
 import { registerConfigCommands } from './commands/config.js';
 import { registerEvalCommands } from './commands/eval.js';
+import { registerOrganizationCommands } from './commands/organize.js';
+import { registerTutorialCommands } from './commands/tutorial.js';
 import { setOutputMode } from './output.js';
 import { getConfig } from './config.js';
+import { resolveRuntimeChannel } from './channel.js';
 
 const program = new Command();
 
@@ -22,8 +26,10 @@ program
   .description('Answer Engine CLI — local memory, search, import, sync, and evaluation')
   .version('1.1.0')
   .option('--json', 'Force JSON output')
+  .option('--channel <channel>', 'Runtime channel: stable or staging')
   .hook('preAction', (thisCommand) => {
-    const opts = thisCommand.opts() as { json?: boolean };
+    const opts = thisCommand.optsWithGlobals() as { json?: boolean; channel?: string };
+    process.env.AE_CHANNEL = resolveRuntimeChannel(opts.channel);
     if (opts.json) {
       setOutputMode('json');
     } else {
@@ -41,7 +47,10 @@ registerSystemCommands(program);
 registerConfigCommands(program);
 registerImportCommands(program);
 registerSyncCommands(program);
+registerFolderCommands(program);
 registerEvalCommands(program);
+registerOrganizationCommands(program);
+registerTutorialCommands(program);
 
 // Add full usage reference to help output
 program.addHelpText('after', `
@@ -63,11 +72,23 @@ Examples:
   ae import json ./items.json --type document Import rows from a JSON array
 
   ae sync once --source claude-code           Import changed Claude Code conversations once
+  ae sync first-import                        Preview, approve, import, and reconcile agent history
+  ae sync first-import --resume <session-id>  Resume an interrupted approved first import
   ae sync run --source claude-code            Poll Claude Code conversations continuously
-  ae sync once --source local_dir --path .    Import changed local documents once
+  ae folders add ./notes                     Preview a selected folder and wait for approval
+  ae folders refresh --source <source-id>    Preview folder changes before reading them
+  ae organize propose                        Preview local deterministic organization
+  ae organize apply <plan-id> --accept <id> --reject <id>
+                                                Decide every suggestion before mutation
+  ae organize undo <plan-id>                 Restore pre-organization taxonomy and memberships
+  ae tutorial start --write-client codex --recall-client claude-code
+                                                Create a harmless cross-chat memory proof
+  ae tutorial check <tutorial-id>             Verify recall and source tool evidence
   ae sync install-service                     Start sync now and automatically after login
   ae sync status                              Show service health and per-source cursors
   ae sync uninstall-service                   Stop and remove the background service
+  ae --channel staging sync once --confirm-staging-history-sync
+                                                Sync opted-in staging history explicitly
 
   ae config path                              Show the AE_HOME layout
   ae config validate                          Validate AE_HOME/config.yaml

@@ -1,0 +1,13 @@
+{
+  "passed": true,
+  "summary": "The downloaded-release verification gap was fixed; issue #71 now passes the full verification and production audit gates.",
+  "findings": [
+    {
+      "severity": "critical",
+      "description": "The strict downloaded-release verifier and mismatch tests were dead code: production bootstrap only checked files independently against SHA256SUMS, then ignored whether provenance, the download manifest, and the installer-bundled manifest described the same commit, runtime digest, platform, and artifact set. Bootstrap now runs the verifier from a freshly checksum-verified installer archive before writing versioned installer files or launchers.",
+      "fixed": true,
+      "file": "scripts/release/bootstrap.sh",
+      "issueNum": 71
+    }
+  ]
+}

@@ -52,6 +52,64 @@ export function mergeJsonClientConfig(existing: string, input: WiringInput): str
   return merged.endsWith(eol) ? merged : `${merged}${eol}`;
 }
 
+export function removeJsonClientConfig(existing: string): string {
+  if (existing.trim().length === 0) return existing;
+  parseJsonConfig(existing);
+  const root = parseTree(existing);
+  if (!root || root.type !== 'object') {
+    throw new Error('Invalid JSON MCP config: root must be an object');
+  }
+  const mcpServers = findNodeAtLocation(root, ['mcpServers']);
+  if (!mcpServers) return existing;
+  const answerEngine = findNodeAtLocation(mcpServers, ['answer-engine']);
+  if (!answerEngine?.parent) return existing;
+  const property = answerEngine.parent;
+  const properties = mcpServers.children ?? [];
+  const index = properties.indexOf(property);
+  if (index < 0) return existing;
+
+  let start = property.offset;
+  let end = property.offset + property.length;
+  if (properties.length === 1) {
+    start = mcpServers.offset + 1;
+    end = mcpServers.offset + mcpServers.length - 1;
+  } else if (index < properties.length - 1) {
+    end = properties[index + 1].offset;
+  } else {
+    start = properties[index - 1].offset + properties[index - 1].length;
+  }
+  const removed = `${existing.slice(0, start)}${existing.slice(end)}`;
+  parseJsonConfig(removed);
+  return removed;
+}
+
+export function restoreJsonClientConfig(existing: string, original: string): string {
+  const originalRoot = parseJsonConfig(original.trim().length === 0 ? '{}' : original);
+  const originalServers = originalRoot.mcpServers as Record<string, unknown> | undefined;
+  if (!originalServers || !Object.hasOwn(originalServers, 'answer-engine')) {
+    return removeJsonClientConfig(existing);
+  }
+  const source = existing.trim().length === 0 ? '{}' : existing;
+  parseJsonConfig(source);
+  const eol = source.includes('\r\n') ? '\r\n' : '\n';
+  const root = parseTree(source);
+  if (!root || root.type !== 'object') {
+    throw new Error('Invalid JSON MCP config: root must be an object');
+  }
+  const mcpServers = findNodeAtLocation(root, ['mcpServers']);
+  const restored = mcpServers
+    ? setObjectProperty(source, mcpServers, 'answer-engine', originalServers['answer-engine'], eol)
+    : setObjectProperty(
+      source,
+      root,
+      'mcpServers',
+      { 'answer-engine': originalServers['answer-engine'] },
+      eol,
+    );
+  parseJsonConfig(restored);
+  return restored.endsWith(eol) ? restored : `${restored}${eol}`;
+}
+
 function lineIndentAt(contents: string, offset: number): string {
   const lineStart = Math.max(contents.lastIndexOf('\n', offset - 1) + 1, 0);
   return contents.slice(lineStart, offset).match(/^[ \t]*/)?.[0] ?? '';

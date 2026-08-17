@@ -1,9 +1,9 @@
 import { mkdirSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { defaultChannelHome } from './channel.js';
 
 export function resolveAeHome(): string {
-  return resolve(process.env.AE_HOME || join(homedir(), '.answer-engine'));
+  return resolve(process.env.AE_HOME || defaultChannelHome());
 }
 
 export function configYamlPath(): string {
@@ -32,6 +32,10 @@ export function blobsDir(): string {
 
 export function rawArchiveDir(): string {
   return join(resolveAeHome(), 'raw-archive');
+}
+
+export function firstImportDir(): string {
+  return join(resolveAeHome(), 'data', 'first-import');
 }
 
 export function logsDir(): string {
@@ -68,6 +72,7 @@ export function ensureAeHomeLayout(): void {
     redisDataDir(),
     blobsDir(),
     rawArchiveDir(),
+    firstImportDir(),
     logsDir(),
     evalSetsDir(),
     evalResultsDir(),

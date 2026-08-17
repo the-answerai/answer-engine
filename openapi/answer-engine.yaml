@@ -32,10 +32,11 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [status, uptime]
+                required: [status, uptime, channel]
                 properties:
                   status: { type: string, const: healthy }
                   uptime: { type: number }
+                  channel: { type: string, enum: [stable, staging] }
   /api/v1/content/import/preview:
     post:
       tags: [Content]
@@ -63,6 +64,239 @@ paths:
         '201': { $ref: '#/components/responses/Success' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/first-imports:
+    post:
+      tags: [Workflows]
+      summary: Register a metadata-only supported agent-history discovery
+      description: Registers paths, file statistics, fingerprints, privacy posture, and exclusions. This endpoint never imports content.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FirstImportDiscovery' }
+      responses:
+        '201': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/first-imports/latest:
+    get:
+      tags: [Workflows]
+      summary: Read the latest first-import session and reconciliation inventory
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/v1/first-imports/{sessionId}:
+    parameters:
+      - { $ref: '#/components/parameters/FirstImportSessionId' }
+    get:
+      tags: [Workflows]
+      summary: Read a first-import session and its source-backed item manifest
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/first-imports/{sessionId}/approve:
+    parameters:
+      - { $ref: '#/components/parameters/FirstImportSessionId' }
+    post:
+      tags: [Workflows]
+      summary: Explicitly approve a subset of discovered history sources
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [sourceIds]
+              properties:
+                sourceIds:
+                  type: array
+                  minItems: 1
+                  uniqueItems: true
+                  items: { $ref: '#/components/schemas/FirstImportSourceId' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/first-imports/{sessionId}/start:
+    parameters:
+      - { $ref: '#/components/parameters/FirstImportSessionId' }
+    post:
+      tags: [Workflows]
+      summary: Start an explicitly approved first import
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/first-imports/{sessionId}/events:
+    parameters:
+      - { $ref: '#/components/parameters/FirstImportSessionId' }
+    post:
+      tags: [Workflows]
+      summary: Record a safe per-history import outcome
+      description: Imported outcomes are accepted only when all referenced chat rows have non-empty summaries and a matching raw-archive manifest path.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FirstImportEvent' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/first-imports/{sessionId}/cancel:
+    parameters:
+      - { $ref: '#/components/parameters/FirstImportSessionId' }
+    post:
+      tags: [Workflows]
+      summary: Request safe cancellation at the next resumable boundary
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/v1/first-imports/{sessionId}/retry:
+    parameters:
+      - { $ref: '#/components/parameters/FirstImportSessionId' }
+    post:
+      tags: [Workflows]
+      summary: Reset failed or interrupted selected items for retry
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/first-imports/{sessionId}/complete:
+    parameters:
+      - { $ref: '#/components/parameters/FirstImportSessionId' }
+    post:
+      tags: [Workflows]
+      summary: Finalize only after every discovered item has an outcome
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/folder-sources:
+    get:
+      tags: [Workflows]
+      summary: List explicitly selected local folder sources
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+    post:
+      tags: [Workflows]
+      summary: Register a bounded local folder preview before full-file reads
+      description: Never imports file content. Every path, exclusion, warning, limit, and fixed no-follow symlink policy is recorded for approval.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FolderSourceDiscovery' }
+      responses:
+        '201': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+  /api/v1/folder-sources/latest:
+    get:
+      tags: [Workflows]
+      summary: Read the latest selected folder and inventory run
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/v1/folder-sources/{sourceId}:
+    parameters:
+      - { in: path, name: sourceId, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [Workflows]
+      summary: Inspect a folder source, all runs, and reconciled items
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/folder-sources/{sourceId}/refresh:
+    parameters:
+      - { in: path, name: sourceId, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Workflows]
+      summary: Register an added/changed/unchanged/missing/excluded refresh preview
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FolderRefreshDiscovery' }
+      responses:
+        '201': { $ref: '#/components/responses/Success' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/folder-sources/{sourceId}/remove:
+    parameters:
+      - { in: path, name: sourceId, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Workflows]
+      summary: Prepare source removal with explicit keep or delete retention
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FolderRemoval' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/folder-sources/{sourceId}/remove/complete:
+    parameters:
+      - { in: path, name: sourceId, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Workflows]
+      summary: Reconcile content/archive retention and complete audited removal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FolderRemovalComplete' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/folder-sources/runs/{runId}/approve:
+    parameters:
+      - { in: path, name: runId, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Workflows]
+      summary: Approve one exact folder inventory before any full file read
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/folder-sources/runs/{runId}/start:
+    parameters:
+      - { in: path, name: runId, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Workflows]
+      summary: Start an approved folder run
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/folder-sources/runs/{runId}/events:
+    parameters:
+      - { in: path, name: runId, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Workflows]
+      summary: Reconcile one preview row with integrity-checked lineage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FolderIngestionEvent' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/folder-sources/runs/{runId}/cancel:
+    parameters:
+      - { in: path, name: runId, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Workflows]
+      summary: Request cancellation at the next file boundary
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/v1/folder-sources/runs/{runId}/retry:
+    parameters:
+      - { in: path, name: runId, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Workflows]
+      summary: Reset failed or interrupted candidate rows
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+  /api/v1/folder-sources/runs/{runId}/complete:
+    parameters:
+      - { in: path, name: runId, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [Workflows]
+      summary: Complete only after every preview row has an explained outcome
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '409': { $ref: '#/components/responses/Conflict' }
   /api/v1/content:
     get:
       tags: [Content]
@@ -194,6 +428,122 @@ paths:
         '200': { $ref: '#/components/responses/Success' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/organization-plans:
+    get:
+      tags: [Organization]
+      summary: List recent organization proposals
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Organization]
+      summary: Create a non-mutating organization proposal
+      description: Samples bounded titles, summaries, source metadata, and existing taxonomy. Full content and raw archives are never sent to the proposal model.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrganizationProposalRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/organization-plans/{planId}:
+    parameters:
+      - { $ref: '#/components/parameters/PlanId' }
+    get:
+      tags: [Organization]
+      summary: Inspect an organization proposal and its decisions
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/organization-plans/{planId}/apply:
+    parameters:
+      - { $ref: '#/components/parameters/PlanId' }
+    post:
+      tags: [Organization]
+      summary: Apply individually reviewed organization suggestions
+      description: Requires an accept or reject decision for every suggestion and refuses a stale source snapshot.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrganizationApplyRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/organization-plans/{planId}/undo:
+    parameters:
+      - { $ref: '#/components/parameters/PlanId' }
+    post:
+      tags: [Organization]
+      summary: Undo changes introduced by an applied organization plan
+      description: Restores taxonomy and memberships without deleting imported content.
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/recall-tutorials/capabilities:
+    get:
+      tags: [Onboarding]
+      summary: Preflight supported same-client and cross-client recall paths
+      parameters:
+        - in: query
+          name: environment
+          schema: { enum: [native, wsl], default: native }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /api/v1/recall-tutorials:
+    get:
+      tags: [Onboarding]
+      summary: List recent first-memory proof challenges
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Onboarding]
+      summary: Create a harmless remember and fresh-chat recall challenge
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RecallTutorialCreateRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /api/v1/recall-tutorials/{tutorialId}:
+    parameters:
+      - { $ref: '#/components/parameters/TutorialId' }
+    get:
+      tags: [Onboarding]
+      summary: Inspect tutorial progress and answer-free fresh-chat instructions
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/v1/recall-tutorials/{tutorialId}/check:
+    parameters:
+      - { $ref: '#/components/parameters/TutorialId' }
+    post:
+      tags: [Onboarding]
+      summary: Verify ordered remember, recall citation, and lineage tool evidence
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RecallTutorialCheckRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/Success' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
   /api/v1/tags:
     get:
       tags: [Organization]
@@ -776,6 +1126,21 @@ components:
       name: blobId
       required: true
       schema: { type: string, format: uuid }
+    PlanId:
+      in: path
+      name: planId
+      required: true
+      schema: { type: string, format: uuid }
+    TutorialId:
+      in: path
+      name: tutorialId
+      required: true
+      schema: { type: string, format: uuid }
+    FirstImportSessionId:
+      in: path
+      name: sessionId
+      required: true
+      schema: { type: string, format: uuid }
   responses:
     Success:
       description: Request completed.
@@ -803,6 +1168,125 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
   schemas:
+    FirstImportSourceId:
+      type: string
+      enum: [claude-code, codex, cowork]
+    FirstImportDiscovery:
+      type: object
+      additionalProperties: false
+      required: [manifestPath, sources]
+      properties:
+        manifestPath: { type: string, minLength: 1 }
+        sources:
+          type: array
+          minItems: 1
+          maxItems: 3
+          items:
+            type: object
+            additionalProperties: false
+            required: [sourceId, label, paths, estimatedCount, estimatedBytes, privacyPosture, exclusions, availability, availabilityNote, items]
+            properties:
+              sourceId: { $ref: '#/components/schemas/FirstImportSourceId' }
+              label: { type: string, minLength: 1 }
+              paths: { type: array, items: { type: string, minLength: 1 } }
+              estimatedCount: { type: integer, minimum: 0 }
+              estimatedBytes: { type: integer, minimum: 0 }
+              privacyPosture: { type: string, minLength: 1 }
+              exclusions: { type: array, items: { type: string } }
+              availability: { enum: [available, not_found, unsupported_platform, unavailable] }
+              availabilityNote: { type: string, minLength: 1 }
+              items:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: false
+                  required: [fingerprint, sourcePath, byteSize, modifiedAt]
+                  properties:
+                    fingerprint: { type: string, pattern: '^[a-f0-9]{64}$' }
+                    sourcePath: { type: string, minLength: 1 }
+                    byteSize: { type: integer, minimum: 0 }
+                    modifiedAt: { type: string, format: date-time }
+    FirstImportEvent:
+      type: object
+      additionalProperties: false
+      required: [sourceId, fingerprint, outcome]
+      properties:
+        sourceId: { $ref: '#/components/schemas/FirstImportSourceId' }
+        fingerprint: { type: string, pattern: '^[a-f0-9]{64}$' }
+        outcome: { enum: [imported, duplicate, failed, skipped] }
+        contentIds: { type: array, items: { type: string, format: uuid } }
+        archiveManifestPath: { type: string, minLength: 1 }
+        errorCode: { type: string, pattern: '^[A-Z0-9_]{2,80}$' }
+        recoveryAction: { type: string, minLength: 1 }
+    FolderInventoryItem:
+      type: object
+      additionalProperties: false
+      required: [sourcePath, relativePath, byteSize, disposition, reason]
+      properties:
+        sourcePath: { type: string, minLength: 1 }
+        relativePath: { type: string, minLength: 1 }
+        fileType: { type: string }
+        byteSize: { type: integer, minimum: 0 }
+        modifiedAt: { type: string, format: date-time }
+        disposition: { enum: [candidate, excluded, hidden, unsupported, binary, too_large, access_denied, symlink, aggregate_limit, missing] }
+        reason: { type: string, minLength: 1 }
+        metadataFingerprint: { type: string, pattern: '^[a-f0-9]{64}$' }
+        change: { enum: [added, changed, unchanged, missing, excluded] }
+    FolderSourceDiscovery:
+      type: object
+      additionalProperties: false
+      required: [rootPath, includePatterns, excludePatterns, maxFileBytes, maxTotalBytes, symlinkPolicy, manifestPath, inventory]
+      properties:
+        rootPath: { type: string, minLength: 1 }
+        libraryId: { type: string, format: uuid }
+        includePatterns: { type: array, minItems: 1, items: { type: string, minLength: 1 } }
+        excludePatterns: { type: array, items: { type: string, minLength: 1 } }
+        maxFileBytes: { type: integer, minimum: 1 }
+        maxTotalBytes: { type: integer, minimum: 1 }
+        symlinkPolicy: { type: string, const: no_follow }
+        manifestPath: { type: string, minLength: 1 }
+        inventory: { type: array, items: { $ref: '#/components/schemas/FolderInventoryItem' } }
+    FolderRefreshDiscovery:
+      type: object
+      additionalProperties: false
+      required: [manifestPath, inventory]
+      properties:
+        manifestPath: { type: string, minLength: 1 }
+        inventory: { type: array, items: { $ref: '#/components/schemas/FolderInventoryItem' } }
+    FolderIngestionEvent:
+      type: object
+      additionalProperties: false
+      required: [relativePath, outcome]
+      properties:
+        relativePath: { type: string, minLength: 1 }
+        outcome: { enum: [imported, updated, duplicate, excluded, changed, failed, skipped, missing] }
+        appliedSha256: { type: string, pattern: '^[a-f0-9]{64}$' }
+        contentId: { type: string, format: uuid }
+        archiveManifestPath: { type: string, minLength: 1 }
+        errorCode: { type: string, pattern: '^[A-Z0-9_]{2,80}$' }
+        recoveryAction: { type: string, minLength: 1 }
+    FolderRemoval:
+      type: object
+      additionalProperties: false
+      required: [retention]
+      properties:
+        retention: { enum: [keep, delete] }
+    FolderRemovalComplete:
+      allOf:
+        - { $ref: '#/components/schemas/FolderRemoval' }
+        - type: object
+          required: [deletedContentIds, archivesRemoved, failures]
+          properties:
+            deletedContentIds: { type: array, items: { type: string, format: uuid } }
+            archivesRemoved: { type: integer, minimum: 0 }
+            failures:
+              type: array
+              items:
+                type: object
+                required: [path, errorCode]
+                properties:
+                  path: { type: string }
+                  errorCode: { type: string }
     SuccessEnvelope:
       type: object
       required: [success, data]
@@ -831,6 +1315,43 @@ components:
           type: array
           items: { type: string }
           uniqueItems: true
+    OrganizationProposalRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        useModel: { type: boolean, default: false }
+        limit: { type: integer, minimum: 1, maximum: 50, default: 50 }
+    OrganizationDecision:
+      type: object
+      additionalProperties: false
+      required: [suggestionId, decision]
+      properties:
+        suggestionId: { type: string, pattern: '^s-[a-f0-9]{16}$' }
+        decision: { enum: [accept, reject] }
+    OrganizationApplyRequest:
+      type: object
+      additionalProperties: false
+      required: [decisions]
+      properties:
+        decisions:
+          type: array
+          maxItems: 30
+          items: { $ref: '#/components/schemas/OrganizationDecision' }
+    RecallTutorialCreateRequest:
+      type: object
+      additionalProperties: false
+      required: [writeClient, recallClient]
+      properties:
+        writeClient: { $ref: '#/components/schemas/RecallTutorialClient' }
+        recallClient: { $ref: '#/components/schemas/RecallTutorialClient' }
+        environment: { enum: [native, wsl], default: native }
+    RecallTutorialClient:
+      enum: [codex, chatgpt-desktop, chatgpt-work, chatgpt-web, claude-code, claude-desktop, claude-cowork, cursor, cli]
+    RecallTutorialCheckRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        reportedFailure: { enum: [runtime, wiring, access, indexing, retrieval] }
     TagInput:
       type: object
       additionalProperties: false

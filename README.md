@@ -75,18 +75,66 @@ To stop the stack without deleting memory:
 docker compose down
 ```
 
-## Install from npm
+## Install from a verified release
 
-The release installer will be published as `@answer-engine/create` after the
-local release candidate is verified:
+### One-prompt guided install
 
-```bash
-npx @answer-engine/create@1.1.0
+<!-- INSTALL_PROMPT:START -->
+```text
+Install Answer Engine stable 1.1.0 on this computer. Follow only the immutable
+v1.1.0 instructions at:
+https://raw.githubusercontent.com/the-answerai/answer-engine/v1.1.0/INSTALL_AGENT.md
+
+First explain that bootstrap preflight is read-only and ask permission to run
+the matching Apple Silicon Bash or Windows 11 PowerShell command in the
+"Verified bootstrap commands" section. Download only the exact v1.1.0 asset,
+verify its SHA-256 entry before execution, and run it first with --preflight.
+
+Translate every pass, warning, or unsupported result into plain language. Never
+silently install Docker Desktop, WSL2, LM Studio, drivers, a model runtime, or
+another privileged prerequisite. The only supported automatic dependency is
+the displayed official Node.js 22.16.0 user-scoped archive, and it still
+requires my explicit approval. Recommend full-local only for supported hardware,
+reduced-local for constrained Apple Silicon, or cloud-backed only after explicit
+opt-in. Ask me in one short interview for the install folder, model route, every
+agent client surface I use, and whether Cowork sessions are local or remote.
+Never ask me to paste a secret into chat.
+
+After readiness passes, show the exact source, version, checksum, destination,
+and command for every proposed change, then ask for one confirmation. Run the
+same verified bootstrap without --preflight; it installs the versioned installer
+and CLI assets without npm. Verify the release manifest, provenance, every
+downloaded artifact, and the content-addressed runtime image digest before any
+Answer Engine mutation. Cancel without changing Answer Engine files if I decline.
+Use the stable channel, preserve existing data and unrelated client configuration,
+and retry safely if setup is partial. Never print or request the local API key.
+
+Finish only when health, the local UI, the direct memory round trip, and a real
+Answer Engine recall in every selected supported client pass. Explain that
+ChatGPT web/Work and remote Cowork cannot connect directly to localhost; do not
+claim or create a remote relay. Report no-op, repair, removal, and rollback paths
+clearly. History import, folder ingestion, organization mutation, and the
+cross-chat tutorial remain separate consented handoffs.
 ```
+<!-- INSTALL_PROMPT:END -->
 
-For an agent-led installation, use [INSTALL_AGENT.md](./INSTALL_AGENT.md). The
+The installer and CLI are versioned GitHub Release assets; onboarding does not
+depend on an npm publication. Start with the checksum-first Bash or PowerShell
+command in [INSTALL_AGENT.md](./INSTALL_AGENT.md). Release contents,
+dependency consent, and manual fallbacks are documented in
+[Immutable installer releases](./docs/installer-release.md). The
 installer is idempotent and keeps its editable configuration under `AE_HOME`
-(default `~/.answer-engine`).
+(default `~/.answer-engine`). It records completion only after managed client
+integration and real recall verification pass, allowing interrupted healthy installs to
+resume instead of being reported as complete.
+
+Installer and CLI operations accept explicit `stable` and `staging` channels.
+See [client integrations](docs/client-integrations.md) for the maintained
+capability matrix, managed paths, verification rules, and reversible removal.
+Their homes, credentials, ports, Compose projects, volumes, logs, archives, and
+sync services are isolated; staging history sync is disabled by default. See
+[Local runtime channels](./docs/local-runtime-channels.md) for lifecycle
+commands and the non-destructive existing-install migration.
 
 Background history sync stores immutable, content-addressed source evidence
 under `AE_HOME/raw-archive`. It reuses identical bundles and fails closed before
@@ -98,6 +146,23 @@ explicitly listed in session metadata; it does not recursively copy a workspace.
 Use `ae sync archive plan` for a tenant-aware, non-destructive retention preview.
 Pruning requires a stopped sync service and the exact confirmation token emitted
 by an unchanged plan.
+
+The **Organize** workspace and `ae organize` commands produce an evidence-backed
+preview before changing tags, assignments, or libraries. The default analyzer
+is deterministic and local. Model-assisted proposals are explicit opt-ins and
+send at most 50 IDs, titles, 500-character summaries, source/type fields, and
+existing tag names—never full content or raw archives. Every suggestion needs
+an accept or reject decision; apply refuses a stale snapshot and records an
+audit trail. Undo removes only organization state introduced by that plan and
+never deletes imported content. An undone plan can be reviewed and applied
+again without duplicating tags, libraries, or memberships.
+
+The **First memory** workspace and `ae tutorial` commands generate a harmless,
+distinctive fact for a same-client or cross-client proof. The second prompt
+contains only an opaque marker, never the answer. Completion requires server
+audit evidence that the selected, client-identified MCP/CLI integration remembered the exact fact,
+recalled its content ID from a fresh chat, and inspected that record's source.
+Unsupported localhost/client combinations fail before the challenge starts.
 
 ## API
 
@@ -115,6 +180,15 @@ Core routes:
 |---|---|
 | `GET /health` | Local health check |
 | `POST /api/v1/content/import` | Import or update content idempotently |
+| `GET/POST /api/v1/first-imports` | Register and inspect consent-first agent-history imports |
+| `POST /api/v1/first-imports/:id/approve` | Approve any subset of discovered sources before content is read |
+| `GET/POST /api/v1/folder-sources` | Preview and inspect explicitly selected local folders |
+| `POST /api/v1/folder-sources/runs/:id/approve` | Approve one exact bounded folder inventory before full-file reads |
+| `GET/POST /api/v1/organization-plans` | List or create non-mutating evidence-backed organization proposals |
+| `POST /api/v1/organization-plans/:id/apply` | Apply a complete set of individual accept/reject decisions |
+| `POST /api/v1/organization-plans/:id/undo` | Restore organization state introduced by one applied plan |
+| `GET/POST /api/v1/recall-tutorials` | Preflight and run an audited first-memory proof |
+| `POST /api/v1/recall-tutorials/:id/check` | Verify ordered remember, recall, and source-inspection evidence |
 | `GET /api/v1/content` | Browse, filter, sort, and cursor-paginate stored content |
 | `GET /api/v1/content/:id/lineage` | Inspect origin and artifact history |
 | `POST /api/v1/agent/query` | Full-text, semantic, or hybrid search |
@@ -164,6 +238,34 @@ contract.
 | `@answer-engine/mcp-server` | MCP tools backed by the local API |
 | `@answer-engine/create` | Local installer and client wiring |
 | `@answer-engine/web-ui` | Standalone local interface plus non-published composition library |
+| `@answer-engine/desktop` | Private Electron launcher and guarded local runtime controls |
+
+The desktop package keeps the installed runtime independent from its windows
+and exposes explicit stable/staging health, lifecycle, logs, and verified
+release controls. See [Desktop launcher releases](./docs/desktop-release.md) for
+its security model, packaging, signing, checksum, and cleanup workflow.
+
+## First agent-history import
+
+After installer wiring succeeds, run `ae sync first-import` in the stable
+channel, open `/import`, review the discovered Claude Code, Codex, and Cowork
+paths/counts/sizes/exclusions, and approve any subset. The command waits for
+approval, preserves unrelated `config.yaml` source settings, verifies each
+complete history bundle still matches the approved metadata fingerprint,
+imports one source-backed history at a time, and reconciles imported,
+duplicate, failed, and skipped outcomes. Resume an interruption with
+`ae sync first-import --resume <session-id>`. See
+[First agent-history import](./docs/first-agent-history-import.md).
+
+## Local-folder ingestion
+
+Run `ae folders add <exact-folder-path>`, then open `/import` and select
+**Local folder**. Review the root, patterns, limits, types, exclusions, symlink
+reports, and estimated work before approval. Apply-time restats prevent changed
+or new files from being read under stale consent; approved snapshots retain
+SHA-256 lineage. Use `ae folders resume --source <id>`, `ae folders refresh
+--source <id>`, or `ae folders remove <id> --retention keep|delete`. Direct
+`local_dir` sync is fail-closed. See [Permissioned local-folder ingestion](./docs/local-folder-ingestion.md).
 
 ## Development
 
@@ -197,7 +299,8 @@ enterprise-composition execution record for the final product-parity run is in
 
 The immutable fresh database baseline lives in
 [`database/migrations/001_local_core.sql`](./database/migrations/001_local_core.sql),
-with the neutral application foundation in the paired `002` up/down migrations.
+with the neutral application foundation in the paired `002` up/down migrations
+and the reusable first-import lifecycle in the paired `003` migrations.
 Use `pnpm db:migrate` to apply pending migrations and `pnpm db:rollback` to roll
 back the latest migration.
 Set `EMBEDDING_DIMENSION` before the first migration. Changing it later requires

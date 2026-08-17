@@ -9,10 +9,14 @@ export const RAW_ARCHIVE_MANIFEST_VERSION = 1 as const;
 
 const NonEmptyStringSchema = z.string().trim().min(1);
 const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/i, 'must be a SHA-256 hex digest');
+const ArchivePathSchema = z.string().regex(
+  /^files\/[a-zA-Z0-9._-]+$/,
+  'must remain inside the archive files directory',
+);
 
 export const RawFileManifestEntrySchema = z.object({
   path: NonEmptyStringSchema,
-  archive_path: NonEmptyStringSchema,
+  archive_path: ArchivePathSchema,
   size: z.number().int().nonnegative(),
   mtime: z.string().datetime(),
   sha256: Sha256Schema,
@@ -25,6 +29,7 @@ export const RawArchiveManifestSchema = z.object({
   created_at: z.string().datetime(),
   adapter_name: NonEmptyStringSchema,
   adapter_version: NonEmptyStringSchema,
+  source_fingerprint: Sha256Schema.optional(),
   files: z.array(RawFileManifestEntrySchema),
 }).strict();
 
@@ -281,8 +286,10 @@ async function validateExistingArchive(
 ): Promise<WriteRawArchiveResult> {
   const manifestPath = join(archiveDir, 'manifest.json');
   const manifest = RawArchiveManifestSchema.parse(JSON.parse(await readFile(manifestPath, 'utf8')));
+  const fingerprint = bundleFingerprint(snapshots, adapterName, adapterVersion);
   if (manifest.adapter_name !== adapterName || manifest.adapter_version !== adapterVersion
-    || manifest.files.length !== snapshots.length) {
+    || manifest.files.length !== snapshots.length
+    || (manifest.source_fingerprint !== undefined && manifest.source_fingerprint !== fingerprint)) {
     throw new Error(`Content-addressed raw archive does not match requested bundle: ${archiveDir}`);
   }
   for (const [index, source] of snapshots.entries()) {
@@ -571,6 +578,7 @@ export async function writeRawArchive(
           created_at: adapter.created_at,
           adapter_name: adapter.adapter_name,
           adapter_version: adapter.adapter_version,
+          source_fingerprint: fingerprint,
           files,
         });
         await writeFile(join(stagingDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, {

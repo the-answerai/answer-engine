@@ -30,6 +30,21 @@ import {
   SUPPORTED_SYNC_SOURCES,
   type SourceType,
 } from '../sync/types.js';
+import { loadUserConfig, UserConfigError } from '../user-config.js';
+import { assertHistorySyncAllowed, HistorySyncPolicyError } from '../sync/channel-policy.js';
+import { resolveRuntimeChannel } from '../channel.js';
+import { configYamlPath } from '../home.js';
+import {
+  assertFirstImportManifestMatchesSession,
+  mergeApprovedHistorySources,
+  firstImportItemMatchesDiscovery,
+  registerFirstImportDiscovery,
+} from '../sync/first-import.js';
+import type {
+  AnswerEngineClient,
+  FirstImportEventRequest,
+  FirstImportSession,
+} from '../api-client.js';
 import {
   applyRawArchiveRetention,
   DEFAULT_RAW_ARCHIVE_MAX_TOTAL_BYTES,
@@ -37,7 +52,6 @@ import {
   planRawArchiveRetention,
   type RawArchiveRetentionPlan,
 } from '../sync/raw-archive.js';
-import { UserConfigError } from '../user-config.js';
 
 const DEFAULT_SYNC_BATCH_SIZE = 25;
 const DEFAULT_POLL_INTERVAL_SECONDS = 15;
@@ -50,6 +64,14 @@ interface SyncCommandOptions {
   concurrency: string;
   pollInterval: string;
   cursorFile?: string;
+  confirmStagingHistorySync?: boolean;
+}
+
+interface FirstImportCommandOptions {
+  resume?: string;
+  batchSize: string;
+  cursorFile?: string;
+  confirmStagingHistorySync?: boolean;
 }
 interface ArchiveCommandOptions { targetBytes: string; confirm?: string; }
 
@@ -58,6 +80,11 @@ class UserInputError extends Error {
     super(message);
     this.name = 'UserInputError';
   }
+}
+
+function assertCommandHistorySync(confirmed: boolean): void {
+  const policy = resolveRuntimeChannel() === 'staging' ? loadUserConfig().history_sync : undefined;
+  assertHistorySyncAllowed(policy, confirmed);
 }
 
 function collectPath(value: string, previous: string[] = []): string[] {
@@ -114,17 +141,193 @@ function printLoopSummary(summary: SyncRunSummary): void {
   );
 }
 
+function waitForNextApprovalCheck(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 1_000));
+}
+
+async function waitForFirstImportApproval(
+  client: Pick<AnswerEngineClient, 'getFirstImport'>,
+  initial: FirstImportSession,
+): Promise<FirstImportSession> {
+  let session = initial;
+  while (session.status === 'discovered') {
+    await waitForNextApprovalCheck();
+    session = (await client.getFirstImport(session.id)).data;
+  }
+  return session;
+}
+
+function recoveryAction(sessionId: string): string {
+  return `Open /import, choose Retry, then run ae sync first-import --resume ${sessionId}`;
+}
+
+async function recordSafeFailure(
+  client: Pick<AnswerEngineClient, 'recordFirstImportEvent'>,
+  sessionId: string,
+  item: FirstImportSession['items'][number],
+  errorCode: string,
+  action: string = recoveryAction(sessionId),
+): Promise<void> {
+  await client.recordFirstImportEvent(sessionId, {
+    sourceId: item.sourceId,
+    fingerprint: item.fingerprint,
+    outcome: 'failed',
+    errorCode,
+    recoveryAction: action,
+  });
+}
+
+async function runFirstImportItem(
+  client: AnswerEngineClient,
+  sessionId: string,
+  item: FirstImportSession['items'][number],
+  options: Pick<FirstImportCommandOptions, 'batchSize' | 'cursorFile'>,
+): Promise<void> {
+  let summary: SyncRunSummary;
+  try {
+    if (!await firstImportItemMatchesDiscovery(item)) {
+      await recordSafeFailure(
+        client,
+        sessionId,
+        item,
+        'SOURCE_CHANGED_SINCE_APPROVAL',
+        'Run ae sync first-import to review and approve a fresh source inventory.',
+      );
+      return;
+    }
+    summary = await runSyncOnce({
+      sourceId: item.sourceId,
+      paths: [item.sourcePath],
+      cursorFile: options.cursorFile,
+      batchSize: parseBatchSize(options.batchSize),
+      concurrency: 1,
+      client,
+      onWarning: () => undefined,
+      inventoryOnly: true,
+    });
+  } catch {
+    await recordSafeFailure(client, sessionId, item, 'SOURCE_READ_FAILED');
+    return;
+  }
+  let event: FirstImportEventRequest;
+  if (summary.filesScanned === 0) {
+    event = {
+      sourceId: item.sourceId, fingerprint: item.fingerprint, outcome: 'failed',
+      errorCode: 'SOURCE_UNAVAILABLE', recoveryAction: recoveryAction(sessionId),
+    };
+  } else if (summary.failedItems > 0 || summary.parseErrors > 0) {
+    event = {
+      sourceId: item.sourceId, fingerprint: item.fingerprint, outcome: 'failed',
+      errorCode: summary.failedItems > 0 ? 'IMPORT_REJECTED' : 'SOURCE_PARSE_FAILED',
+      recoveryAction: recoveryAction(sessionId),
+    };
+  } else if (summary.turnsImported > 0) {
+    const [archiveManifestPath] = summary.archiveManifestPaths;
+    if (!archiveManifestPath || summary.contentIds.length === 0) {
+      event = {
+        sourceId: item.sourceId, fingerprint: item.fingerprint, outcome: 'failed',
+        errorCode: 'ARCHIVE_INTEGRITY_FAILED', recoveryAction: recoveryAction(sessionId),
+      };
+    } else {
+      event = {
+        sourceId: item.sourceId, fingerprint: item.fingerprint, outcome: 'imported',
+        contentIds: summary.contentIds, archiveManifestPath,
+      };
+    }
+  } else if (summary.duplicateItems > 0) {
+    event = { sourceId: item.sourceId, fingerprint: item.fingerprint, outcome: 'duplicate' };
+  } else {
+    event = { sourceId: item.sourceId, fingerprint: item.fingerprint, outcome: 'skipped' };
+  }
+  await client.recordFirstImportEvent(sessionId, event);
+}
+
+async function runFirstImportCommand(opts: FirstImportCommandOptions): Promise<void> {
+  try {
+    assertCommandHistorySync(opts.confirmStagingHistorySync ?? false);
+    const client = createClient();
+    let session = opts.resume
+      ? (await client.getFirstImport(opts.resume)).data
+      : await registerFirstImportDiscovery(client);
+    try {
+      assertFirstImportManifestMatchesSession(session);
+    } catch {
+      throw new UserInputError(
+        'The local first-import discovery manifest is missing or does not match this session. Run ae sync first-import to create and approve a fresh inventory.',
+      );
+    }
+    printHeader('First agent-history import');
+    if (session.status === 'discovered'
+      && !session.sources.some((source) => source.availability === 'available')) {
+      printJson({ data: session });
+      throw new UserInputError('No supported agent history is currently available. Review source status on /import, then retry discovery.');
+    }
+    if (session.status === 'discovered') {
+      printJson({ data: {
+        sessionId: session.id,
+        status: session.status,
+        approveAt: '/import',
+        message: 'Review source paths and exclusions in Answer Engine, then approve the sources to import.',
+      } });
+      session = await waitForFirstImportApproval(client, session);
+    }
+    if (session.status === 'canceled' || session.status === 'completed') {
+      printJson({ data: session });
+      return;
+    }
+    if (session.status === 'failed') {
+      throw new UserInputError(recoveryAction(session.id));
+    }
+    if (!session.approvedAt || session.selectedSourceIds.length === 0) {
+      throw new UserInputError('First import has not been approved. Open /import and select at least one source.');
+    }
+    mergeApprovedHistorySources(configYamlPath(), session.selectedSourceIds);
+    if (session.status === 'approved') session = (await client.startFirstImport(session.id)).data;
+    for (const item of session.items.filter((candidate) => (
+      candidate.outcome === 'pending' && session.selectedSourceIds.includes(candidate.sourceId)
+    ))) {
+      const latest = (await client.getFirstImport(session.id)).data;
+      if (latest.status === 'cancel_requested') {
+        await client.recordFirstImportEvent(session.id, {
+          sourceId: item.sourceId, fingerprint: item.fingerprint, outcome: 'skipped',
+        });
+        continue;
+      }
+      await runFirstImportItem(client, session.id, item, opts);
+    }
+    session = (await client.completeFirstImport(session.id)).data;
+    printJson({ data: session });
+    if (session.status === 'failed') process.exitCode = 1;
+    else printSuccess(`First import reconciled ${session.counts.discovered} discovered histories`);
+  } catch (error) {
+    if (error instanceof UserInputError || error instanceof UserConfigError || error instanceof HistorySyncPolicyError) {
+      printError(error.message);
+      process.exitCode = 1;
+      return;
+    }
+    handleApiError(error);
+  }
+}
+
 function resolveCommandSources(opts: SyncCommandOptions): ConfiguredSyncSource[] {
   const hasExplicitPaths = opts.path !== undefined && opts.path.length > 0;
   if (opts.source !== undefined || hasExplicitPaths) {
+    const sourceId = parseSource(opts.source ?? 'claude-code');
+    if (sourceId === 'local_dir') {
+      throw new UserInputError('Direct local_dir sync is disabled. Use ae folders add <root> so the inventory is approved before content is read.');
+    }
     return [{
-      sourceId: parseSource(opts.source ?? 'claude-code'),
+      sourceId,
       ...(hasExplicitPaths ? { paths: opts.path } : {}),
       ...(opts.library ? { librarySlug: opts.library } : {}),
     }];
   }
 
-  return resolveSyncSourcesFromConfig().map((source) => ({
+  const configured = resolveSyncSourcesFromConfig();
+  if (configured.some((source) => source.sourceId === 'local_dir')) {
+    throw new UserInputError('Configured local_dir sync requires migration to ae folders add <root>; implicit folder reads are disabled.');
+  }
+  return configured.map((source) => ({
     ...source,
     ...(opts.library ? { librarySlug: opts.library } : {}),
   }));
@@ -132,6 +335,7 @@ function resolveCommandSources(opts: SyncCommandOptions): ConfiguredSyncSource[]
 
 async function runOnceCommand(opts: SyncCommandOptions): Promise<void> {
   try {
+    assertCommandHistorySync(opts.confirmStagingHistorySync ?? false);
     const sources = resolveCommandSources(opts);
     const batchSize = parseBatchSize(opts.batchSize);
     const concurrency = parseConcurrency(opts.concurrency);
@@ -150,7 +354,7 @@ async function runOnceCommand(opts: SyncCommandOptions): Promise<void> {
     }
     if (failedItems > 0) process.exitCode = 1;
   } catch (error) {
-    if (error instanceof UserInputError || error instanceof UserConfigError) {
+    if (error instanceof UserInputError || error instanceof UserConfigError || error instanceof HistorySyncPolicyError) {
       printError(error.message);
       process.exit(1);
     }
@@ -160,6 +364,7 @@ async function runOnceCommand(opts: SyncCommandOptions): Promise<void> {
 
 async function runDaemonCommand(opts: SyncCommandOptions): Promise<void> {
   try {
+    assertCommandHistorySync(opts.confirmStagingHistorySync ?? false);
     const sources = resolveCommandSources(opts);
     const batchSize = parseBatchSize(opts.batchSize);
     const concurrency = parseConcurrency(opts.concurrency);
@@ -189,7 +394,7 @@ async function runDaemonCommand(opts: SyncCommandOptions): Promise<void> {
       onRun: printLoopSummary,
     });
   } catch (error) {
-    if (error instanceof UserInputError || error instanceof UserConfigError) {
+    if (error instanceof UserInputError || error instanceof UserConfigError || error instanceof HistorySyncPolicyError) {
       printError(error.message);
       process.exit(1);
     }
@@ -265,8 +470,9 @@ async function runStatusCommand(opts: Pick<SyncCommandOptions, 'cursorFile' | 's
   }
 }
 
-function runInstallServiceCommand(): void {
+function runInstallServiceCommand(opts: Pick<SyncCommandOptions, 'confirmStagingHistorySync'>): void {
   try {
+    assertCommandHistorySync(opts.confirmStagingHistorySync ?? false);
     const target = installService();
     printSuccess(`Installed Answer Engine sync service at ${target.unitPath}`);
     printJson({
@@ -277,7 +483,7 @@ function runInstallServiceCommand(): void {
       },
     });
   } catch (error) {
-    if (error instanceof ServicePlatformError || error instanceof ServiceCommandError) {
+    if (error instanceof ServicePlatformError || error instanceof ServiceCommandError || error instanceof UserConfigError || error instanceof HistorySyncPolicyError) {
       printError(error.message);
       process.exit(1);
     }
@@ -362,7 +568,8 @@ function addSyncOptions(command: Command, includePolling: boolean): Command {
     .option('--library <slug>', 'Library slug to attach imported items to')
     .option('--batch-size <n>', `Items per synchronous import request (max ${SYNC_IMPORT_MAX_BATCH_SIZE})`, String(DEFAULT_SYNC_BATCH_SIZE))
     .option('--concurrency <n>', `Concurrent history files to import (max ${SYNC_IMPORT_MAX_CONCURRENCY})`, String(DEFAULT_SYNC_CONCURRENCY))
-    .option('--cursor-file <path>', 'Cursor JSON file override');
+    .option('--cursor-file <path>', 'Cursor JSON file override')
+    .option('--confirm-staging-history-sync', 'Confirm access to real local history from staging');
   if (includePolling) {
     command.option('--poll-interval <seconds>', 'Seconds between daemon scans', String(DEFAULT_POLL_INTERVAL_SECONDS));
   }
@@ -373,6 +580,15 @@ export function registerSyncCommands(program: Command): void {
   const sync = program
     .command('sync')
     .description('Continuously capture configured local sources into Answer Engine');
+
+  sync
+    .command('first-import')
+    .description('Discover, approve, resumably import, and reconcile supported agent history')
+    .option('--resume <session-id>', 'Resume an approved or interrupted first-import session')
+    .option('--batch-size <n>', `Items per synchronous import request (max ${SYNC_IMPORT_MAX_BATCH_SIZE})`, String(DEFAULT_SYNC_BATCH_SIZE))
+    .option('--cursor-file <path>', 'Cursor JSON file override')
+    .option('--confirm-staging-history-sync', 'Confirm access to real local history from staging')
+    .action((opts: FirstImportCommandOptions) => runFirstImportCommand(opts));
 
   addSyncOptions(
     sync
@@ -391,7 +607,8 @@ export function registerSyncCommands(program: Command): void {
   sync
     .command('install-service')
     .description('Install and start the per-user sync background service')
-    .action(runInstallServiceCommand);
+    .option('--confirm-staging-history-sync', 'Confirm access to real local history from staging')
+    .action((opts: Pick<SyncCommandOptions, 'confirmStagingHistorySync'>) => runInstallServiceCommand(opts));
 
   sync
     .command('uninstall-service')

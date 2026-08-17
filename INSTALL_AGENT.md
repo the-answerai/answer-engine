@@ -8,7 +8,48 @@ of the user's own data. Do not stop after scaffolding or after the synthetic
 installer check.
 
 Stable source:
-<https://raw.githubusercontent.com/the-answerai/answer-engine/master/INSTALL_AGENT.md>
+<https://raw.githubusercontent.com/the-answerai/answer-engine/v1.1.0/INSTALL_AGENT.md>
+
+## Copy and paste this one prompt
+
+<!-- INSTALL_PROMPT:START -->
+```text
+Install Answer Engine stable 1.1.0 on this computer. Follow only the immutable
+v1.1.0 instructions at:
+https://raw.githubusercontent.com/the-answerai/answer-engine/v1.1.0/INSTALL_AGENT.md
+
+First explain that bootstrap preflight is read-only and ask permission to run
+the matching Apple Silicon Bash or Windows 11 PowerShell command in the
+"Verified bootstrap commands" section. Download only the exact v1.1.0 asset,
+verify its SHA-256 entry before execution, and run it first with --preflight.
+
+Translate every pass, warning, or unsupported result into plain language. Never
+silently install Docker Desktop, WSL2, LM Studio, drivers, a model runtime, or
+another privileged prerequisite. The only supported automatic dependency is
+the displayed official Node.js 22.16.0 user-scoped archive, and it still
+requires my explicit approval. Recommend full-local only for supported hardware,
+reduced-local for constrained Apple Silicon, or cloud-backed only after explicit
+opt-in. Ask me in one short interview for the install folder, model route, every
+agent client surface I use, and whether Cowork sessions are local or remote.
+Never ask me to paste a secret into chat.
+
+After readiness passes, show the exact source, version, checksum, destination,
+and command for every proposed change, then ask for one confirmation. Run the
+same verified bootstrap without --preflight; it installs the versioned installer
+and CLI assets without npm. Verify the release manifest, provenance, every
+downloaded artifact, and the content-addressed runtime image digest before any
+Answer Engine mutation. Cancel without changing Answer Engine files if I decline.
+Use the stable channel, preserve existing data and unrelated client configuration,
+and retry safely if setup is partial. Never print or request the local API key.
+
+Finish only when health, the local UI, the direct memory round trip, and a real
+Answer Engine recall in every selected supported client pass. Explain that
+ChatGPT web/Work and remote Cowork cannot connect directly to localhost; do not
+claim or create a remote relay. Report no-op, repair, removal, and rollback paths
+clearly. History import, folder ingestion, organization mutation, and the
+cross-chat tutorial remain separate consented handoffs.
+```
+<!-- INSTALL_PROMPT:END -->
 
 ## Completion criteria
 
@@ -16,7 +57,8 @@ Setup is complete only when:
 
 1. `http://127.0.0.1:5050/health` returns healthy.
 2. `http://127.0.0.1:5050` opens ready to use without API-key entry.
-3. Every selected local agent client is wired to the MCP server.
+3. Every selected supported client has its skill/plugin and tool configuration,
+   and completes its automated or guided real recall check.
 4. `$AE_HOME/config.yaml` validates.
 5. At least one selected history or document source has been imported.
 6. A full-text recall returns one of those real records and its lineage endpoint
@@ -35,16 +77,63 @@ it does not replace the user's-data check in steps 5 and 6.
   values when merging source entries.
 - Never use `--uninstall --purge` without explicit confirmation because it
   deletes the local database and Answer Engine home.
+- This runbook installs `stable`. Never point staging at `$AE_HOME`; staging
+  defaults to `~/.answer-engine-staging` and must use `--clients none`.
 
 ## 1. Check prerequisites
 
-Run:
+### Verified bootstrap commands
+
+Ask before downloading into a temporary folder and running the read-only
+preflight. On Apple Silicon macOS, use:
 
 ```bash
-node --version
-docker version
-docker compose version
-docker info
+AE_RELEASE_URL=https://github.com/the-answerai/answer-engine/releases/download/v1.1.0
+AE_BOOTSTRAP=answer-engine-bootstrap-v1.1.0.sh
+AE_EXPECTED=c1e65b8943709ede0109b2af566f72fd3b97d311261f44df6e64cf136db304bb
+AE_STAGE="$(mktemp -d)"
+trap 'rm -rf "$AE_STAGE"' EXIT HUP INT TERM
+curl --fail --location --proto '=https' --tlsv1.2 "$AE_RELEASE_URL/SHA256SUMS" -o "$AE_STAGE/SHA256SUMS"
+curl --fail --location --proto '=https' --tlsv1.2 "$AE_RELEASE_URL/$AE_BOOTSTRAP" -o "$AE_STAGE/$AE_BOOTSTRAP"
+AE_LISTED="$(awk -v name="$AE_BOOTSTRAP" '$2 == name { print $1 }' "$AE_STAGE/SHA256SUMS")"
+test "$AE_LISTED" = "$AE_EXPECTED"
+printf '%s  %s\n' "$AE_EXPECTED" "$AE_STAGE/$AE_BOOTSTRAP" | shasum -a 256 -c -
+bash "$AE_STAGE/$AE_BOOTSTRAP" --preflight
+```
+
+On Windows 11 x64 in PowerShell, use:
+
+```powershell
+$ReleaseUrl = 'https://github.com/the-answerai/answer-engine/releases/download/v1.1.0'
+$Bootstrap = 'answer-engine-bootstrap-v1.1.0.ps1'
+$Expected = '8adf1b0720b40354ef660c669824c79d197d49671fb61d161f3d40b7b6ada519'
+$Stage = Join-Path ([IO.Path]::GetTempPath()) ('answer-engine-' + [Guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory $Stage | Out-Null
+try {
+  Invoke-WebRequest "$ReleaseUrl/SHA256SUMS" -OutFile "$Stage/SHA256SUMS"
+  Invoke-WebRequest "$ReleaseUrl/$Bootstrap" -OutFile "$Stage/$Bootstrap"
+  $Line = Get-Content "$Stage/SHA256SUMS" | Where-Object { $_ -match "^[a-f0-9]{64}\s+\*?$([regex]::Escape($Bootstrap))$" } | Select-Object -First 1
+  if (-not $Line -or ($Line -split '\s+')[0] -ne $Expected) { throw 'Release checksum does not match the pinned bootstrap checksum.' }
+  $Actual = (Get-FileHash -Algorithm SHA256 "$Stage/$Bootstrap").Hash.ToLowerInvariant()
+  if ($Actual -ne $Expected) { throw 'Bootstrap checksum mismatch; refusing execution.' }
+  & "$Stage/$Bootstrap" --preflight
+} finally {
+  Remove-Item -LiteralPath $Stage -Recurse -Force -ErrorAction SilentlyContinue
+}
+```
+
+Both commands use the exact `v1.1.0` GitHub Release path and verify the
+bootstrap before execution. After readiness and dependency consent, rerun the
+same checksum-first command without `--preflight`; add `--approve-node` only after
+the user approves the displayed official Node source, version, checksum,
+destination, and command. Do not substitute `/latest`, a branch URL, or an
+unverified local copy.
+
+The installed launcher provides the read-only structured check:
+
+```bash
+create-answer-engine preflight --json --channel stable
+# Use --json when the agent will interpret the result.
 ```
 
 Answer Engine requires Node.js 22.16 or newer, Docker, and Compose v2. Docker
@@ -63,17 +152,19 @@ Anthropic chat with OpenAI embeddings are also supported.
 
 ## 2. Interview the user
 
-Ask these questions in one concise batch and wait for the answers:
+The installer asks for setup and issue-#43 client choices in one concise interview. If an
+agent is driving it, ask these questions in one batch and wait for the answers:
 
 1. Use the default `~/.answer-engine`, or another local home?
 2. Use LM Studio, OpenAI, or Anthropic? Collect exact model IDs. For LM Studio,
    also collect the embedding width. Have the user enter keys locally.
-3. Which clients should be wired: Claude Code, Codex, Cursor, or Claude Desktop?
-4. Which histories should be imported: Claude Code, Codex, and/or Cowork?
-5. Which local document directories should be imported? Ask for include/exclude
-   globs and whether a deleted file should leave its memory in place (default)
-   or forget it.
-6. Run one sync now only, or also install the per-user background sync service?
+3. Which client surfaces are used: Codex, ChatGPT Desktop Codex, hosted ChatGPT
+   Chat/Work or web, Claude Code, Claude Desktop, Claude Cowork, or a
+   Cursor-style JSON MCP adapter? For Cowork, are sessions local or remote?
+
+The installer performs supported client wiring and verification. History import,
+document ingestion, organization mutation, and the cross-chat tutorial remain
+separate downstream steps; do not silently perform them here.
 
 Default history discovery:
 
@@ -93,17 +184,19 @@ export AE_HOME="${AE_HOME:-$HOME/.answer-engine}"
 LM Studio example, using IDs returned by `/v1/models`:
 
 ```bash
-npx @answer-engine/create@1.1.0 --yes \
+create-answer-engine --yes \
+  --channel stable \
   --home "$AE_HOME" \
   --models chat=<loaded-chat-id>,embedding=<loaded-embedding-id> \
   --embedding-dimension <actual-width> \
-  --agents claude-code,codex
+  --clients claude-code,codex
 ```
 
 OpenAI example (the user enters the key in the local shell):
 
 ```bash
-npx @answer-engine/create@1.1.0 --yes \
+create-answer-engine --yes \
+  --channel stable \
   --home "$AE_HOME" \
   --llm-provider openai \
   --llm-key "$OPENAI_API_KEY" \
@@ -111,13 +204,14 @@ npx @answer-engine/create@1.1.0 --yes \
   --embedding-provider openai \
   --embedding-key "$OPENAI_API_KEY" \
   --embedding-model text-embedding-3-small \
-  --agents claude-code,codex
+  --clients claude-code,codex
 ```
 
 Anthropic chat with OpenAI embeddings:
 
 ```bash
-npx @answer-engine/create@1.1.0 --yes \
+create-answer-engine --yes \
+  --channel stable \
   --home "$AE_HOME" \
   --llm-provider anthropic \
   --llm-key "$ANTHROPIC_API_KEY" \
@@ -125,18 +219,44 @@ npx @answer-engine/create@1.1.0 --yes \
   --embedding-provider openai \
   --embedding-key "$OPENAI_API_KEY" \
   --embedding-model text-embedding-3-small \
-  --agents claude-code,codex
+  --clients claude-code,codex
 ```
 
-Use only the clients selected by the user; `--agents none` is valid. Do not
+Use only the clients selected by the user; `--clients none` is valid and
+`--agents` remains a compatibility alias. Use `--cowork-mode local` only after
+the user confirms local sessions and applicable desktop policy. Do not
 continue unless all six installer stages pass.
+
+Capability boundary:
+
+- Codex receives the Personal marketplace plugin; Claude Code receives the same
+  skills through a local Claude marketplace plugin. Both launch stdio MCP from
+  the installer-managed runtime and complete a non-interactive real recall.
+- ChatGPT Desktop Codex receives the shared Personal plugin source with its
+  bundled MCP configuration, then requires plugin install/restart and guided confirmation.
+- Claude Desktop and Cursor-style JSON adapters receive local stdio MCP plus
+  CLI handoff and require restart with guided recall confirmation.
+- Hosted ChatGPT Chat/Work/web and Cowork are not wired to localhost. Cowork
+  uses account-synced skills and policy-approved connectors; this installer does
+  not claim local plugin support or operate a remote relay.
+- When the installer runs inside WSL2, Windows-host ChatGPT Desktop and Claude
+  Desktop are explained as unavailable and receive no Linux-home wiring.
+
+The installer stores a redacted ownership ledger and private backups under
+`$AE_HOME/integrations`. To reverse client integration without removing memory:
+
+```bash
+create-answer-engine remove-integrations \
+  --channel stable --home "$AE_HOME"
+```
 
 ## 4. Add the selected sources
 
-Install the matching CLI if necessary:
+The verified bootstrap installs the matching CLI asset. If `ae` is missing,
+rerun that same exact-version bootstrap; do not fetch an npm package:
 
 ```bash
-command -v ae >/dev/null 2>&1 || npm install --global @answer-engine/cli@1.1.0
+command -v ae >/dev/null 2>&1 || { echo 'Rerun the verified v1.1.0 bootstrap.' >&2; exit 1; }
 cp "$AE_HOME/config.yaml" "$AE_HOME/config.yaml.before-sources"
 chmod 600 "$AE_HOME/config.yaml.before-sources"
 ```
@@ -189,14 +309,23 @@ ae config gen-env
 
 ## 5. Import and prove real recall
 
-If the CLI does not yet have the local key, run `ae auth login` and have the user
-paste the key directly from `$AE_HOME/.env.compose`. Then:
+The installer-managed client/CLI authentication handoff is available. Never ask
+the user to copy the local API key into the UI or paste it into chat. Continue
+with:
 
 ```bash
 ae auth status
-ae sync once
+ae sync first-import
 ae sync status
 ```
+
+The command performs metadata-only discovery and waits. Have the user open the
+local `/import` page, review the paths, estimated counts and sizes, privacy
+posture, and exclusions, then explicitly approve any subset. Nothing is read or
+imported before approval except file names and statistics needed for the preview.
+The approved bundle fingerprint is checked again before transcript bodies are
+read. If it changed, run a fresh discovery and approval. If the command is interrupted, use the recovery
+command shown by the page: `ae sync first-import --resume <session-id>`.
 
 Choose a distinctive phrase from one imported conversation or document and run:
 
@@ -229,19 +358,22 @@ same phrase.
   matches the value selected before the first migration.
 - Authentication fails: confirm the key begins with `ae_live_` and re-run
   `ae auth login` without sharing the key.
-- A source imports nothing: run `ae sync once --source <type> --path <path>` and
-  inspect the reported discovery and parse errors.
+- A first import is interrupted or fails: open `/import`, use Retry when
+  offered, and run `ae sync first-import --resume <session-id>`. Safe errors
+  identify the source and recovery action without transcript content.
+- A source discovers nothing: confirm the displayed default path, then use
+  `ae sync once --source <type> --path <path>` for manual diagnosis.
 
 ## Uninstall
 
 Preserve data:
 
 ```bash
-npx @answer-engine/create@1.1.0 --uninstall --home "$AE_HOME"
+create-answer-engine uninstall --channel stable --home "$AE_HOME"
 ```
 
 Delete data only after explicit user confirmation:
 
 ```bash
-npx @answer-engine/create@1.1.0 --uninstall --purge --home "$AE_HOME"
+create-answer-engine uninstall --channel stable --purge --home "$AE_HOME"
 ```

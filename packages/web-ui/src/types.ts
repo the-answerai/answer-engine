@@ -17,6 +17,53 @@ export interface Tag {
   updatedAt: string;
 }
 
+export type OrganizationSuggestion = {
+  id: string;
+  confidence: number;
+  rationale: string;
+  evidence: Array<{ contentId: string; title: string; source: string }>;
+  dependsOn: string[];
+} & (
+  | { type: 'tag.create'; tag: { slug: string; label: string; description: string | null; category: string | null; color: string | null } }
+  | { type: 'tag.assign'; tagSlug: string; contentIds: string[] }
+  | { type: 'library.create'; library: { slug: string; name: string; description: string | null; filter: LibraryFilter | null } }
+);
+
+export interface OrganizationDecision {
+  suggestionId: string;
+  decision: 'accept' | 'reject';
+}
+
+export interface OrganizationPlan {
+  id: string;
+  status: 'preview' | 'applied' | 'undone';
+  proposalMode: 'local' | 'model';
+  sampleLimit: number;
+  sampleCount: number;
+  sourceSnapshotSha256: string;
+  proposalSha256: string;
+  suggestions: OrganizationSuggestion[];
+  decisions: OrganizationDecision[] | null;
+  applyResult: Array<Record<string, unknown>> | null;
+  modelProvider: string | null;
+  modelId: string | null;
+  appliedAt: string | null;
+  undoneAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type RecallTutorialClient = 'codex' | 'chatgpt-desktop' | 'chatgpt-work' | 'chatgpt-web' | 'claude-code' | 'claude-desktop' | 'claude-cowork' | 'cursor' | 'cli';
+export interface RecallClientCapability { id: RecallTutorialClient; label: string; supported: boolean; verification: 'command' | 'guided' | 'unavailable'; surface: 'mcp' | 'cli'; limitation?: string }
+export interface RecallTutorial {
+  id: string; status: 'planned' | 'remembered' | 'verified'; writeClient: RecallTutorialClient;
+  recallClient: RecallTutorialClient; sameClient: boolean; marker: string; fact: string;
+  sourceIdentifier: string; contentId: string | null;
+  diagnostic: { code: string; details: Record<string, unknown> };
+  instructions: { remember: { client: RecallTutorialClient; text: string }; freshChat: { client: RecallTutorialClient; answerBearingContextIncluded: false; text: string } };
+  rememberedAt: string | null; verifiedAt: string | null; createdAt: string; updatedAt: string;
+}
+
 export interface ContentTag extends Pick<Tag, 'id' | 'slug' | 'label' | 'category' | 'color'> {
   confidence: number | null;
 }
@@ -401,7 +448,63 @@ export interface ImportPreview {
 
 export interface ImportResult {
   completedItems: number;
+  createdItems?: number;
+  updatedItems?: number;
+  duplicateItems?: number;
   failedItems: number;
-  items: Array<{ rowIndex: number; id: string; contentType: string; sourceIdentifier: string; title: string }>;
+  items: Array<{ rowIndex: number; id: string; contentType: string; sourceIdentifier: string; title: string; outcome?: 'created' | 'updated' | 'duplicate' }>;
   failures: Array<{ rowIndex: number; sourceIdentifier: string; error: string }>;
+}
+
+export type FirstImportSourceId = 'claude-code' | 'codex' | 'cowork';
+export type FirstImportStatus = 'discovered' | 'approved' | 'running' | 'cancel_requested' | 'canceled' | 'completed' | 'failed';
+
+export interface FirstImportSession {
+  id: string;
+  status: FirstImportStatus;
+  selectedSourceIds: FirstImportSourceId[];
+  approvedAt: string | null;
+  pending: number;
+  counts: { discovered: number; imported: number; duplicate: number; failed: number; skipped: number };
+  sources: Array<{
+    sourceId: FirstImportSourceId;
+    label: string;
+    paths: string[];
+    estimatedCount: number;
+    estimatedBytes: number;
+    privacyPosture: string;
+    exclusions: string[];
+    availability: 'available' | 'not_found' | 'unsupported_platform' | 'unavailable';
+    availabilityNote: string;
+    status: string;
+    errorCode: string | null;
+    recoveryAction: string | null;
+  }>;
+}
+
+export type FolderDisposition = 'candidate' | 'excluded' | 'hidden' | 'unsupported' | 'binary'
+  | 'too_large' | 'access_denied' | 'symlink' | 'aggregate_limit' | 'missing';
+export type FolderOutcome = 'pending' | 'imported' | 'updated' | 'duplicate' | 'excluded'
+  | 'changed' | 'failed' | 'skipped' | 'missing';
+export interface FolderInventoryItem {
+  sourcePath: string; relativePath: string; fileType: string | null; byteSize: number;
+  modifiedAt: string | null; disposition: FolderDisposition; reason: string;
+  change: 'added' | 'changed' | 'unchanged' | 'missing' | 'excluded' | null;
+  metadataFingerprint: string | null; outcome: FolderOutcome; appliedSha256: string | null;
+  contentId: string | null; archiveManifestPath: string | null; errorCode: string | null;
+  recoveryAction: string | null;
+}
+export interface FolderIngestionRun {
+  id: string; sourceId: string; kind: 'initial' | 'refresh' | 'removal';
+  status: 'previewed' | 'approved' | 'running' | 'cancel_requested' | 'canceled' | 'completed' | 'failed';
+  manifestPath: string; inventoryCounts: Record<string, number>; approvedAt: string | null;
+  counts: Record<FolderOutcome | 'previewed', number>; items: FolderInventoryItem[];
+}
+export interface FolderSource {
+  id: string; libraryId: string | null; rootPath: string; includePatterns: string[];
+  excludePatterns: string[]; maxFileBytes: number; maxTotalBytes: number;
+  symlinkPolicy: 'no_follow'; manifestPath: string;
+  status: 'previewed' | 'approved' | 'active' | 'paused' | 'removal_pending' | 'removed';
+  retention: 'keep' | 'delete' | null; approvedAt: string | null; removedAt: string | null;
+  runs: FolderIngestionRun[]; latestRun: FolderIngestionRun | null;
 }

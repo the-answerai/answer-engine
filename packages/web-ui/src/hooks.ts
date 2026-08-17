@@ -8,6 +8,8 @@ import {
   createBatchJob,
   createDashboard,
   createLibrary,
+  createOrganizationProposal,
+  createRecallTutorial,
   createRecipe,
   createReport,
   createTag,
@@ -23,6 +25,15 @@ import {
   getRecipeRun,
   getSettings,
   importContent,
+  latestFirstImport,
+  approveFirstImport,
+  cancelFirstImport,
+  retryFirstImport,
+  latestFolderSource,
+  approveFolderRun,
+  cancelFolderRun,
+  retryFolderRun,
+  prepareFolderRemoval,
   inspectLineage,
   listArtifacts,
   listAccessTokens,
@@ -31,6 +42,9 @@ import {
   listBlobs,
   listContent,
   listLibraries,
+  listOrganizationPlans,
+  listRecallTutorials,
+  recallTutorialCapabilities,
   listDashboards,
   listLibraryMembers,
   listGeneratedReports,
@@ -55,8 +69,11 @@ import {
   updateSettings,
   updateAccessToken,
   updateTag,
+  applyOrganizationPlan,
+  undoOrganizationPlan,
+  checkRecallTutorial,
 } from './api';
-import type { BatchJob, ContentFilters, Dashboard, ImportItem, LibraryFilter, LocalSettings, RecipeInput, ReportInput, Tag } from './types';
+import type { BatchJob, ContentFilters, Dashboard, FirstImportSourceId, ImportItem, LibraryFilter, LocalSettings, OrganizationDecision, RecallTutorialClient, RecipeInput, ReportInput, Tag } from './types';
 
 const isActive = (status?: string) => status === 'queued' || status === 'running';
 
@@ -189,6 +206,46 @@ export function useSetLibraryMembership() {
   );
 }
 
+export function useOrganizationPlans() {
+  return useQuery({ queryKey: ['organization-plans'], queryFn: listOrganizationPlans });
+}
+
+export function useCreateOrganizationProposal() {
+  return useInvalidatingMutation(
+    createOrganizationProposal,
+    [['organization-plans']],
+  );
+}
+
+export function useApplyOrganizationPlan() {
+  return useInvalidatingMutation(
+    ({ planId, decisions }: { planId: string; decisions: OrganizationDecision[] }) =>
+      applyOrganizationPlan(planId, decisions),
+    [['organization-plans'], ['tags'], ['libraries'], ['content']],
+  );
+}
+
+export function useUndoOrganizationPlan() {
+  return useInvalidatingMutation(
+    (planId: string) => undoOrganizationPlan(planId),
+    [['organization-plans'], ['tags'], ['libraries'], ['content']],
+  );
+}
+
+export function useRecallTutorialCapabilities(environment: 'native' | 'wsl') {
+  return useQuery({ queryKey: ['recall-tutorial-capabilities', environment], queryFn: () => recallTutorialCapabilities(environment) });
+}
+export function useRecallTutorials() { return useQuery({ queryKey: ['recall-tutorials'], queryFn: listRecallTutorials }); }
+export function useCreateRecallTutorial() {
+  return useInvalidatingMutation(createRecallTutorial, [['recall-tutorials']]);
+}
+export function useCheckRecallTutorial() {
+  return useInvalidatingMutation(
+    ({ id, reportedFailure }: { id: string; reportedFailure?: 'runtime' | 'wiring' | 'access' | 'indexing' | 'retrieval' }) => checkRecallTutorial(id, reportedFailure),
+    [['recall-tutorials'], ['audit'], ['content']],
+  );
+}
+
 export function usePreviewImport() {
   return useMutation({
     mutationFn: ({ items, libraryId }: { items: ImportItem[]; libraryId?: string }) => previewImport(items, libraryId),
@@ -199,6 +256,49 @@ export function useImportContent() {
   return useInvalidatingMutation(
     ({ items, libraryId }: { items: ImportItem[]; libraryId?: string }) => importContent(items, libraryId),
     [['content'], ['libraries']],
+  );
+}
+
+export function useLatestFirstImport() {
+  return useQuery({
+    queryKey: ['first-import'],
+    queryFn: latestFirstImport,
+    refetchInterval: (query) => ['approved', 'running', 'cancel_requested'].includes(query.state.data?.status ?? '') ? 1_000 : false,
+  });
+}
+
+export function useApproveFirstImport() {
+  return useInvalidatingMutation(
+    ({ sessionId, sourceIds }: { sessionId: string; sourceIds: FirstImportSourceId[] }) => approveFirstImport(sessionId, sourceIds),
+    [['first-import']],
+  );
+}
+
+export function useCancelFirstImport() {
+  return useInvalidatingMutation(cancelFirstImport, [['first-import']]);
+}
+
+export function useRetryFirstImport() {
+  return useInvalidatingMutation(retryFirstImport, [['first-import']]);
+}
+
+export function useLatestFolderSource() {
+  return useQuery({ queryKey: ['folder-source'], queryFn: latestFolderSource,
+    refetchInterval: (query) => ['approved', 'running', 'cancel_requested'].includes(query.state.data?.latestRun?.status ?? '') ? 1_000 : false });
+}
+export function useApproveFolderRun() {
+  return useInvalidatingMutation(approveFolderRun, [['folder-source']]);
+}
+export function useCancelFolderRun() {
+  return useInvalidatingMutation(cancelFolderRun, [['folder-source']]);
+}
+export function useRetryFolderRun() {
+  return useInvalidatingMutation(retryFolderRun, [['folder-source']]);
+}
+export function usePrepareFolderRemoval() {
+  return useInvalidatingMutation(
+    ({ sourceId, retention }: { sourceId: string; retention: 'keep' | 'delete' }) => prepareFolderRemoval(sourceId, retention),
+    [['folder-source']],
   );
 }
 

@@ -14,7 +14,10 @@ function json(data: unknown, status = 200) {
 
 function bootstrap(url: string) {
   if (url === '/local-ui/session') return new Response(null, { status: 204 });
-  if (url === '/health') return new Response(null, { status: 200 });
+  if (url === '/health') return new Response(JSON.stringify({ status: 'healthy', uptime: 1, channel: 'stable' }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  });
   return undefined;
 }
 

@@ -1,18 +1,24 @@
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
+  renameSync,
   readFileSync,
   writeFileSync,
 } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { stringify as stringifyYaml } from 'yaml';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import {
   UserConfigSchema,
   type UserConfig,
 } from '@answer-engine/cli/scaffold';
 import type { ModelRuntime } from './models.js';
+import { createRuntimeChannelProfile, writeRuntimeOwnershipMarker, type RuntimeChannelProfile } from './runtime-channel.js';
+import { assertImmutableImageReference, verifyBundledRelease, type ReleaseManifest } from './release.js';
+import { ReleaseStateSchema } from './release-state.js';
+import { assertRegularFileTarget, writePrivateFileAtomic } from './safe-file.js';
 
 const templateDirectory = fileURLToPath(new URL('../templates/', import.meta.url));
 
@@ -20,6 +26,8 @@ export interface ScaffoldInput {
   home: string;
   config: UserConfig;
   runtime?: ModelRuntime;
+  profile?: RuntimeChannelProfile;
+  image?: string;
 }
 
 export interface ScaffoldResult {
@@ -28,11 +36,13 @@ export interface ScaffoldResult {
   composePath: string;
   envPath: string;
   apiKey?: string;
+  changes: string[];
 }
 
 export interface ScaffoldDependencies {
-  generateSecret?: (name: 'key' | 'salt') => string;
+  generateSecret?: (name: 'key' | 'salt' | 'database') => string;
   templatesDir?: string;
+  release?: ReleaseManifest;
 }
 
 function readOptional(path: string): string {
@@ -42,6 +52,15 @@ function readOptional(path: string): string {
     if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return '';
     throw error;
   }
+}
+
+function writeAtomicIfChanged(path: string, contents: string, mode?: number): boolean {
+  if (readOptional(path) === contents) return false;
+  const temporary = `${path}.tmp-${process.pid}`;
+  writeFileSync(temporary, contents, { encoding: 'utf8', ...(mode ? { mode } : {}) });
+  renameSync(temporary, path);
+  if (mode) chmodSync(path, mode);
+  return true;
 }
 
 function decodeEnvValue(value: string): string {
@@ -79,11 +98,28 @@ function replacements(
   encryptionKey: string,
   encryptionSalt: string,
   apiKey: string | undefined,
+  databasePassword: string,
+  profile: RuntimeChannelProfile,
+  runtimeImage: string,
 ): Record<string, string> {
   const localChat = config.models.chat_provider === 'lmstudio';
   const localEmbedding = config.models.embedding_provider === 'lmstudio';
   const openAiKey = config.connectors.openai_api_key;
   return {
+    COMPOSE_PROJECT: envValue(profile.composeProject),
+    CHANNEL: envValue(profile.channel),
+    API_PORT: String(profile.ports.api),
+    DATABASE_HOST_PORT: String(profile.ports.database),
+    REDIS_HOST_PORT: String(profile.ports.redis),
+    WEB_PORT: String(profile.ports.web),
+    MCP_PORT: String(profile.ports.mcp),
+    DATABASE_NAME: envValue(profile.databaseName),
+    DATABASE_PASSWORD: envValue(databasePassword),
+    POSTGRES_VOLUME: envValue(profile.volumes.postgres),
+    REDIS_VOLUME: envValue(profile.volumes.redis),
+    BLOBS_VOLUME: envValue(profile.volumes.blobs),
+    HISTORY_SYNC_ENABLED: String(profile.sync.enabledByDefault),
+    ANSWER_ENGINE_IMAGE: envValue(runtimeImage),
     CHAT_PROVIDER: envValue(config.models.chat_provider),
     CHAT_MODEL: envValue(config.models.chat),
     EMBEDDING_PROVIDER: envValue(config.models.embedding_provider),
@@ -130,11 +166,33 @@ export function scaffoldInstallation(
   input: ScaffoldInput,
   dependencies: ScaffoldDependencies = {},
 ): ScaffoldResult {
-  const config = UserConfigSchema.parse(input.config);
+  const configPath = join(input.home, 'config.yaml');
+  const existingConfig = readOptional(configPath);
+  const config = existingConfig
+    ? UserConfigSchema.parse(parseYaml(existingConfig) as unknown)
+    : UserConfigSchema.parse(input.config);
+  const profile = input.profile ?? createRuntimeChannelProfile('stable', { home: input.home });
+  const release = dependencies.release ?? verifyBundledRelease();
+  const runtimeImage = assertImmutableImageReference(input.image ?? release.images.answerEngine);
+  assertRegularFileTarget(profile.releaseFile, 'Release state');
+  if (existsSync(profile.releaseFile)) {
+    let existingRelease;
+    try {
+      existingRelease = ReleaseStateSchema.parse(JSON.parse(readFileSync(profile.releaseFile, 'utf8')));
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(`Existing release state is invalid; repair it before installation (${reason}).`);
+    }
+    if (existingRelease.pending) {
+      throw new Error(`Existing release has a pending ${existingRelease.pending.action}; resume that lifecycle action.`);
+    }
+    if (existingRelease.current !== runtimeImage) {
+      throw new Error('Existing release differs from this installer; use the guarded upgrade action.');
+    }
+  }
   const templatesDir = dependencies.templatesDir ?? templateDirectory;
   const generateSecret = dependencies.generateSecret
     ?? (() => randomBytes(32).toString('hex'));
-  const configPath = join(input.home, 'config.yaml');
   const composePath = join(input.home, 'docker-compose.yml');
   const envPath = join(input.home, '.env.compose');
   const existingEnv = readOptional(envPath);
@@ -143,6 +201,8 @@ export function scaffoldInstallation(
   const encryptionSalt = readEnvValue(existingEnv, 'ENCRYPTION_SALT')
     ?? generateSecret('salt');
   const apiKey = readEnvValue(existingEnv, 'ANSWER_ENGINE_API_KEY');
+  const databasePassword = readEnvValue(existingEnv, 'DATABASE_PASSWORD')
+    ?? generateSecret('database');
 
   mkdirSync(join(input.home, 'data', 'postgres'), { recursive: true });
   mkdirSync(join(input.home, 'data', 'redis'), { recursive: true });
@@ -150,11 +210,9 @@ export function scaffoldInstallation(
   mkdirSync(join(input.home, 'raw-archive'), { recursive: true });
   mkdirSync(join(input.home, 'logs'), { recursive: true });
 
-  writeFileSync(configPath, stringifyYaml(config), { encoding: 'utf8', mode: 0o600 });
-  chmodSync(configPath, 0o600);
-  writeFileSync(
-    composePath,
-    renderTemplate(
+  const changes: string[] = [];
+  if (!existsSync(configPath) && writeAtomicIfChanged(configPath, stringifyYaml(config), 0o600)) changes.push('config.yaml');
+  const compose = renderTemplate(
       readFileSync(join(templatesDir, 'docker-compose.yml'), 'utf8'),
       replacements(
         config,
@@ -162,10 +220,12 @@ export function scaffoldInstallation(
         encryptionKey,
         encryptionSalt,
         apiKey,
+        databasePassword,
+        profile,
+        runtimeImage,
       ),
-    ),
-    'utf8',
-  );
+    );
+  if (writeAtomicIfChanged(composePath, compose)) changes.push('docker-compose.yml');
   const environment = renderTemplate(
     readFileSync(join(templatesDir, 'env.compose.tmpl'), 'utf8'),
     replacements(
@@ -174,10 +234,24 @@ export function scaffoldInstallation(
       encryptionKey,
       encryptionSalt,
       apiKey,
+      databasePassword,
+      profile,
+      runtimeImage,
     ),
   );
-  writeFileSync(envPath, environment, { encoding: 'utf8', mode: 0o600 });
-  chmodSync(envPath, 0o600);
+  if (writeAtomicIfChanged(envPath, environment, 0o600)) changes.push('.env.compose');
+  writeRuntimeOwnershipMarker(profile);
+  const releaseState = `${JSON.stringify({
+    schemaVersion: 1,
+    sourceCommit: release.sourceCommit,
+    current: runtimeImage,
+    previous: runtimeImage,
+    verifiedAtInstall: true,
+  })}\n`;
+  if (!existsSync(profile.releaseFile)) {
+    writePrivateFileAtomic(profile.releaseFile, releaseState, 'Release state');
+    changes.push('.release-state.json');
+  }
 
   return {
     home: input.home,
@@ -185,5 +259,6 @@ export function scaffoldInstallation(
     composePath,
     envPath,
     ...(apiKey ? { apiKey } : {}),
+    changes,
   };
 }

@@ -1,14 +1,22 @@
 #!/usr/bin/env node
 
-import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
-import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { readFileSync, realpathSync } from 'node:fs';
 import chalk from 'chalk';
 import { Command } from 'commander';
 import { install } from './install.js';
 import type { InstallerOptions } from './options.js';
-import { uninstall } from './uninstall.js';
+import { parseLifecycleAction, runLifecycleAction } from './lifecycle.js';
+import { detectOwnedPorts } from './docker.js';
+import { formatPreflightReport, runPreflight } from './preflight.js';
+import {
+  channelProfiles,
+  createRuntimeChannelProfile,
+  parseRuntimeChannel,
+  validateRuntimeChannelIsolation,
+} from './runtime-channel.js';
+import { removeManagedIntegrations } from './integrations.js';
 
 export function buildProgram(): Command {
   const manifest = JSON.parse(
@@ -18,9 +26,13 @@ export function buildProgram(): Command {
     .name('create-answer-engine')
     .description('Install and wire a local Answer Engine in one command')
     .version(manifest.version)
+    .argument('[action]', 'preflight, install, start, stop, status, repair, upgrade, rollback, uninstall, or remove-integrations', 'install')
+    .option('--channel <channel>', 'runtime channel: stable or staging')
     .option('-y, --yes', 'run without interactive prompts')
     .option('--models <models>', 'LM Studio models: chat=<id>,embedding=<id>')
-    .option('--agents <agents>', 'agents to wire, comma-separated, or none')
+    .option('--clients <clients>', 'client surfaces to connect, comma-separated, or none')
+    .option('--agents <agents>', 'legacy alias for --clients')
+    .option('--cowork-mode <mode>', 'Cowork execution mode: local, remote, or unknown', 'unknown')
     .option('--home <directory>', 'installation directory (AE_HOME)')
     .option('--lm-studio-url <url>', 'LM Studio OpenAI-compatible base URL')
     .option('--llm-provider <provider>', 'cloud chat provider: anthropic or openai')
@@ -31,31 +43,71 @@ export function buildProgram(): Command {
     .option('--embedding-model <id>', 'embedding model ID')
     .option('--embedding-dimension <number>', 'LM Studio embedding width', '768')
     .option('--api-key <key>', 'existing local Answer Engine API key')
+    .option('--image <reference>', 'content-addressed name@sha256 digest for upgrade')
     .option('--uninstall', 'stop and remove the local Compose stack')
-    .option('--purge', 'with --uninstall, also delete volumes and AE_HOME');
+    .option('--purge', 'with uninstall, also delete selected-channel volumes and AE_HOME')
+    .option('--json', 'emit machine-readable JSON (preflight and status)');
 }
 
 export async function run(argv: string[] = process.argv): Promise<void> {
   const program = buildProgram();
   program.parse(argv);
   const options = program.opts<InstallerOptions>();
-  const home = resolve(options.home ?? process.env.AE_HOME ?? join(homedir(), '.answer-engine'));
-
-  if (options.purge && !options.uninstall) {
-    throw new Error('--purge can only be used with --uninstall.');
+  const requestedAction = options.uninstall ? 'uninstall' : program.args[0];
+  if (options.uninstall && program.args[0] !== 'install' && program.args[0] !== 'uninstall') {
+    throw new Error('--uninstall cannot be combined with another lifecycle action.');
   }
-  if (options.uninstall) {
-    await uninstall({ home, purge: options.purge ?? false });
-    process.stdout.write(options.purge
-      ? `Removed containers, volumes, and ${home}.\n`
-      : `Removed containers. Data and configuration remain in ${home}.\n`);
+  const channel = parseRuntimeChannel(options.channel ?? process.env.AE_CHANNEL);
+  const homeOverride = options.home ?? process.env.AE_HOME;
+  const profile = createRuntimeChannelProfile(channel, {
+    ...(homeOverride ? { home: resolve(homeOverride) } : {}),
+  });
+  const home = profile.home;
+  await validateRuntimeChannelIsolation(channelProfiles(channel, home));
+
+  if (requestedAction === 'remove-integrations') {
+    if (channel !== 'stable') throw new Error('Staging has no global client integrations to remove.');
+    const result = await removeManagedIntegrations(home);
+    process.stdout.write(`Removed ${result.removed.length} managed integration entries; preserved ${result.preserved.length} client config files.\n`);
     return;
   }
-  await install({ ...options, home });
+  const action = parseLifecycleAction(requestedAction);
+
+  if (action === 'preflight') {
+    const ownedPorts = await detectOwnedPorts(home, {}, profile);
+    const result = await runPreflight({ home, ownedPorts, requiredPorts: Object.values(profile.ports) });
+    process.stdout.write(`${formatPreflightReport(result, options.json)}\n`);
+    if (!result.ok) process.exitCode = 2;
+    return;
+  }
+
+  if (options.purge && action !== 'uninstall') {
+    throw new Error('--purge can only be used with the uninstall action.');
+  }
+  if (options.image && action !== 'upgrade') {
+    throw new Error('--image can only be used with the upgrade action.');
+  }
+  if (action === 'uninstall') {
+    await runLifecycleAction('uninstall', profile, { purge: options.purge });
+    process.stdout.write(options.purge
+      ? `Removed ${channel} containers, volumes, and ${home}.\n`
+      : `Removed ${channel} containers. Data and configuration remain in ${home}.\n`);
+    return;
+  }
+  if (action === 'install') {
+    await install({ ...options, channel, home });
+    return;
+  }
+  const result = await runLifecycleAction(action, profile, { image: options.image });
+  if (result) process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+  else process.stdout.write(`${channel} ${action} completed.\n`);
 }
 
-const invokedUrl = process.argv[1] ? pathToFileURL(process.argv[1]).href : undefined;
-if (invokedUrl === import.meta.url) {
+const invokedPath = process.argv[1];
+const isEntrypoint = invokedPath
+  ? realpathSync(invokedPath) === realpathSync(fileURLToPath(import.meta.url))
+  : false;
+if (isEntrypoint) {
   run().catch((error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
     process.stderr.write(`${chalk.red('Answer Engine setup failed:')} ${message}\n`);

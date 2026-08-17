@@ -4,9 +4,9 @@
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
-import { join } from 'path';
-import { homedir } from 'os';
+import { dirname } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
+import { defaultChannelApiUrl, defaultChannelConfigFile } from './channel.js';
 
 export interface CliConfig {
   api_key: string;
@@ -14,21 +14,13 @@ export interface CliConfig {
   default_output: 'auto' | 'json' | 'table';
 }
 
-const CONFIG_DIR = join(homedir(), '.config', 'answer-engine');
-const CONFIG_FILE = join(CONFIG_DIR, 'config.yml');
-
 export const DEFAULT_API_URL = 'http://localhost:5050';
 
-const DEFAULTS: CliConfig = {
-  api_key: '',
-  api_url: DEFAULT_API_URL,
-  default_output: 'auto',
-};
-
 function loadConfigFile(): Partial<CliConfig> {
+  const configFile = defaultChannelConfigFile();
   try {
-    if (!existsSync(CONFIG_FILE)) return {};
-    const content = readFileSync(CONFIG_FILE, 'utf-8');
+    if (!existsSync(configFile)) return {};
+    const content = readFileSync(configFile, 'utf-8');
     const parsed = parseYaml(content) as Partial<CliConfig> | null;
     return parsed ?? {};
   } catch {
@@ -37,27 +29,28 @@ function loadConfigFile(): Partial<CliConfig> {
 }
 
 export function saveConfig(updates: Partial<CliConfig>): void {
-  mkdirSync(CONFIG_DIR, { recursive: true });
+  const configFile = defaultChannelConfigFile();
+  mkdirSync(getConfigDirPath(), { recursive: true });
   const current = loadConfigFile();
   const merged = { ...current, ...updates };
-  writeFileSync(CONFIG_FILE, stringifyYaml(merged), { encoding: 'utf-8', mode: 0o600 });
+  writeFileSync(configFile, stringifyYaml(merged), { encoding: 'utf-8', mode: 0o600 });
 }
 
 export function getConfig(): CliConfig {
   const file = loadConfigFile();
   return {
-    api_key: process.env.ANSWER_ENGINE_API_KEY || file.api_key || DEFAULTS.api_key,
-    api_url: process.env.ANSWER_ENGINE_API_URL || file.api_url || DEFAULTS.api_url,
-    default_output: (file.default_output as CliConfig['default_output']) || DEFAULTS.default_output,
+    api_key: process.env.ANSWER_ENGINE_API_KEY || file.api_key || '',
+    api_url: process.env.ANSWER_ENGINE_API_URL || file.api_url || defaultChannelApiUrl(),
+    default_output: (file.default_output as CliConfig['default_output']) || 'auto',
   };
 }
 
 export function getConfigFilePath(): string {
-  return CONFIG_FILE;
+  return defaultChannelConfigFile();
 }
 
 export function getConfigDirPath(): string {
-  return CONFIG_DIR;
+  return dirname(defaultChannelConfigFile());
 }
 
 export function maskApiKey(key: string): string {

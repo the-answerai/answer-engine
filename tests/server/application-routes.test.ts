@@ -149,6 +149,8 @@ describe('neutral application routes', () => {
     expect(response.status).toBe(200);
     expect(Object.keys(response.body.endpoints)).toEqual(expect.arrayContaining([
       'content', 'agent', 'tags', 'libraries', 'batchJobs', 'accessTokens', 'audit', 'settings',
+      'organizationPlans',
+      'recallTutorials',
     ]));
     expect(JSON.stringify(response.body)).not.toMatch(/rbac|billing|permissions|teams|roles/i);
   });

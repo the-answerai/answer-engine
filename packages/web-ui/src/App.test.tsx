@@ -11,11 +11,18 @@ function json(data: unknown, status = 200) {
   });
 }
 
+function healthResponse(channel: 'stable' | 'staging' = 'stable') {
+  return new Response(JSON.stringify({ status: 'healthy', uptime: 1, channel }), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
 function installApiMock() {
   return vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = String(input);
     if (url === '/local-ui/session') return new Response(null, { status: 204 });
-    if (url === '/health') return new Response(null, { status: 200 });
+    if (url === '/health') return healthResponse();
     if (url.startsWith('/api/v1/content')) return json([]);
     if (url.startsWith('/api/v1/tags')) return json([]);
     if (url.startsWith('/api/v1/libraries')) return json([]);
@@ -59,7 +66,26 @@ describe('local application shell', () => {
 
     const navigation = await screen.findByRole('navigation', { name: 'Primary' });
     expect([...navigation.querySelectorAll('a')].map((link) => link.textContent?.replace(/^\d+/, '')))
-      .toEqual(['Content', 'Import', 'Tags', 'Libraries', 'Answers', 'Batch Jobs', 'Settings']);
+      .toEqual(['Content', 'Import', 'Tags', 'Libraries', 'Organize', 'First memory', 'Answers', 'Batch Jobs', 'Settings']);
+  });
+
+  it('renders a permanent staging indicator in desktop and mobile identity surfaces', async () => {
+    const fetchMock = installApiMock();
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === '/local-ui/session') return new Response(null, { status: 204 });
+      if (url === '/health') return healthResponse('staging');
+      if (url.startsWith('/api/v1/content')) return json([]);
+      if (url.startsWith('/api/v1/tags')) return json([]);
+      if (url.startsWith('/api/v1/libraries')) return json([]);
+      if (url === '/api/v1/settings') return json({ defaultPageSize: 25, defaultLibraryId: null, density: 'comfortable', defaultExportFormat: 'json' });
+      return json([]);
+    });
+
+    render(<App />);
+
+    expect((await screen.findByTestId('staging-sidebar-indicator')).textContent).toBe('STAGING');
+    expect(screen.getByTestId('staging-mobile-indicator').textContent).toBe('STAGING');
   });
 
   it('keeps keyboard focus inside the open mobile navigation and restores the menu button', async () => {
@@ -87,7 +113,7 @@ describe('local application shell', () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input);
       if (url === '/local-ui/session') return new Response(null, { status: 204 });
-      if (url === '/health') return new Response(null, { status: 200 });
+      if (url === '/health') return healthResponse();
       if (url === '/api/v1/settings') return json({
         defaultPageSize: 50,
         defaultLibraryId: libraryId,

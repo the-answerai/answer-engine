@@ -20,9 +20,12 @@ interface ApiErrorResponse {
 export interface ApiClientConfig {
   apiUrl: string;
   apiKey: string;
+  clientId?: McpClientId;
   libraryId?: string;
   librarySlug?: string;
 }
+
+export type McpClientId = 'codex' | 'chatgpt-desktop' | 'claude-code' | 'claude-desktop' | 'cursor';
 
 export interface LibraryScope {
   type: 'library';
@@ -51,12 +54,14 @@ export function parseLibraryScope(value: string | undefined): Partial<ScopedAgen
 export class AnswerEngineClient {
   private apiUrl: string;
   private apiKey: string;
+  private clientId?: McpClientId;
   private libraryId?: string;
   private librarySlug?: string;
 
   constructor(config: ApiClientConfig) {
     this.apiUrl = config.apiUrl.replace(/\/+$/, '');
     this.apiKey = config.apiKey;
+    this.clientId = config.clientId;
     const envScope =
       config.libraryId || config.librarySlug
         ? {}
@@ -74,6 +79,7 @@ export class AnswerEngineClient {
       'Content-Type': 'application/json',
       'X-API-Key': this.apiKey,
       'X-AE-Surface': 'mcp',
+      ...(this.clientId ? { 'X-AE-Client': this.clientId } : {}),
     };
 
     const options: RequestInit = { method, headers };

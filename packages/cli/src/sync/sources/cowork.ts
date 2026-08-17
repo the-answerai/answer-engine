@@ -13,6 +13,7 @@ import {
   isMainTranscriptPath,
   parseJsonlFile,
   readClaudeCodeSessionBundle,
+  inventoryFilesForPaths,
   resolveInputPath,
   sourceBundleFingerprint,
   sourceBundlePaths,
@@ -213,8 +214,15 @@ export const coworkSource: TranscriptSource = {
 
     const candidates = await Promise.all([...paths].sort().map(async (path) => {
       try {
-        await resolveCoworkBundlePaths(path);
-        return transcriptFileFromPath(path);
+        const bundle = await resolveCoworkBundlePaths(path);
+        const file = await transcriptFileFromPath(path);
+        if (!file || !options.inventoryOnly) return file;
+        return {
+          ...file,
+          inventoryFiles: await inventoryFilesForPaths(
+            await sourceBundlePaths(path, bundle.extraPaths),
+          ),
+        };
       } catch {
         return null;
       }

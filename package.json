@@ -9,6 +9,9 @@
   },
   "packageManager": "pnpm@10.33.0",
   "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron"
+    ],
     "overrides": {
       "@hono/node-server": "1.19.15",
       "body-parser@1.20.5": "1.20.6",
@@ -64,9 +67,10 @@
     "cli": "node packages/cli/dist/index.js",
     "cli:build": "pnpm --filter @answer-engine/cli build",
     "create:build": "pnpm --filter @answer-engine/create... build",
+    "release:installer:candidate": "node scripts/build-release-assets.mjs",
     "mcp-server:build": "pnpm --filter @answer-engine/mcp-server build",
     "boundary:check": "tsx scripts/check-public-boundary.ts",
-    "verify": "pnpm boundary:check && pnpm lint && pnpm type-check && pnpm test && pnpm --filter @answer-engine/cli test && pnpm --filter @answer-engine/mcp-server test && pnpm --filter @answer-engine/create test && pnpm --filter @answer-engine/web-ui test && pnpm build && pnpm --filter @answer-engine/cli build && pnpm --filter @answer-engine/mcp-server build && pnpm --filter @answer-engine/create build && pnpm --filter @answer-engine/web-ui build"
+    "verify": "pnpm boundary:check && pnpm lint && pnpm type-check && pnpm test && pnpm --filter @answer-engine/cli test && pnpm --filter @answer-engine/mcp-server test && pnpm --filter @answer-engine/create test && pnpm --filter @answer-engine/web-ui test && pnpm build && pnpm --filter @answer-engine/cli build && pnpm --filter @answer-engine/mcp-server build && pnpm --filter @answer-engine/create build && pnpm --filter @answer-engine/web-ui build && pnpm --filter @answer-engine/desktop lint && pnpm --filter @answer-engine/desktop type-check && pnpm --filter @answer-engine/desktop test && pnpm --filter @answer-engine/desktop build"
   },
   "dependencies": {
     "cors": "^2.8.5",

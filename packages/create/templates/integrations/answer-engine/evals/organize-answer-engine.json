@@ -1,0 +1,18 @@
+{
+  "skill_name": "organize-answer-engine",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Preview a safer organization for duplicated project memories, but don't change anything yet.",
+      "expected_output": "Inspects representative memories and lineage, then returns a source-aware preview without mutation and hands off the reversible apply step.",
+      "assertions": [
+        "Produces a preview before any mutation",
+        "Proposes source-aware groups and tags",
+        "Identifies affected content IDs and reasons",
+        "Preserves source metadata",
+        "Hands the approved preview to a separate reversible workflow without claiming mutation is available"
+      ],
+      "files": ["fixtures/duplicate-project-memories.json"]
+    }
+  ]
+}

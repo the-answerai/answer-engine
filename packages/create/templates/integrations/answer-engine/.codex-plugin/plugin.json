@@ -1,0 +1,36 @@
+{
+  "name": "answer-engine",
+  "version": "1.1.0",
+  "description": "Install, query, inspect, and safely organize a local-first Answer Engine memory library.",
+  "author": {
+    "name": "Answer Engine contributors",
+    "url": "https://github.com/the-answerai/answer-engine"
+  },
+  "homepage": "https://github.com/the-answerai/answer-engine",
+  "repository": "https://github.com/the-answerai/answer-engine",
+  "license": "Apache-2.0",
+  "keywords": ["memory", "local-first", "mcp", "retrieval"],
+  "skills": "./skills/",
+  "mcpServers": {
+    "answer-engine": {
+      "command": "__ANSWER_ENGINE_MCP_COMMAND__",
+      "args": [],
+      "env": {}
+    }
+  },
+  "interface": {
+    "displayName": "Answer Engine",
+    "shortDescription": "Local-first memory for agent work",
+    "longDescription": "Remember, recall, and inspect grounded local memories through a private Answer Engine runtime.",
+    "developerName": "Answer Engine contributors",
+    "category": "Productivity",
+    "capabilities": ["Interactive", "Write"],
+    "websiteURL": "https://github.com/the-answerai/answer-engine",
+    "defaultPrompt": [
+      "Recall what we decided about this project.",
+      "Remember this fact for a future chat.",
+      "Preview how my related memories could be organized."
+    ],
+    "brandColor": "#2563EB"
+  }
+}

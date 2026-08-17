@@ -39,11 +39,27 @@ describe('Docker bootstrap key handling', () => {
       expect(args.slice(-4)).toEqual(['up', '-d', '--force-recreate', 'api']);
       return { stdout: '' };
     });
-    const fetchImpl = vi.fn(async () => ({ ok: true } as Response));
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
+      status: 'healthy', channel: 'stable', uptime: 1,
+    }), { status: 200 }));
 
     await activateApiKey(home, envPath, 'ae_live_first_run', { runCommand, fetchImpl });
 
     expect(runCommand).toHaveBeenCalledOnce();
     expect(fetchImpl).toHaveBeenCalledWith('http://localhost:5050/health');
+  });
+
+  it('refuses to activate a key when health reports another runtime channel', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'ae-key-'));
+    tempDirs.push(home);
+    const envPath = join(home, '.env.compose');
+    writeFileSync(envPath, 'LOCAL_UI_AUTO_AUTH=true\n', { mode: 0o600 });
+
+    await expect(activateApiKey(home, envPath, 'ae_live_first_run', {
+      runCommand: vi.fn(async () => ({ stdout: '' })),
+      fetchImpl: vi.fn(async () => new Response(JSON.stringify({
+        status: 'healthy', channel: 'staging', uptime: 1,
+      }), { status: 200 })),
+    })).rejects.toThrow(/reported channel staging.*expected stable/i);
   });
 });

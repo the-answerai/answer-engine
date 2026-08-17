@@ -1,0 +1,17 @@
+{
+  "skill_name": "use-answer-engine",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Find the decision we made about the onboarding launch scope and show me where it came from.",
+      "expected_output": "Calls recall, inspects the selected memory lineage, and answers from grounded evidence with uncertainty made explicit.",
+      "assertions": [
+        "Uses recall rather than inventing prior context",
+        "Shows explicit recall and inspect_memory calls for the selected content ID",
+        "Inspects memory source metadata or lineage",
+        "Separates stored evidence from inference"
+      ],
+      "files": ["fixtures/onboarding-scope.json"]
+    }
+  ]
+}

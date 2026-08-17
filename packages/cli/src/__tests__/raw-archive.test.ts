@@ -39,6 +39,20 @@ describe('writeRawArchive', () => {
     }).success).toBe(false);
   });
 
+  it('rejects archive manifest paths that can escape the immutable archive', () => {
+    expect(RawArchiveManifestSchema.safeParse({
+      version: 1,
+      created_at: '2026-08-10T20:00:00.000Z',
+      adapter_name: 'test-adapter',
+      adapter_version: '1.0.0',
+      files: [{
+        path: '/private/source.jsonl', archive_path: '../source.jsonl', size: 1,
+        mtime: '2026-08-10T20:00:00.000Z', sha256: 'a'.repeat(64),
+        adapter_name: 'test-adapter', adapter_version: '1.0.0',
+      }],
+    }).success).toBe(false);
+  });
+
   it('copies source bytes unchanged and writes a validated SHA-256 manifest', async () => {
     const root = makeTempDir();
     const sourcePath = join(root, 'source.jsonl');

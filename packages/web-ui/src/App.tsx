@@ -16,6 +16,8 @@ import { BatchJobsPage } from './pages/BatchJobsPage';
 import { ContentPage } from './pages/ContentPage';
 import { ImportPage } from './pages/ImportPage';
 import { LibrariesPage, LibraryPage } from './pages/LibrariesPage';
+import { OrganizePage } from './pages/OrganizePage';
+import { RecallTutorialPage } from './pages/RecallTutorialPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { TagsPage } from './pages/TagsPage';
 
@@ -67,6 +69,7 @@ function AppShell({ composition, identity }: { composition: WebComposition; iden
       {menuOpen ? <button className="sidebar-scrim" aria-label="Close navigation" onClick={() => setMenuOpen(false)} /> : null}
       <aside className={`sidebar ${menuOpen ? 'open' : ''}`}>
         <div className="brand-block"><span className="brand-mark">AE</span><div><strong>Answer Engine</strong><small>{identity.workspaceLabel ?? 'WORKSPACE'}</small></div></div>
+        {identity.channel === 'staging' ? <div className="staging-indicator" data-testid="staging-sidebar-indicator">STAGING</div> : null}
         <nav ref={navigationRef} aria-label="Primary">
           {visible.navigation.map((item) => (
             <NavLink key={item.id} to={item.to} onClick={() => setMenuOpen(false)} className={({ isActive }) => isActive ? 'active' : ''}>
@@ -81,7 +84,7 @@ function AppShell({ composition, identity }: { composition: WebComposition; iden
         </div>
       </aside>
       <div className="shell-body">
-        <header className="mobile-header"><button ref={menuButtonRef} aria-label="Open navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen(true)}>☰</button><strong>Answer Engine</strong><span>{identity.shortLabel ?? identity.label}</span></header>
+        <header className="mobile-header"><button ref={menuButtonRef} aria-label="Open navigation" aria-expanded={menuOpen} onClick={() => setMenuOpen(true)}>☰</button><strong>Answer Engine</strong><span data-testid={identity.channel === 'staging' ? 'staging-mobile-indicator' : undefined}>{identity.channel === 'staging' ? 'STAGING' : identity.shortLabel ?? identity.label}</span></header>
         <main id="workspace" tabIndex={-1}><ComposedRoutes visible={visible} /></main>
       </div>
     </div>
@@ -94,6 +97,8 @@ function coreRouteElement(surface: CoreSurfaceManifest, visible: VisibleWebCompo
     case 'import': return <ImportPage />;
     case 'tags': return <TagsPage />;
     case 'libraries': return <LibrariesPage />;
+    case 'organize': return <OrganizePage />;
+    case 'recall-tutorial': return <RecallTutorialPage />;
     case 'library-answers': return <AnswersPage />;
     case 'library-members':
     case 'library-overview':
