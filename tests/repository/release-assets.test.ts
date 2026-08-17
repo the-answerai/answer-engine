@@ -79,6 +79,10 @@ describe('immutable installer release assets', () => {
     expect(bash).toContain('NODE_EXECUTABLE="$(command -v node)"');
     expect(bash).toContain('exec "$NODE_EXECUTABLE" "$target" "$@"');
     expect(bash).not.toContain('ln -s "$target" "$launcher"');
+    expect(bash).toContain('dist/verify-release-download.js');
+    expect(bash.indexOf('dist/verify-release-download.js'))
+      .toBeLessThan(bash.indexOf('INSTALL_ROOT="${HOME}/.local/share/answer-engine/releases/${VERSION}"'));
+    expect(bash).toContain('"$BASH_ASSET" "$POWERSHELL_ASSET" INSTALL_AGENT.md');
 
     expect(powershell).toContain('Get-FileHash -Algorithm SHA256');
     expect(powershell.indexOf('Get-FileHash -Algorithm SHA256'))

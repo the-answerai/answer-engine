@@ -1,61 +1,12 @@
 {
   "passed": true,
-  "summary": "All immutable-release provenance, bootstrap idempotency, dependency detection, and lifecycle-state review findings for issue #71 were fixed and verified.",
+  "summary": "The downloaded-release verification gap was fixed; issue #71 now passes the full verification and production audit gates.",
   "findings": [
     {
       "severity": "critical",
-      "description": "The checked-in manifest claimed a syntactically valid Answer Engine runtime digest without registry evidence, allowing source-checkout installs to treat fabricated metadata as release truth. It is now a non-runnable template; only the exact-commit builder injects and revalidates an explicit registry-inspected digest.",
-      "fixed": true,
-      "file": "packages/create/release-manifest.json",
-      "issueNum": 71
-    },
-    {
-      "severity": "critical",
-      "description": "The release workflow wrote runtime-index.json into the checkout immediately before invoking a builder that rejects dirty or untracked checkouts, so every candidate build would fail.",
-      "fixed": true,
-      "file": ".github/workflows/release-installer.yml",
-      "issueNum": 71
-    },
-    {
-      "severity": "critical",
-      "description": "Protected publication used gh release upload --clobber, allowing exact-tag installer assets to be replaced in place despite the immutable download contract.",
-      "fixed": true,
-      "file": ".github/workflows/release-installer.yml",
-      "issueNum": 71
-    },
-    {
-      "severity": "critical",
-      "description": "When bootstrap installed the supported user-scoped Node runtime, it created raw JavaScript symlink launchers that depended on a future shell PATH and therefore failed after bootstrap exited on machines without a system Node installation.",
+      "description": "The strict downloaded-release verifier and mismatch tests were dead code: production bootstrap only checked files independently against SHA256SUMS, then ignored whether provenance, the download manifest, and the installer-bundled manifest described the same commit, runtime digest, platform, and artifact set. Bootstrap now runs the verifier from a freshly checksum-verified installer archive before writing versioned installer files or launchers.",
       "fixed": true,
       "file": "scripts/release/bootstrap.sh",
-      "issueNum": 71
-    },
-    {
-      "severity": "critical",
-      "description": "An interrupted bootstrap that had already installed managed Node did not reuse it on rerun and instead refused the existing destination, breaking required bootstrap idempotency.",
-      "fixed": true,
-      "file": "scripts/release/bootstrap.sh",
-      "issueNum": 71
-    },
-    {
-      "severity": "warning",
-      "description": "Compose detection accepted blank or arbitrary successful command output as Compose v2, allowing a required incompatible dependency to pass readiness.",
-      "fixed": true,
-      "file": "packages/create/src/preflight.ts",
-      "issueNum": 71
-    },
-    {
-      "severity": "warning",
-      "description": "Rerunning a different installer version rewrote ANSWER_ENGINE_IMAGE while preserving the old release-state digest, splitting status and rollback state from the runtime configuration.",
-      "fixed": true,
-      "file": "packages/create/src/scaffold.ts",
-      "issueNum": 71
-    },
-    {
-      "severity": "warning",
-      "description": "Consent and rerun coverage exercised an exported remediation helper that no production bootstrap path called, leaving the real shell dependency flow untested.",
-      "fixed": true,
-      "file": "tests/repository/release-assets.test.ts",
       "issueNum": 71
     }
   ]

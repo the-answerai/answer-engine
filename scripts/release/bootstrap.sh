@@ -6,6 +6,8 @@ TAG="v${VERSION}"
 RELEASE_BASE="https://github.com/the-answerai/answer-engine/releases/download/${TAG}"
 INSTALLER_ASSET="answer-engine-installer-v${VERSION}.tgz"
 CLI_ASSET="answer-engine-cli-v${VERSION}.tgz"
+BASH_ASSET="answer-engine-bootstrap-v${VERSION}.sh"
+POWERSHELL_ASSET="answer-engine-bootstrap-v${VERSION}.ps1"
 NODE_VERSION=22.16.0
 NODE_DESTINATION="${HOME}/.local/share/answer-engine/node-v${NODE_VERSION}"
 MODE=install
@@ -71,9 +73,13 @@ fi
 OS="$(uname -s)"
 ARCH="$(uname -m)"
 if [ "$OS" = Darwin ] && [ "$ARCH" = arm64 ]; then
+  RELEASE_PLATFORM=macos
+  RELEASE_ARCHITECTURE=arm64
   NODE_ARCHIVE="node-v${NODE_VERSION}-darwin-arm64.tar.xz"
   NODE_SHA256=aaf7fc3c936f1b359bc312b63638e41f258689ac2303966ad932cda18c54ea00
 elif [ "$OS" = Linux ] && [ "$ARCH" = x86_64 ] && grep -qiE 'microsoft-standard|wsl2' /proc/sys/kernel/osrelease; then
+  RELEASE_PLATFORM=windows-wsl2
+  RELEASE_ARCHITECTURE=x64
   NODE_ARCHIVE="node-v${NODE_VERSION}-linux-x64.tar.xz"
   NODE_SHA256=f4cb75bb036f0d0eddf6b79d9596df1aaab9ddccd6a20bf489be5abe9467e84e
 else
@@ -154,10 +160,22 @@ if [ "$MODE" = preflight ]; then
 fi
 [ "$REQUIRED_READY" = true ] || exit 2
 
-for asset in SHA256SUMS release-manifest.json provenance.json "$INSTALLER_ASSET" "$CLI_ASSET"; do
+NODE_EXECUTABLE="$(command -v node)"
+[ -n "$NODE_EXECUTABLE" ] && [ -x "$NODE_EXECUTABLE" ] || {
+  printf '%s\n' 'A compatible Node.js executable was not available for release verification.' >&2
+  exit 1
+}
+
+for asset in SHA256SUMS release-manifest.json provenance.json "$INSTALLER_ASSET" "$CLI_ASSET" "$BASH_ASSET" "$POWERSHELL_ASSET" INSTALL_AGENT.md; do
   curl --fail --location --proto '=https' --tlsv1.2 "$RELEASE_BASE/$asset" -o "$STAGING_DIRECTORY/$asset"
 done
-for asset in release-manifest.json provenance.json "$INSTALLER_ASSET" "$CLI_ASSET"; do verify_from_sums "$asset"; done
+for asset in release-manifest.json provenance.json "$INSTALLER_ASSET" "$CLI_ASSET" "$BASH_ASSET" "$POWERSHELL_ASSET" INSTALL_AGENT.md; do verify_from_sums "$asset"; done
+
+VERIFY_ROOT="$STAGING_DIRECTORY/installer-verify"
+mkdir "$VERIFY_ROOT"
+tar -xzf "$STAGING_DIRECTORY/$INSTALLER_ASSET" -C "$VERIFY_ROOT"
+"$NODE_EXECUTABLE" "$VERIFY_ROOT/dist/verify-release-download.js" \
+  "$STAGING_DIRECTORY" "$RELEASE_PLATFORM" "$RELEASE_ARCHITECTURE"
 
 INSTALL_ROOT="${HOME}/.local/share/answer-engine/releases/${VERSION}"
 BIN_ROOT="${HOME}/.local/bin"
@@ -204,11 +222,6 @@ install_launcher() {
     exit 1
   fi
   mv "$temporary_launcher" "$launcher"
-}
-NODE_EXECUTABLE="$(command -v node)"
-[ -n "$NODE_EXECUTABLE" ] && [ -x "$NODE_EXECUTABLE" ] || {
-  printf '%s\n' 'A compatible Node.js executable was not available for the installed launchers.' >&2
-  exit 1
 }
 install_launcher "$INSTALL_ROOT/installer/dist/index.js" "$BIN_ROOT/create-answer-engine"
 install_launcher "$INSTALL_ROOT/cli/dist/index.js" "$BIN_ROOT/ae"

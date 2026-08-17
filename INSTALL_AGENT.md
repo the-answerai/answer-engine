@@ -90,7 +90,7 @@ preflight. On Apple Silicon macOS, use:
 ```bash
 AE_RELEASE_URL=https://github.com/the-answerai/answer-engine/releases/download/v1.1.0
 AE_BOOTSTRAP=answer-engine-bootstrap-v1.1.0.sh
-AE_EXPECTED=c2f37f7d8ae115d2e73f5a37036e1783ec7a1121fea310b80b7b11aededca994
+AE_EXPECTED=c1e65b8943709ede0109b2af566f72fd3b97d311261f44df6e64cf136db304bb
 AE_STAGE="$(mktemp -d)"
 trap 'rm -rf "$AE_STAGE"' EXIT HUP INT TERM
 curl --fail --location --proto '=https' --tlsv1.2 "$AE_RELEASE_URL/SHA256SUMS" -o "$AE_STAGE/SHA256SUMS"
@@ -106,7 +106,7 @@ On Windows 11 x64 in PowerShell, use:
 ```powershell
 $ReleaseUrl = 'https://github.com/the-answerai/answer-engine/releases/download/v1.1.0'
 $Bootstrap = 'answer-engine-bootstrap-v1.1.0.ps1'
-$Expected = '2c9ae596b716c8fbc11db4b5e524ba192816d0cd47015a313988ce6b59b04834'
+$Expected = '8adf1b0720b40354ef660c669824c79d197d49671fb61d161f3d40b7b6ada519'
 $Stage = Join-Path ([IO.Path]::GetTempPath()) ('answer-engine-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory $Stage | Out-Null
 try {

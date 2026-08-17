@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  assertReleaseManifestAgreement,
   assertImmutableImageReference,
   loadReleaseManifest,
   loadReleaseManifestTemplate,
@@ -112,9 +113,9 @@ describe('release manifest verification', () => {
     const manifest = releaseFixture();
     const names = [
       manifest.assets.installer, manifest.assets.cli, manifest.assets.bashBootstrap,
-      manifest.assets.powershellBootstrap, manifest.assets.provenance, 'INSTALL_AGENT.md',
+      manifest.assets.powershellBootstrap, 'INSTALL_AGENT.md',
     ];
-    const releaseArtifacts = names.map((name, index) => {
+    const subjects = names.map((name, index) => {
       const path = join(fixture, name);
       writeFileSync(path, `verified-${index}\n`);
       return {
@@ -123,11 +124,58 @@ describe('release manifest verification', () => {
         bytes: statSync(path).size,
       };
     });
+    const provenancePath = join(fixture, manifest.assets.provenance);
+    const provenance = {
+      predicateType: 'https://slsa.dev/provenance/v1',
+      buildType: 'https://github.com/the-answerai/answer-engine/release-assets@v1',
+      invocation: {
+        tag: manifest.tag,
+        sourceCommit: manifest.sourceCommit,
+        runtimeImage: manifest.images.answerEngine,
+        packageManager: 'pnpm@10.33.0',
+      },
+      materials: [
+        { name: 'git+https://github.com/the-answerai/answer-engine', gitCommit: manifest.sourceCommit },
+        { name: 'pnpm-lock.yaml', sha256: '3'.repeat(64) },
+        { name: 'runtime-image', digest: manifest.images.answerEngine.split('@')[1] },
+      ],
+      subjects,
+    };
+    writeFileSync(provenancePath, `${JSON.stringify(provenance)}\n`);
+    const releaseArtifacts = [...subjects, {
+      name: manifest.assets.provenance,
+      sha256: createHash('sha256').update(readFileSync(provenancePath)).digest('hex'),
+      bytes: statSync(provenancePath).size,
+    }];
     const downloadManifest = { ...manifest, releaseArtifacts };
 
     expect(() => verifyDownloadedRelease(downloadManifest, fixture, 'macos', 'arm64')).not.toThrow();
+    expect(() => assertReleaseManifestAgreement(downloadManifest, manifest)).not.toThrow();
     expect(() => verifyDownloadedRelease(downloadManifest, fixture, 'windows-wsl2', 'arm64'))
       .toThrow(/does not support/i);
+
+    const mismatchedProvenance = {
+      ...provenance,
+      invocation: {
+        ...provenance.invocation,
+        runtimeImage: `ghcr.io/the-answerai/answer-engine@sha256:${'4'.repeat(64)}`,
+      },
+    };
+    writeFileSync(provenancePath, `${JSON.stringify(mismatchedProvenance)}\n`);
+    const mismatchedProvenanceManifest = {
+      ...downloadManifest,
+      releaseArtifacts: releaseArtifacts.map((artifact) => artifact.name === manifest.assets.provenance
+        ? {
+            ...artifact,
+            sha256: createHash('sha256').update(readFileSync(provenancePath)).digest('hex'),
+            bytes: statSync(provenancePath).size,
+          }
+        : artifact),
+    };
+    expect(() => verifyDownloadedRelease(mismatchedProvenanceManifest, fixture, 'macos', 'arm64'))
+      .toThrow(/provenance runtime image/i);
+
+    writeFileSync(provenancePath, `${JSON.stringify(provenance)}\n`);
     writeFileSync(join(fixture, manifest.assets.installer), 'tampered\n');
     expect(() => verifyDownloadedRelease(downloadManifest, fixture, 'macos', 'arm64'))
       .toThrow(/size mismatch|checksum mismatch/i);
@@ -136,5 +184,12 @@ describe('release manifest verification', () => {
       releaseArtifacts: releaseArtifacts.map((artifact, index) => index === 0
         ? { ...artifact, name: 'answer-engine-installer-latest.tgz' } : artifact),
     }, fixture, 'macos', 'arm64')).toThrow(/do not match.*identities/i);
+    expect(() => assertReleaseManifestAgreement({
+      ...downloadManifest,
+      images: {
+        ...downloadManifest.images,
+        answerEngine: `ghcr.io/the-answerai/answer-engine@sha256:${'5'.repeat(64)}`,
+      },
+    }, manifest)).toThrow(/bundled installer manifest/i);
   });
 });

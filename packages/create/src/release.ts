@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isDeepStrictEqual } from 'node:util';
 import { z } from 'zod';
 
 export const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
@@ -71,6 +72,30 @@ export const ReleaseDownloadManifestSchema = ReleaseManifestSchema.extend({
   }).strict()).min(6),
 }).strict();
 export type ReleaseDownloadManifest = z.infer<typeof ReleaseDownloadManifestSchema>;
+
+const ReleaseSubjectSchema = z.object({
+  name: z.string().min(1),
+  sha256: Sha256Schema,
+  bytes: z.number().int().positive(),
+}).strict();
+
+const ReleaseProvenanceSchema = z.object({
+  predicateType: z.literal('https://slsa.dev/provenance/v1'),
+  buildType: z.literal('https://github.com/the-answerai/answer-engine/release-assets@v1'),
+  invocation: z.object({
+    tag: z.string().regex(/^v\d+\.\d+\.\d+$/),
+    sourceCommit: z.string().regex(/^[a-f0-9]{40}$/),
+    runtimeImage: DigestReferenceSchema,
+    packageManager: z.literal('pnpm@10.33.0'),
+  }).strict(),
+  materials: z.array(z.object({
+    name: z.string().min(1),
+    gitCommit: z.string().regex(/^[a-f0-9]{40}$/).optional(),
+    sha256: Sha256Schema.optional(),
+    digest: z.string().regex(/^sha256:[a-f0-9]{64}$/).optional(),
+  }).strict()).length(3),
+  subjects: z.array(ReleaseSubjectSchema).length(5),
+}).strict();
 
 const packageRoot = fileURLToPath(new URL('../', import.meta.url));
 const templatesRoot = fileURLToPath(new URL('../templates/', import.meta.url));
@@ -184,7 +209,48 @@ export function verifyDownloadedRelease(
     const actual = createHash('sha256').update(contents).digest('hex');
     if (actual !== artifact.sha256) throw new Error(`Release artifact checksum mismatch: ${artifact.name}.`);
   }
+  const provenancePath = join(root, manifest.assets.provenance);
+  const provenanceResult = ReleaseProvenanceSchema.safeParse(JSON.parse(readFileSync(provenancePath, 'utf8')));
+  if (!provenanceResult.success) {
+    throw new Error(`Invalid release provenance: ${provenanceResult.error.message}`);
+  }
+  const provenance = provenanceResult.data;
+  if (provenance.invocation.tag !== manifest.tag) throw new Error('Release provenance tag does not match the manifest.');
+  if (provenance.invocation.sourceCommit !== manifest.sourceCommit) {
+    throw new Error('Release provenance source commit does not match the manifest.');
+  }
+  if (provenance.invocation.runtimeImage !== manifest.images.answerEngine) {
+    throw new Error('Release provenance runtime image does not match the manifest.');
+  }
+  const materials = new Map(provenance.materials.map((material) => [material.name, material]));
+  if (materials.size !== 3
+    || materials.get('git+https://github.com/the-answerai/answer-engine')?.gitCommit !== manifest.sourceCommit
+    || materials.get('pnpm-lock.yaml')?.sha256 === undefined
+    || materials.get('runtime-image')?.digest !== manifest.images.answerEngine.split('@')[1]) {
+    throw new Error('Release provenance materials do not match the verified release inputs.');
+  }
+  const expectedSubjects = releaseArtifacts
+    .filter((artifact) => artifact.name !== manifest.assets.provenance)
+    .sort((left, right) => left.name.localeCompare(right.name));
+  const actualSubjects = [...provenance.subjects]
+    .sort((left, right) => left.name.localeCompare(right.name));
+  if (!isDeepStrictEqual(actualSubjects, expectedSubjects)) {
+    throw new Error('Release provenance subjects do not match the downloaded artifacts.');
+  }
   return parsed.data;
+}
+
+export function assertReleaseManifestAgreement(
+  downloadedValue: unknown,
+  bundledValue: unknown,
+): ReleaseManifest {
+  const downloaded = ReleaseDownloadManifestSchema.parse(downloadedValue);
+  const { releaseArtifacts: _releaseArtifacts, ...downloadedManifest } = downloaded;
+  const bundledManifest = verifyReleaseManifest(bundledValue);
+  if (!isDeepStrictEqual(downloadedManifest, bundledManifest)) {
+    throw new Error('Downloaded release manifest does not match the bundled installer manifest.');
+  }
+  return bundledManifest;
 }
 
 export function verifyBundledRelease(): ReleaseManifest {
