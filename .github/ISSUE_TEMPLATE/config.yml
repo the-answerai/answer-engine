@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/the-answerai/answer-engine/security/advisories/new
+    about: Report suspected vulnerabilities privately. Do not open a public issue.
+  - name: Community support policy
+    url: https://github.com/the-answerai/answer-engine/blob/master/SUPPORT.md
+    about: Review support scope and the information needed for a useful report.
