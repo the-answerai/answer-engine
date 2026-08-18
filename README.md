@@ -269,6 +269,12 @@ SHA-256 lineage. Use `ae folders resume --source <id>`, `ae folders refresh
 
 ## Development
 
+Issues and pull requests are welcome. Read [CONTRIBUTING.md](./CONTRIBUTING.md)
+before starting work. Community participation follows the
+[Code of Conduct](./CODE_OF_CONDUCT.md); project decisions and scope follow
+[GOVERNANCE.md](./GOVERNANCE.md). Use [SUPPORT.md](./SUPPORT.md) for public
+help and [SECURITY.md](./SECURITY.md) for private vulnerability reporting.
+
 ```bash
 pnpm verify
 ```
@@ -308,5 +314,12 @@ a fresh vector schema and re-embedding stored content.
 
 ## License
 
-The core server is licensed under Apache-2.0. Package-specific manifests and
-license files identify any package-level license differences.
+The repository, core server, installer, web UI, and desktop application are
+licensed under the [Apache License 2.0](./LICENSE). The separately distributed
+`@answer-engine/cli` and `@answer-engine/mcp-server` packages are licensed under
+the MIT License in their package directories. Each package manifest and
+packaged license file identifies the terms that apply to that package.
+
+No CLA or DCO sign-off is currently required. Intentional contributions are
+submitted under the existing license of the package or file being changed, as
+described in [CONTRIBUTING.md](./CONTRIBUTING.md).
