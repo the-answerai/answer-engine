@@ -16,7 +16,11 @@ import {
   parseRuntimeChannel,
   validateRuntimeChannelIsolation,
 } from './runtime-channel.js';
-import { removeManagedIntegrations } from './integrations.js';
+import {
+  migrateLegacyMcpCredentials,
+  removeManagedIntegrations,
+} from './integrations.js';
+import { parseAgents } from './models.js';
 
 export function buildProgram(): Command {
   const manifest = JSON.parse(
@@ -26,7 +30,7 @@ export function buildProgram(): Command {
     .name('create-answer-engine')
     .description('Install and wire a local Answer Engine in one command')
     .version(manifest.version)
-    .argument('[action]', 'preflight, install, start, stop, status, repair, upgrade, rollback, uninstall, or remove-integrations', 'install')
+    .argument('[action]', 'preflight, install, start, stop, status, repair, upgrade, rollback, uninstall, remove-integrations, or migrate-legacy-credentials', 'install')
     .option('--channel <channel>', 'runtime channel: stable or staging')
     .option('-y, --yes', 'run without interactive prompts')
     .option('--models <models>', 'LM Studio models: chat=<id>,embedding=<id>')
@@ -64,6 +68,19 @@ export async function run(argv: string[] = process.argv): Promise<void> {
   });
   const home = profile.home;
   await validateRuntimeChannelIsolation(channelProfiles(channel, home));
+
+  if (requestedAction === 'migrate-legacy-credentials') {
+    if (channel !== 'stable') throw new Error('Staging has no legacy global client credentials to migrate.');
+    const selection = options.clients ?? options.agents;
+    if (!selection) throw new Error('Select legacy clients with --clients.');
+    const clients = parseAgents(selection);
+    if (clients.length === 0) throw new Error('Select at least one legacy client to migrate.');
+    const results = migrateLegacyMcpCredentials({ aeHome: home, clients });
+    for (const result of results) {
+      process.stdout.write(`Migrated ${result.path} to a keyless managed MCP launcher.\n`);
+    }
+    return;
+  }
 
   if (requestedAction === 'remove-integrations') {
     if (channel !== 'stable') throw new Error('Staging has no global client integrations to remove.');

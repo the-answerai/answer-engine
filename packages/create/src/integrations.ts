@@ -21,6 +21,7 @@ import {
   wireClient,
   type FileWiringClient,
   type McpStdioEntry,
+  type WiringResult,
 } from '@answer-engine/cli/wiring';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod';
@@ -394,6 +395,30 @@ function managedMcpEntry(aeHome: string, dockerCommand: string, client: AgentCli
     ],
     env: {},
   };
+}
+
+export interface MigrateLegacyMcpCredentialsInput {
+  aeHome: string;
+  homeDir?: string;
+  platform?: NodeJS.Platform;
+  clients: readonly FileWiringClient[];
+  dockerCommand?: string;
+}
+
+export function migrateLegacyMcpCredentials(
+  input: MigrateLegacyMcpCredentialsInput,
+): WiringResult[] {
+  const dockerCommand = input.dockerCommand ?? resolveDockerExecutable();
+  return input.clients.map((client) => wireClient({
+    client,
+    apiKey: '',
+    serverUrl: 'http://127.0.0.1:5050',
+    library: LOCAL_LIBRARY_ID,
+    mcpEntry: managedMcpEntry(input.aeHome, dockerCommand, client),
+  }, {
+    ...(input.homeDir ? { homeDir: input.homeDir } : {}),
+    ...(input.platform ? { platform: input.platform } : {}),
+  }));
 }
 
 function configurePluginMcp(path: string, entry: McpStdioEntry): void {

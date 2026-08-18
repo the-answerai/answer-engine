@@ -83,6 +83,21 @@ create-answer-engine remove-integrations \
   --channel stable
 ```
 
+Legacy installations that placed `ANSWER_ENGINE_API_KEY` directly in Claude,
+Codex, Cursor, or Claude Desktop MCP configuration can migrate selected entries
+without printing or copying the key:
+
+```bash
+create-answer-engine migrate-legacy-credentials \
+  --channel stable \
+  --clients codex,claude-code
+```
+
+The migration preserves unrelated MCP servers, writes a private backup, and
+replaces only the Answer Engine entry with the installer-managed Docker
+launcher. Existing client processes must be restarted after the exposed key is
+rotated; the old process argument becomes harmless once that key is revoked.
+
 `--agents` remains an alias for `--clients`. Use `--cowork-mode local` or
 `--cowork-mode remote` only after confirming how Cowork will execute. Staging
 must use `--clients none` and cannot write global integrations.
