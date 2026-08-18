@@ -129,8 +129,10 @@ describe('immutable installer release assets', () => {
     expect(runtimeWorkflow).toContain('push: true');
     expect(runtimeWorkflow).toContain('^sha256:[a-f0-9]{64}$');
     expect(runtimeWorkflow).toContain('$RUNNER_TEMP/runtime-index.json');
-    expect(runtimeWorkflow).toContain('/orgs/the-answerai/packages/container/answer-engine');
-    expect(runtimeWorkflow).toContain('--field visibility=public');
+    expect(runtimeWorkflow).toContain('This workflow does not change GHCR package visibility.');
+    expect(runtimeWorkflow).toContain('docs/installer-release.md');
+    expect(runtimeWorkflow).not.toContain('/orgs/the-answerai/packages/container/answer-engine');
+    expect(runtimeWorkflow).not.toContain('--field visibility=public');
     expect(runtimeWorkflow).toContain('runtime-image-${{ inputs.tag }}-${{ inputs.source_commit }}');
     expect(runtimeWorkflow).toContain('docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8');
     expect(runtimeWorkflow).toContain('docker/login-action@dbcb813823bdd20940b903addbd779551569679f');

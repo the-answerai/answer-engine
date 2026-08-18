@@ -53,16 +53,41 @@ job. It publishes the fixed `ghcr.io/the-answerai/answer-engine` image for both
 `linux/amd64` and `linux/arm64`, verifies the resulting manifest list, and uploads
 the immutable `image@sha256:...` reference as a workflow artifact. It does not
 publish `latest`; release manifests and lifecycle state use only the recorded
-digest. After manifest verification, the workflow sets only this fixed runtime
-package to public visibility so a clean machine can pull the recorded digest
-without GitHub credentials. The repository and source release retain their
-independent visibility settings.
+digest. GHCR package visibility is an owner-controlled, one-time administrative
+setting and is not changed by the workflow. The repository and source release
+retain their independent visibility settings.
+
+Before publishing an installer release, a repository owner must open the
+`answer-engine` container package in the `the-answerai` organization, choose
+**Package settings**, then **Change package visibility**, and change it to
+**Public**. GitHub requires the owner to confirm the package name. Do not add an
+API mutation to the release workflow: the package REST endpoint exposes package
+metadata and version deletion/restore operations, but does not support changing
+container visibility this way.
+
+After changing visibility, verify the exact workflow-recorded digest without
+reusing local registry credentials. Substitute the immutable reference from the
+workflow artifact:
+
+```bash
+anonymous_docker_config="$(mktemp -d)"
+DOCKER_CONFIG="$anonymous_docker_config" \
+  docker buildx imagetools inspect \
+  ghcr.io/the-answerai/answer-engine@sha256:<64-hex-digest>
+rm -rf "$anonymous_docker_config"
+```
+
+The inspection must succeed and list both `linux/amd64` and `linux/arm64`.
+Repeat the check from a network or machine that has never authenticated to GHCR
+when recording production release evidence. A private or missing manifest blocks
+installer publication; never replace the immutable digest with a mutable tag.
 
 The production order is: merge reviewed source to `master`, create the exact
-semantic tag at that commit, run `Runtime image release`, pass its recorded digest
-to `Installer release assets`, independently verify the candidate, and only then
-publish the existing exact-tag GitHub Release. Never reuse a tag or replace a
-published asset.
+semantic tag at that commit, run `Runtime image release`, make the package public
+through its GitHub settings, anonymously verify the recorded digest, pass that
+digest to `Installer release assets`, independently verify the candidate, and
+only then publish the existing exact-tag GitHub Release. Never reuse a tag or
+replace a published asset.
 
 To reproduce a candidate after package builds:
 
