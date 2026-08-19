@@ -2,7 +2,11 @@ import { createHash } from 'node:crypto';
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname, join, resolve, sep } from 'node:path';
-import { attachRawArchiveManifest, writeRawArchive } from '../raw-archive.js';
+import {
+  attachRawArchiveManifest,
+  readRawArchiveFile,
+  writeChunkedRawArchive,
+} from '../raw-archive.js';
 import type {
   ConversationReadResult,
   TranscriptDiscoverOptions,
@@ -156,11 +160,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-async function parseJsonlFile(
-  readPath: string,
-  filePath: string = readPath,
-): Promise<ParsedJsonlFile> {
-  const buffer = await readFile(readPath);
+function parseJsonlBuffer(buffer: Buffer, filePath: string): ParsedJsonlFile {
   const endsWithNewline = buffer.at(-1) === 10;
   const lines = buffer.toString('utf8').split('\n');
   if (endsWithNewline) lines.pop();
@@ -242,6 +242,10 @@ function findThreadMetadata(
 export const codexSource: TranscriptSource = {
   id: SOURCE_ID,
   label: SOURCE_NAME,
+  archiveThrottle: {
+    minStableMs: 5 * 60 * 1000,
+    minRefreshMs: 6 * 60 * 60 * 1000,
+  },
 
   async discover(options: TranscriptDiscoverOptions = {}): Promise<TranscriptFile[]> {
     const home = codexHome();
@@ -266,16 +270,13 @@ export const codexSource: TranscriptSource = {
   },
 
   async readConversations(file: TranscriptFile): Promise<ConversationReadResult> {
-    const archive = await writeRawArchive([file.path], {
+    const archive = await writeChunkedRawArchive(file.path, {
       adapterName: CODEX_ADAPTER_NAME,
       adapterVersion: CODEX_ADAPTER_VERSION,
     });
     const manifest = archive.manifest.files[0];
     if (!manifest) throw new Error(`Raw archive manifest omitted ${file.path}`);
-    const parsed = await parseJsonlFile(
-      join(archive.archiveDir, manifest.archive_path),
-      file.path,
-    );
+    const parsed = parseJsonlBuffer(await readRawArchiveFile(archive, file.path), file.path);
     const metadata = await cachedThreadMetadata(join(codexHome(), 'state_5.sqlite'));
     const threadMeta = findThreadMetadata(metadata, file.path, parsed.records);
     const conversations = normalizeCodexSession({
@@ -291,6 +292,8 @@ export const codexSource: TranscriptSource = {
       errors: parsed.errors,
       processedLines: parsed.processedLines,
       sourceFingerprint: manifest.sha256,
+      archiveBytesWritten: archive.newlyArchivedBytes,
+      archiveBytesReused: archive.reusedBytes,
     };
   },
 };

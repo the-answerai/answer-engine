@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import {
   RawArchiveManifestSchema,
+  RawArchiveManifestV1Schema,
+  RawArchiveManifestV2Schema,
 } from '../packages/cli/src/sync/raw-archive.js';
 import { syncCursorFilePath } from '../packages/cli/src/home.js';
 import { createDatabasePool } from './database.js';
@@ -56,9 +58,10 @@ const SyncSummaryDocumentSchema = z.preprocess((input) => {
   return input;
 }, SyncRunSummarySchema);
 
-const StoredRawArchiveManifestSchema = RawArchiveManifestSchema.extend({
-  manifest_path: NonEmptyStringSchema,
-});
+const StoredRawArchiveManifestSchema = z.discriminatedUnion('version', [
+  RawArchiveManifestV1Schema.extend({ manifest_path: NonEmptyStringSchema }),
+  RawArchiveManifestV2Schema.extend({ manifest_path: NonEmptyStringSchema }),
+]);
 
 const RealHistoryRowSchema = z.object({
   id: NonEmptyStringSchema,
@@ -424,18 +427,38 @@ async function verifySampledManifest(row: ValidatedHistoryRow): Promise<number> 
   }
 
   for (const entry of diskManifest.files) {
-    const bytes = await readBytes(
-      archiveFilePath(manifestPath, entry.archive_path),
-      `${row.source} sampled archive file`,
-    );
-    const actualSha256 = createHash('sha256').update(bytes).digest('hex');
-    if (actualSha256 !== entry.sha256.toLowerCase()) {
-      throw new RealHistoryVerificationError(
-        `${row.source} sampled archive SHA-256 mismatch`,
+    if (diskManifest.version === 1) {
+      const bytes = await readBytes(
+        archiveFilePath(manifestPath, entry.archive_path),
+        `${row.source} sampled archive file`,
       );
+      const actualSha256 = createHash('sha256').update(bytes).digest('hex');
+      if (actualSha256 !== entry.sha256.toLowerCase()) {
+        throw new RealHistoryVerificationError(
+          `${row.source} sampled archive SHA-256 mismatch`,
+        );
+      }
+      if (bytes.byteLength !== entry.size) {
+        throw new RealHistoryVerificationError(`${row.source} sampled archive size mismatch`);
+      }
+      continue;
     }
-    if (bytes.byteLength !== entry.size) {
-      throw new RealHistoryVerificationError(`${row.source} sampled archive size mismatch`);
+
+    const archiveRoot = dirname(dirname(manifestPath));
+    const digest = createHash('sha256');
+    let totalBytes = 0;
+    for (const chunk of entry.chunks) {
+      const chunkPath = archiveFilePath(join(archiveRoot, 'manifest.json'), chunk.archive_path);
+      const bytes = await readBytes(chunkPath, `${row.source} sampled archive chunk`);
+      if (bytes.byteLength !== chunk.size
+        || createHash('sha256').update(bytes).digest('hex') !== chunk.sha256.toLowerCase()) {
+        throw new RealHistoryVerificationError(`${row.source} sampled archive chunk integrity mismatch`);
+      }
+      digest.update(bytes);
+      totalBytes += bytes.byteLength;
+    }
+    if (totalBytes !== entry.size || digest.digest('hex') !== entry.sha256.toLowerCase()) {
+      throw new RealHistoryVerificationError(`${row.source} sampled archive integrity mismatch`);
     }
   }
   return diskManifest.files.length;

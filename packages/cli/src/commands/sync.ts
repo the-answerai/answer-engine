@@ -54,7 +54,7 @@ import {
 } from '../sync/raw-archive.js';
 
 const DEFAULT_SYNC_BATCH_SIZE = 25;
-const DEFAULT_POLL_INTERVAL_SECONDS = 15;
+const DEFAULT_POLL_INTERVAL_SECONDS = 300;
 
 interface SyncCommandOptions {
   source?: string;
@@ -137,7 +137,9 @@ function printLoopSummary(summary: SyncRunSummary): void {
   console.log(
     `[${timestamp}] source=${summary.sourceId} files=${summary.filesScanned} ` +
     `found=${summary.turnsFound} imported=${summary.turnsImported} ` +
-    `failed=${summary.failedItems} parseErrors=${summary.parseErrors}`
+    `deferred=${summary.deferredFiles} failed=${summary.failedItems} ` +
+    `parseErrors=${summary.parseErrors} archiveWritten=${summary.archiveBytesWritten} ` +
+    `archiveReused=${summary.archiveBytesReused}`
   );
 }
 

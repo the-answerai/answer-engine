@@ -78,8 +78,14 @@ into `config.yaml`, verifies the full bundle fingerprint again before reading,
 and records a resumable reconciled inventory. Changed bundles require a fresh
 preview and approval; inaccessible sources receive safe permission guidance.
 Supported history sources are Claude Code, Codex, Cowork, and local directories.
-The sync cursor and raw source archive remain local under `AE_HOME`. Raw archives
-are content-addressed and reused when an import is retried. Writes fail closed
+The sync cursor and raw source archive remain local under `AE_HOME`. Codex's
+append-heavy JSONL transcripts use fixed-size, content-addressed chunks, so a
+growing session writes only its changed tail instead of another full copy.
+Background sync waits for a file to settle and refreshes an already-imported
+conversation at most once every six hours; `ae sync once` remains immediate.
+The daemon scans every five minutes by default and reports deferred files plus
+new and reused archive bytes. Other raw archives are content-addressed and
+reused when an import is retried. Writes fail closed
 before exceeding a 256 MiB bundle limit, a 10 GiB total archive limit, or a
 10 GiB free-space reserve. Override those byte counts with
 `AE_RAW_ARCHIVE_MAX_BUNDLE_BYTES`, `AE_RAW_ARCHIVE_MAX_TOTAL_BYTES`, and

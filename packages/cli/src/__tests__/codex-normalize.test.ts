@@ -7,6 +7,7 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -256,21 +257,30 @@ describe('Codex conversation normalization', () => {
     expect(searchText).not.toContain('future_value');
 
     const archiveRoot = join(codexHome, '..', 'ae-home', 'raw-archive');
-    const [archiveName] = readdirSync(archiveRoot);
+    const [archiveName] = readdirSync(archiveRoot).filter((name) => !name.startsWith('.'));
     const manifest = JSON.parse(
       readFileSync(join(archiveRoot, archiveName, 'manifest.json'), 'utf8'),
     ) as {
+      version: number;
       adapter_name: string;
-      files: Array<{ path: string; archive_path: string; sha256: string }>;
+      files: Array<{
+        path: string;
+        sha256: string;
+        chunks: Array<{ archive_path: string }>;
+      }>;
     };
     const expectedHash = createHash('sha256').update(readFileSync(rolloutPath)).digest('hex');
     expect(manifest).toMatchObject({
+      version: 2,
       adapter_name: 'codex-history',
       files: [{ path: rolloutPath, sha256: expectedHash }],
     });
     expect(conversation.source_sha256).toBe(expectedHash);
     expect(result.sourceFingerprint).toBe(expectedHash);
-    expect(readFileSync(join(archiveRoot, archiveName, manifest.files[0].archive_path)))
+    const archivedBytes = Buffer.concat(
+      manifest.files[0].chunks.map((chunk) => readFileSync(join(archiveRoot, chunk.archive_path))),
+    );
+    expect(archivedBytes)
       .toEqual(readFileSync(rolloutPath));
   });
 
@@ -437,6 +447,46 @@ describe('Codex conversation normalization', () => {
       source_identifier: 'openai_codex:codex:codex-session-915',
       'metadata.sync.adapter_name': 'codex-history',
     });
-    expect(readdirSync(join(codexHome, '..', 'ae-home', 'raw-archive'))).toHaveLength(1);
+    const archiveRoot = join(codexHome, '..', 'ae-home', 'raw-archive');
+    expect(readdirSync(archiveRoot).filter((name) => !name.startsWith('.'))).toHaveLength(1);
+    expect(readdirSync(archiveRoot)).toContain('.chunks');
+  });
+
+  it('throttles changed conversation snapshots only in the background daemon', async () => {
+    const { codexHome, rolloutPath, database } = makeCodexFixture();
+    const cursorFile = join(codexHome, 'cursor.json');
+    const client = {
+      submitSyncImport: vi.fn((request: ImportRequest) => Promise.resolve({
+        success: true as const,
+        data: {
+          totalItems: request.items.length,
+          completedItems: request.items.length,
+          failedItems: 0,
+          contentIds: ['content-codex'],
+          failures: [],
+        },
+      })),
+    };
+    const now = Date.now();
+    const stableTime = new Date(now - 10 * 60 * 1000);
+    utimesSync(rolloutPath, stableTime, stableTime);
+    const options = {
+      sourceId: 'codex' as const,
+      paths: [rolloutPath], cursorFile, batchSize: 1, client,
+    };
+
+    const first = await runSyncOnce({ ...options, enforceArchiveThrottle: true, nowMs: now });
+    writeFileSync(rolloutPath, `${readFileSync(rolloutPath, 'utf8')}\n`);
+    utimesSync(rolloutPath, stableTime, stableTime);
+    const deferred = await runSyncOnce({
+      ...options, enforceArchiveThrottle: true, nowMs: now + 20 * 60 * 1000,
+    });
+    const manual = await runSyncOnce(options);
+    closeTestDatabase(database);
+
+    expect(first.turnsImported).toBe(1);
+    expect(deferred).toMatchObject({ turnsImported: 0, deferredFiles: 1 });
+    expect(manual.turnsImported).toBe(1);
+    expect(client.submitSyncImport).toHaveBeenCalledTimes(2);
   });
 });

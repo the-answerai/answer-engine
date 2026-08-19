@@ -98,6 +98,8 @@ export interface ConversationReadResult {
   errors: TranscriptReadError[];
   processedLines: number;
   sourceFingerprint: string;
+  archiveBytesWritten?: number;
+  archiveBytesReused?: number;
 }
 
 export interface TranscriptDiscoverOptions {
@@ -108,6 +110,10 @@ export interface TranscriptDiscoverOptions {
 export interface TranscriptSource {
   id: TranscriptSourceId;
   label: string;
+  archiveThrottle?: {
+    minStableMs: number;
+    minRefreshMs: number;
+  };
   discover(options?: TranscriptDiscoverOptions): Promise<TranscriptFile[]>;
   readNewTurns?(file: TranscriptFile, cursor: FileCursor): Promise<TranscriptReadResult>;
   fingerprint?(file: TranscriptFile): Promise<string>;
