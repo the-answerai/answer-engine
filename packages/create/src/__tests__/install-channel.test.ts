@@ -36,7 +36,7 @@ describe('stable channel adoption', () => {
     const detectOwnedPorts = vi.fn(async () => new Set<number>());
     const preflight = vi.fn(() => runPreflight({
       platform: 'darwin', architecture: 'arm64', totalMemoryBytes: 16 * 1024 ** 3,
-      freeDiskBytes: 60 * 1024 ** 3, nodeVersion: '22.16.0', installation: 'legacy',
+      freeDiskBytes: 60 * 1024 ** 3, nodeVersion: '22.23.2', installation: 'legacy',
       modelRuntimeAvailable: false, runCommand: async () => { throw new Error('Docker is unavailable'); },
       probePort: async () => false,
     }));
@@ -78,7 +78,7 @@ describe('stable channel adoption', () => {
       detectOwnedPorts: async () => new Set(),
       runPreflight: () => runPreflight({
         platform: 'darwin', architecture: 'arm64', totalMemoryBytes: 16 * 1024 ** 3,
-        freeDiskBytes: 80 * 1024 ** 3, nodeVersion: '22.16.0', installation: 'absent',
+        freeDiskBytes: 80 * 1024 ** 3, nodeVersion: '22.23.2', installation: 'absent',
         modelRuntimeAvailable: true, runCommand: readyCommand,
         probePort: async () => true,
       }),
@@ -128,7 +128,7 @@ describe('stable channel adoption', () => {
       detectOwnedPorts: async () => new Set<number>(),
       runPreflight: () => runPreflight({
         platform: 'darwin', architecture: 'arm64', totalMemoryBytes: 16 * 1024 ** 3,
-        freeDiskBytes: 60 * 1024 ** 3, nodeVersion: '22.16.0', installation,
+        freeDiskBytes: 60 * 1024 ** 3, nodeVersion: '22.23.2', installation,
         modelRuntimeAvailable: true, runCommand: readyCommand,
         probePort: async () => true,
       }),

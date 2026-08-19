@@ -45,7 +45,7 @@ if [ "$1" = "compose" ]; then echo 2.30.0; exit 0; fi
 exit 1
 `);
   executable(join(bin, 'node'), node === 'ready'
-    ? '#!/bin/sh\n[ "$1" = "--version" ] && echo v22.16.0\nexit 0\n'
+    ? '#!/bin/sh\n[ "$1" = "--version" ] && echo v22.23.2\nexit 0\n'
     : '#!/bin/sh\nexit 1\n');
   return {
     fixture,
@@ -74,7 +74,7 @@ describe('immutable installer release assets', () => {
       .toBeLessThan(bash.indexOf('tar -xzf "$STAGING_DIRECTORY/$INSTALLER_ASSET"'));
     expect(bash).toContain('--preflight');
     expect(bash).toContain('Install or start Docker Desktop manually');
-    expect(bash).toContain('Node.js 22.16.0 can be installed');
+    expect(bash).toContain('Node.js 22.23.2 can be installed');
     expect(bash).toContain('Refusing a floating release input.');
     expect(bash).toContain('NODE_EXECUTABLE="$(command -v node)"');
     expect(bash).toContain('exec "$NODE_EXECUTABLE" "$target" "$@"');
@@ -98,6 +98,7 @@ describe('immutable installer release assets', () => {
     const workflow = read('.github/workflows/release-installer.yml');
     const runtimeWorkflow = read('.github/workflows/release-runtime-image.yml');
     const sourceManifest = read('packages/create/release-manifest.json');
+    const dockerfile = read('Dockerfile');
 
     expect(builder).toContain('checked-out commit');
     expect(builder).toContain("'--sort=name', '--mtime=@0'");
@@ -126,6 +127,13 @@ describe('immutable installer release assets', () => {
     expect(runtimeWorkflow).toContain('git rev-parse "$RELEASE_TAG^{commit}"');
     expect(runtimeWorkflow).toContain('IMAGE=ghcr.io/the-answerai/answer-engine');
     expect(runtimeWorkflow).toContain('platforms: linux/amd64,linux/arm64');
+    expect(runtimeWorkflow).toContain('Scan linux/amd64 candidate');
+    expect(runtimeWorkflow).toContain('Scan linux/arm64 candidate');
+    expect(runtimeWorkflow).toContain('--ignore-unfixed');
+    expect(runtimeWorkflow).toContain('--scanners vuln');
+    expect(runtimeWorkflow).toContain('--severity CRITICAL,HIGH');
+    expect(runtimeWorkflow).toContain('--exit-code 1');
+    expect(runtimeWorkflow).toContain('runtime-scan-${{ inputs.tag }}-${{ inputs.source_commit }}');
     expect(runtimeWorkflow).toContain('push: true');
     expect(runtimeWorkflow).toContain('^sha256:[a-f0-9]{64}$');
     expect(runtimeWorkflow).toContain('$RUNNER_TEMP/runtime-index.json');
@@ -136,12 +144,16 @@ describe('immutable installer release assets', () => {
     expect(runtimeWorkflow).toContain('runtime-image-${{ inputs.tag }}-${{ inputs.source_commit }}');
     expect(runtimeWorkflow).toContain('docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8');
     expect(runtimeWorkflow).toContain('docker/login-action@dbcb813823bdd20940b903addbd779551569679f');
+    expect(dockerfile).toContain('corepack disable');
+    expect(dockerfile).toContain('/usr/local/lib/node_modules/npm');
+    expect(dockerfile).toContain('/usr/local/lib/node_modules/corepack');
+    expect(dockerfile).toContain('/root/.cache/node');
     expect(`${builder}\n${workflow}\n${runtimeWorkflow}`).not.toMatch(/npm publish|pnpm publish/);
   });
 
   it.each([
-    ['macos', 'node-v22.16.0-darwin-arm64.tar.xz', 'aaf7fc3c936f1b359bc312b63638e41f258689ac2303966ad932cda18c54ea00'],
-    ['windows-wsl2', 'node-v22.16.0-linux-x64.tar.xz', 'f4cb75bb036f0d0eddf6b79d9596df1aaab9ddccd6a20bf489be5abe9467e84e'],
+    ['macos', 'node-v22.23.2-darwin-arm64.tar.xz', '5eff7a9011895aae3f29d06f167b84a62b028a591370c7cafb59103559fd26e1'],
+    ['windows-wsl2', 'node-v22.23.2-linux-x64.tar.xz', 'd60acfe00a2932254bb0ad20e01b0d74397a0875595de719654b214f4b03f307'],
   ] as const)('generates the verified %s Node proposal without mutation', (platform, archive, checksum) => {
     const fixture = bootstrapFixture(platform, 'missing');
     const result = spawnSync('/bin/bash', ['scripts/release/bootstrap.sh', '--preflight'], {
@@ -149,7 +161,7 @@ describe('immutable installer release assets', () => {
     });
 
     expect(result.status).toBe(2);
-    expect(result.stdout).toContain(`https://nodejs.org/dist/v22.16.0/${archive}`);
+    expect(result.stdout).toContain(`https://nodejs.org/dist/v22.23.2/${archive}`);
     expect(result.stdout).toContain(checksum);
     expect(readdirSync(fixture.home)).toEqual([]);
   });
@@ -172,7 +184,7 @@ describe('immutable installer release assets', () => {
     });
 
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain('[READY|required|reuse] Node.js v22.16.0');
+    expect(result.stdout).toContain('[READY|required|reuse] Node.js v22.23.2');
     expect(readdirSync(fixture.home)).toEqual([]);
   });
 
@@ -185,14 +197,14 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 case "$output" in
-  *node-v22.16.0-darwin-arm64.tar.xz) printf archive > "$output"; exit 0 ;;
+  *node-v22.23.2-darwin-arm64.tar.xz) printf archive > "$output"; exit 0 ;;
   *) exit 22 ;;
 esac
 `);
     executable(join(fixture.bin, 'shasum'), `#!/bin/sh
 path=
 for argument in "$@"; do path="$argument"; done
-printf '%s  %s\n' aaf7fc3c936f1b359bc312b63638e41f258689ac2303966ad932cda18c54ea00 "$path"
+printf '%s  %s\n' 5eff7a9011895aae3f29d06f167b84a62b028a591370c7cafb59103559fd26e1 "$path"
 `);
     executable(join(fixture.bin, 'tar'), `#!/bin/sh
 destination=
@@ -201,7 +213,7 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 mkdir -p "$destination/bin"
-printf '%s\n' '#!/bin/sh' '[ "$1" = "--version" ] && echo v22.16.0' 'exit 0' > "$destination/bin/node"
+printf '%s\n' '#!/bin/sh' '[ "$1" = "--version" ] && echo v22.23.2' 'exit 0' > "$destination/bin/node"
 chmod 755 "$destination/bin/node"
 `);
 
@@ -215,6 +227,6 @@ chmod 755 "$destination/bin/node"
       cwd: resolve('.'), env: fixture.env, encoding: 'utf8',
     });
     expect(resumed.status).toBe(0);
-    expect(resumed.stdout).toContain('[READY|required|reuse] Node.js v22.16.0');
+    expect(resumed.stdout).toContain('[READY|required|reuse] Node.js v22.23.2');
   });
 });

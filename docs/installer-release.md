@@ -3,7 +3,7 @@
 Answer Engine onboarding uses versioned GitHub Release assets and does not
 publish or fetch `@answer-engine/create` or `@answer-engine/cli` from npm. The
 canonical copy-paste commands live in [INSTALL_AGENT.md](../INSTALL_AGENT.md).
-They pin `v1.1.0` plus the published bootstrap SHA-256, download `SHA256SUMS`
+They pin `v1.1.1` plus the published bootstrap SHA-256, download `SHA256SUMS`
 and the platform bootstrap, require the release checksum to match the pinned
 value, verify the bootstrap before execution, and reject branch or `/latest`
 inputs. The bootstrap then verifies the manifest, provenance, installer archive,
@@ -14,9 +14,9 @@ and CLI archive before installing user-owned launchers.
 - Apple Silicon macOS (`arm64`) with 16 GB RAM is the full-local macOS baseline.
 - Windows 11 x64 build 22000+ runs the verified PowerShell handoff through WSL2;
   the native Windows process never configures a separate runtime.
-- Node.js 22.16+, a reachable Docker daemon, and Docker Compose v2 are required.
+- Node.js 22.23.2+, a reachable Docker daemon, and Docker Compose v2 are required.
   Compatible installed versions are reused.
-- The official Node.js 22.16.0 archive is the only dependency the bootstrap can
+- The official Node.js 22.23.2 archive is the only dependency the bootstrap can
   add. It shows the nodejs.org source, version, fixed SHA-256, user-owned
   destination, and exact operation, then requires explicit consent. Readiness is
   rerun afterward.
@@ -48,8 +48,12 @@ machine macOS/Windows execution remain explicit release acceptance in issue #49.
 
 The separately dispatched `Runtime image release` workflow supplies the required
 runtime digest. It validates the same exact tag and commit, proves that the tag
-resolves to that commit, and limits `packages: write` to its production-release
-job. It publishes the fixed `ghcr.io/the-answerai/answer-engine` image for both
+resolves to that commit, builds separate `linux/amd64` and `linux/arm64`
+candidates, and blocks publication unless Trivy reports zero fixable critical
+or high vulnerabilities for both. The JSON scan reports are retained as the
+`runtime-scan-<tag>-<commit>` workflow artifact. The workflow limits
+`packages: write` to its production-release job. It publishes the fixed
+`ghcr.io/the-answerai/answer-engine` image for both
 `linux/amd64` and `linux/arm64`, verifies the resulting manifest list, and uploads
 the immutable `image@sha256:...` reference as a workflow artifact. It does not
 publish `latest`; release manifests and lifecycle state use only the recorded
@@ -93,7 +97,7 @@ To reproduce a candidate after package builds:
 
 ```bash
 node scripts/build-release-assets.mjs \
-  --tag v1.1.0 \
+  --tag v1.1.1 \
   --commit <full-40-character-commit> \
   --image ghcr.io/the-answerai/answer-engine@sha256:<64-hex-digest> \
   --output tmp/release-candidate
@@ -116,7 +120,7 @@ verified digest. A legacy stable install remains inspectable and adoptable, but
 its old mutable tag is not recorded as a rollback target. Its first upgrade must
 move to a verified digest.
 
-If automated dependency installation is unavailable, install Node.js 22.16+
+If automated dependency installation is unavailable, install Node.js 22.23.2+
 manually from nodejs.org and rerun bootstrap preflight. Install Docker Desktop,
 WSL2, GPU support, or a model runtime only from the vendor's platform
 instructions, then rerun readiness. Never bypass checksum failures: remove the

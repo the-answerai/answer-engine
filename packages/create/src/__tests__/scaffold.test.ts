@@ -133,7 +133,7 @@ describe('scaffoldInstallation', () => {
     const home = tempHome();
 
     expect(() => scaffoldInstallation({
-      home, config, image: 'ghcr.io/the-answerai/answer-engine:1.1.0',
+      home, config, image: 'ghcr.io/the-answerai/answer-engine:1.1.1',
     }, { release })).toThrow(/exact @sha256 digest/i);
     expect(readdirSync(home)).toEqual([]);
   });

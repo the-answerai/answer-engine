@@ -1,9 +1,9 @@
 {
   "name": "@answer-engine/mcp-server",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "MCP server for local Answer Engine memory and retrieval",
   "engines": {
-    "node": ">=22.16.0"
+    "node": ">=22.23.2"
   },
   "type": "module",
   "main": "dist/index.js",

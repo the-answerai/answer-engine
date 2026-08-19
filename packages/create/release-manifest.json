@@ -1,20 +1,20 @@
 {
   "schemaVersion": 2,
-  "version": "1.1.0",
-  "tag": "v1.1.0",
+  "version": "1.1.1",
+  "tag": "v1.1.1",
   "sourceCommit": "__RELEASE_SOURCE_COMMIT__",
-  "promptUrl": "https://raw.githubusercontent.com/the-answerai/answer-engine/v1.1.0/INSTALL_AGENT.md",
-  "releaseBaseUrl": "https://github.com/the-answerai/answer-engine/releases/download/v1.1.0",
+  "promptUrl": "https://raw.githubusercontent.com/the-answerai/answer-engine/v1.1.1/INSTALL_AGENT.md",
+  "releaseBaseUrl": "https://github.com/the-answerai/answer-engine/releases/download/v1.1.1",
   "images": {
     "answerEngine": "__ANSWER_ENGINE_RUNTIME_IMAGE__",
     "postgres": "pgvector/pgvector:pg16@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b",
     "redis": "redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2"
   },
   "assets": {
-    "installer": "answer-engine-installer-v1.1.0.tgz",
-    "cli": "answer-engine-cli-v1.1.0.tgz",
-    "bashBootstrap": "answer-engine-bootstrap-v1.1.0.sh",
-    "powershellBootstrap": "answer-engine-bootstrap-v1.1.0.ps1",
+    "installer": "answer-engine-installer-v1.1.1.tgz",
+    "cli": "answer-engine-cli-v1.1.1.tgz",
+    "bashBootstrap": "answer-engine-bootstrap-v1.1.1.sh",
+    "powershellBootstrap": "answer-engine-bootstrap-v1.1.1.ps1",
     "checksums": "SHA256SUMS",
     "provenance": "provenance.json"
   },
@@ -33,11 +33,11 @@
     },
     {
       "path": "integrations/answer-engine/.claude-plugin/plugin.json",
-      "sha256": "c923fd19be16f3074a69c6438b50a6a5d0bdf84ef6685580d3d565b4f51079ed"
+      "sha256": "c777c1a04bc85ae0ba3f7de5ea4278914527838e631b2083a03ad54af1e3e41a"
     },
     {
       "path": "integrations/answer-engine/.codex-plugin/plugin.json",
-      "sha256": "eac9279f19797b5fcb10631f0f496f29619b9915c2335fb16f310a90e73df8b8"
+      "sha256": "2e1ed011fcc2b45dbc1336a3e1c46e2405fbe9c0242101a82c9daba078ceac5f"
     },
     {
       "path": "integrations/answer-engine/.mcp.json",

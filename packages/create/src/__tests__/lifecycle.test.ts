@@ -196,7 +196,7 @@ describe('channel lifecycle actions', () => {
   });
 
   it.each([
-    'ghcr.io/the-answerai/answer-engine:1.1.0',
+    'ghcr.io/the-answerai/answer-engine:1.1.1',
     'ghcr.io/the-answerai/answer-engine:latest',
     'ghcr.io/the-answerai/answer-engine@sha256:not-a-digest',
   ])('rejects mutable or malformed upgrade image %s before Docker or file mutation', async (image) => {
@@ -226,7 +226,7 @@ describe('channel lifecycle actions', () => {
   it('moves a readable legacy tag to a digest without recording the tag for rollback', async () => {
     const profile = fixture('stable');
     const environment = readFileSync(profile.credentialsFile, 'utf8')
-      .replace(/ANSWER_ENGINE_IMAGE=.*/, 'ANSWER_ENGINE_IMAGE=ghcr.io/the-answerai/answer-engine:1.1.0');
+      .replace(/ANSWER_ENGINE_IMAGE=.*/, 'ANSWER_ENGINE_IMAGE=ghcr.io/the-answerai/answer-engine:1.1.1');
     writeFileSync(profile.credentialsFile, environment);
     const next = `ghcr.io/the-answerai/answer-engine@sha256:${'3'.repeat(64)}`;
     const runCommand = vi.fn(async () => ({ stdout: '' }));
