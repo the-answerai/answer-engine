@@ -1,0 +1,8 @@
+id: captured-068-fix-adopt-legacy-stable-installs-and-ope
+description: "fix: adopt legacy stable installs and open the real desktop web runtime"
+tags: []
+source: auto-captured
+captured_from:
+  issue: 68
+  session: session/epic-40-epic-deliver-zero-to-first-memory-desktop-onboarding-and-isolated-local-channels
+  date: 2026-08-16

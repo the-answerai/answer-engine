@@ -1,0 +1,10 @@
+type: step
+step: test-fix
+eval_method: pending
+status: needs-annotation
+source: auto-captured
+captured_from:
+  issue: 68
+  session: session/epic-40-epic-deliver-zero-to-first-memory-desktop-onboarding-and-isolated-local-channels
+  date: 2026-08-16
+checks: []
