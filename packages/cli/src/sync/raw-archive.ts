@@ -6,12 +6,18 @@ import { z } from 'zod';
 import { logsDir, rawArchiveDir } from '../home.js';
 
 export const RAW_ARCHIVE_MANIFEST_VERSION = 1 as const;
+export const RAW_ARCHIVE_CHUNKED_MANIFEST_VERSION = 2 as const;
+export const RAW_ARCHIVE_CHUNK_BYTES = 4 * 1024 * 1024;
 
 const NonEmptyStringSchema = z.string().trim().min(1);
 const Sha256Schema = z.string().regex(/^[a-f0-9]{64}$/i, 'must be a SHA-256 hex digest');
 const ArchivePathSchema = z.string().regex(
   /^files\/[a-zA-Z0-9._-]+$/,
   'must remain inside the archive files directory',
+);
+const ChunkArchivePathSchema = z.string().regex(
+  /^\.chunks\/sha256-[a-f0-9]{64}$/,
+  'must be a content-addressed file inside the shared chunk directory',
 );
 
 export const RawFileManifestEntrySchema = z.object({
@@ -24,7 +30,7 @@ export const RawFileManifestEntrySchema = z.object({
   adapter_version: NonEmptyStringSchema,
 }).strict();
 
-export const RawArchiveManifestSchema = z.object({
+export const RawArchiveManifestV1Schema = z.object({
   version: z.literal(RAW_ARCHIVE_MANIFEST_VERSION),
   created_at: z.string().datetime(),
   adapter_name: NonEmptyStringSchema,
@@ -33,8 +39,40 @@ export const RawArchiveManifestSchema = z.object({
   files: z.array(RawFileManifestEntrySchema),
 }).strict();
 
+export const RawChunkManifestEntrySchema = z.object({
+  archive_path: ChunkArchivePathSchema,
+  size: z.number().int().nonnegative(),
+  sha256: Sha256Schema,
+}).strict();
+
+export const RawChunkedFileManifestEntrySchema = z.object({
+  path: NonEmptyStringSchema,
+  size: z.number().int().nonnegative(),
+  mtime: z.string().datetime(),
+  sha256: Sha256Schema,
+  adapter_name: NonEmptyStringSchema,
+  adapter_version: NonEmptyStringSchema,
+  chunks: z.array(RawChunkManifestEntrySchema),
+}).strict();
+
+export const RawArchiveManifestV2Schema = z.object({
+  version: z.literal(RAW_ARCHIVE_CHUNKED_MANIFEST_VERSION),
+  created_at: z.string().datetime(),
+  adapter_name: NonEmptyStringSchema,
+  adapter_version: NonEmptyStringSchema,
+  source_fingerprint: Sha256Schema,
+  files: z.array(RawChunkedFileManifestEntrySchema),
+}).strict();
+
+export const RawArchiveManifestSchema = z.discriminatedUnion('version', [
+  RawArchiveManifestV1Schema,
+  RawArchiveManifestV2Schema,
+]);
+
 export type RawFileManifestEntry = z.infer<typeof RawFileManifestEntrySchema>;
 export type RawArchiveManifest = z.infer<typeof RawArchiveManifestSchema>;
+export type RawArchiveManifestV1 = z.infer<typeof RawArchiveManifestV1Schema>;
+export type RawArchiveManifestV2 = z.infer<typeof RawArchiveManifestV2Schema>;
 
 export const DEFAULT_RAW_ARCHIVE_MAX_BUNDLE_BYTES = 256 * 1024 * 1024;
 export const DEFAULT_RAW_ARCHIVE_MAX_TOTAL_BYTES = 10 * 1024 * 1024 * 1024;
@@ -61,10 +99,22 @@ export interface WriteRawArchiveOptions {
   limits?: Partial<RawArchiveLimits>;
 }
 
+export interface WriteChunkedRawArchiveOptions extends WriteRawArchiveOptions {
+  chunkBytes?: number;
+}
+
 export interface WriteRawArchiveResult {
   archiveDir: string;
   manifestPath: string;
-  manifest: RawArchiveManifest;
+  manifest: RawArchiveManifestV1;
+}
+
+export interface WriteChunkedRawArchiveResult {
+  archiveDir: string;
+  manifestPath: string;
+  manifest: RawArchiveManifestV2;
+  newlyArchivedBytes: number;
+  reusedBytes: number;
 }
 
 export interface RawArchiveInventoryEntry {
@@ -101,7 +151,7 @@ export interface RawArchiveRetentionResult {
 
 export function attachRawArchiveManifest<
   T extends { provider_metadata_json: Record<string, unknown> },
->(conversations: readonly T[], archive: WriteRawArchiveResult): T[] {
+>(conversations: readonly T[], archive: WriteRawArchiveResult | WriteChunkedRawArchiveResult): T[] {
   const rawArchiveManifest = {
     manifest_path: archive.manifestPath,
     ...archive.manifest,
@@ -285,7 +335,7 @@ async function validateExistingArchive(
   adapterVersion: string,
 ): Promise<WriteRawArchiveResult> {
   const manifestPath = join(archiveDir, 'manifest.json');
-  const manifest = RawArchiveManifestSchema.parse(JSON.parse(await readFile(manifestPath, 'utf8')));
+  const manifest = RawArchiveManifestV1Schema.parse(JSON.parse(await readFile(manifestPath, 'utf8')));
   const fingerprint = bundleFingerprint(snapshots, adapterName, adapterVersion);
   if (manifest.adapter_name !== adapterName || manifest.adapter_version !== adapterVersion
     || manifest.files.length !== snapshots.length
@@ -573,7 +623,7 @@ export async function writeRawArchive(
             adapter_version: adapter.adapter_version,
           });
         }
-        const manifest = RawArchiveManifestSchema.parse({
+        const manifest = RawArchiveManifestV1Schema.parse({
           version: RAW_ARCHIVE_MANIFEST_VERSION,
           created_at: adapter.created_at,
           adapter_name: adapter.adapter_name,
@@ -600,6 +650,196 @@ export async function writeRawArchive(
         await rm(stagingDir, { recursive: true, force: true });
         throw error;
       }
+    } finally {
+      await releaseLock();
+    }
+  });
+}
+
+function sha256Bytes(bytes: Uint8Array): string {
+  return createHash('sha256').update(bytes).digest('hex');
+}
+
+async function validateChunk(path: string, size: number, sha256: string): Promise<void> {
+  const fileStat = await lstat(path);
+  if (!fileStat.isFile() || fileStat.isSymbolicLink()) {
+    throw new Error(`Raw archive chunk failed integrity validation: ${path}`);
+  }
+  const bytes = await readFile(path);
+  if (bytes.length !== size || sha256Bytes(bytes) !== sha256) {
+    throw new Error(`Raw archive chunk failed integrity validation: ${path}`);
+  }
+}
+
+export async function readRawArchiveFile(
+  archive: WriteRawArchiveResult | WriteChunkedRawArchiveResult,
+  sourcePath: string,
+): Promise<Buffer> {
+  let bytes: Buffer;
+  if (archive.manifest.version === RAW_ARCHIVE_MANIFEST_VERSION) {
+    const entry = archive.manifest.files.find((candidate) => candidate.path === sourcePath);
+    if (!entry) throw new Error(`Raw archive manifest omitted ${sourcePath}`);
+    const archivedPath = join(archive.archiveDir, entry.archive_path);
+    if (!isWithin(archive.archiveDir, archivedPath)) {
+      throw new Error(`Raw archive file path failed integrity validation: ${entry.archive_path}`);
+    }
+    bytes = await readFile(archivedPath);
+  } else {
+    const entry = archive.manifest.files.find((candidate) => candidate.path === sourcePath);
+    if (!entry) throw new Error(`Raw archive manifest omitted ${sourcePath}`);
+    const archiveRoot = dirname(archive.archiveDir);
+    const parts: Buffer[] = [];
+    for (const chunk of entry.chunks) {
+      const chunkPath = join(archiveRoot, chunk.archive_path);
+      if (!isWithin(join(archiveRoot, '.chunks'), chunkPath)) {
+        throw new Error(`Raw archive chunk path failed integrity validation: ${chunk.archive_path}`);
+      }
+      await validateChunk(chunkPath, chunk.size, chunk.sha256);
+      parts.push(await readFile(chunkPath));
+    }
+    bytes = Buffer.concat(parts);
+  }
+
+  const expected = archive.manifest.files.find((candidate) => candidate.path === sourcePath);
+  if (!expected || bytes.length !== expected.size || sha256Bytes(bytes) !== expected.sha256) {
+    throw new Error(`Raw archive file failed integrity validation: ${sourcePath}`);
+  }
+  return bytes;
+}
+
+export async function writeChunkedRawArchive(
+  sourcePath: string,
+  options: WriteChunkedRawArchiveOptions,
+): Promise<WriteChunkedRawArchiveResult> {
+  return serializeArchiveWrite(async () => {
+    const createdAt = options.createdAt ?? new Date().toISOString();
+    const adapter = z.object({
+      adapter_name: NonEmptyStringSchema,
+      adapter_version: NonEmptyStringSchema,
+      created_at: z.string().datetime(),
+    }).parse({
+      adapter_name: options.adapterName,
+      adapter_version: options.adapterVersion,
+      created_at: createdAt,
+    });
+    const limits = archiveLimits(options.limits);
+    const chunkBytes = options.chunkBytes ?? RAW_ARCHIVE_CHUNK_BYTES;
+    if (!Number.isSafeInteger(chunkBytes) || chunkBytes <= 0 || chunkBytes > RAW_ARCHIVE_CHUNK_BYTES) {
+      throw new RawArchiveCapacityError(
+        `Raw archive chunks must be between 1 and ${RAW_ARCHIVE_CHUNK_BYTES} bytes`,
+      );
+    }
+    const archiveRoot = options.archiveDir ? dirname(resolve(options.archiveDir)) : rawArchiveDir();
+    if (isWithin(rawArchiveDir(), sourcePath)) {
+      throw new Error(`Raw archive cannot archive its own contents: ${sourcePath}`);
+    }
+    await mkdir(archiveRoot, { recursive: true, mode: 0o700 });
+    const releaseLock = await acquireArchiveLock(archiveRoot);
+    try {
+      const snapshot = await snapshotSource(sourcePath);
+      if (snapshot.size > limits.maxBundleBytes) {
+        throw new RawArchiveCapacityError(
+          `Raw archive bundle exceeds ${limits.maxBundleBytes} byte per-bundle limit`,
+        );
+      }
+      const sourceBytes = await readFile(sourcePath);
+      if (sourceBytes.length !== snapshot.size || sha256Bytes(sourceBytes) !== snapshot.sha256) {
+        throw new Error(`Raw archive source changed while being chunked: ${sourcePath}`);
+      }
+
+      const fingerprint = bundleFingerprint([snapshot], adapter.adapter_name, adapter.adapter_version);
+      const archiveDir = options.archiveDir
+        ? resolve(options.archiveDir)
+        : join(archiveRoot, `${safeBaseName(adapter.adapter_name)}-${fingerprint}`);
+      const manifestPath = join(archiveDir, 'manifest.json');
+      if (!isWithin(archiveRoot, archiveDir) || resolve(archiveDir) === resolve(archiveRoot)) {
+        throw new Error('Raw archive target must remain inside its archive root');
+      }
+
+      try {
+        await lstat(archiveDir);
+        if (options.archiveDir) throw new Error(`Raw archive already exists: ${archiveDir}`);
+        const manifest = RawArchiveManifestV2Schema.parse(JSON.parse(await readFile(manifestPath, 'utf8')));
+        const result = { archiveDir, manifestPath, manifest, newlyArchivedBytes: 0, reusedBytes: snapshot.size };
+        await readRawArchiveFile(result, sourcePath);
+        return result;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+
+      const chunks = [];
+      let newlyArchivedBytes = 0;
+      let reusedBytes = 0;
+      const chunkRoot = join(archiveRoot, '.chunks');
+      await mkdir(chunkRoot, { recursive: true, mode: 0o700 });
+      for (let offset = 0; offset < sourceBytes.length; offset += chunkBytes) {
+        const bytes = sourceBytes.subarray(offset, Math.min(offset + chunkBytes, sourceBytes.length));
+        const sha256 = sha256Bytes(bytes);
+        const archivePath = `.chunks/sha256-${sha256}`;
+        const chunkPath = join(archiveRoot, archivePath);
+        try {
+          await lstat(chunkPath);
+          await validateChunk(chunkPath, bytes.length, sha256);
+          reusedBytes += bytes.length;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+          newlyArchivedBytes += bytes.length;
+        }
+        chunks.push({ archive_path: archivePath, size: bytes.length, sha256, bytes });
+      }
+
+      const existingBytes = await directoryBytes(archiveRoot, limits.maxTotalBytes);
+      const requiredBytes = newlyArchivedBytes + 64 * 1024;
+      if (existingBytes + requiredBytes > limits.maxTotalBytes) {
+        throw new RawArchiveCapacityError(
+          `Raw archive total limit would be exceeded (${existingBytes} existing + ${requiredBytes} required > ${limits.maxTotalBytes})`,
+        );
+      }
+      const freeBytes = await availableBytes(archiveRoot);
+      if (freeBytes - requiredBytes < limits.minFreeBytes) {
+        throw new RawArchiveCapacityError(
+          `Raw archive write would breach the ${limits.minFreeBytes} byte free-space reserve`,
+        );
+      }
+
+      for (const chunk of chunks) {
+        const chunkPath = join(archiveRoot, chunk.archive_path);
+        try {
+          await writeFile(chunkPath, chunk.bytes, { mode: 0o600, flag: 'wx' });
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+          await validateChunk(chunkPath, chunk.size, chunk.sha256);
+        }
+      }
+
+      const manifest = RawArchiveManifestV2Schema.parse({
+        version: RAW_ARCHIVE_CHUNKED_MANIFEST_VERSION,
+        created_at: adapter.created_at,
+        adapter_name: adapter.adapter_name,
+        adapter_version: adapter.adapter_version,
+        source_fingerprint: fingerprint,
+        files: [{
+          path: snapshot.path,
+          size: snapshot.size,
+          mtime: snapshot.mtime,
+          sha256: snapshot.sha256,
+          adapter_name: adapter.adapter_name,
+          adapter_version: adapter.adapter_version,
+          chunks: chunks.map(({ bytes: _bytes, ...chunk }) => chunk),
+        }],
+      });
+      const stagingDir = join(archiveRoot, `.staging-${randomUUID()}`);
+      try {
+        await mkdir(stagingDir, { mode: 0o700 });
+        await writeFile(join(stagingDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, {
+          encoding: 'utf8', mode: 0o600, flag: 'wx',
+        });
+        await rename(stagingDir, archiveDir);
+      } catch (error) {
+        await rm(stagingDir, { recursive: true, force: true });
+        throw error;
+      }
+      return { archiveDir, manifestPath, manifest, newlyArchivedBytes, reusedBytes };
     } finally {
       await releaseLock();
     }

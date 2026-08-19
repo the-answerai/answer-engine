@@ -36,6 +36,11 @@ imported; the user is asked to run a fresh discovery and approve its current
 inventory. The CLI then imports one discovered history at a time through the
 authenticated sync client. Each source fingerprint receives a deterministic
 immutable raw archive; a complete archive is hash-verified and reused on retry.
+Codex rollout archives store fixed-size content-addressed chunks, so subsequent
+snapshots of a growing transcript reuse the unchanged prefix. Background sync
+also waits five minutes for active files to settle and refreshes previously
+imported conversations no more than once every six hours. Explicit
+`ae sync once` and approved first imports are not delayed.
 The content cursor advances only after the synchronous import result is durable.
 
 The page can request cancellation at the next item boundary. Closing the page

@@ -40,6 +40,8 @@ export interface SyncRunOptions {
   client: SyncClient;
   onWarning?: (message: string) => void;
   inventoryOnly?: boolean;
+  enforceArchiveThrottle?: boolean;
+  nowMs?: number;
 }
 
 export interface SyncRunSummary {
@@ -55,6 +57,9 @@ export interface SyncRunSummary {
   parseErrors: number;
   contentIds: string[];
   archiveManifestPaths: string[];
+  deferredFiles: number;
+  archiveBytesWritten: number;
+  archiveBytesReused: number;
 }
 
 export interface SyncLoopOptions extends SyncRunOptions {
@@ -179,6 +184,9 @@ async function runLocalDirSyncOnce(
     parseErrors: 0,
     contentIds: [],
     archiveManifestPaths: [],
+    deferredFiles: 0,
+    archiveBytesWritten: 0,
+    archiveBytesReused: 0,
   };
 
   const discoveredPaths = new Set(files.map((file) => file.path));
@@ -335,6 +343,9 @@ export async function runSyncOnce(options: SyncRunOptions): Promise<SyncRunSumma
     parseErrors: 0,
     contentIds: [],
     archiveManifestPaths: [],
+    deferredFiles: 0,
+    archiveBytesWritten: 0,
+    archiveBytesReused: 0,
   };
 
   await processWithConcurrency(
@@ -343,6 +354,17 @@ export async function runSyncOnce(options: SyncRunOptions): Promise<SyncRunSumma
     async (file) => {
     const cursor = await cursorStore.get(source.id, file.path);
     if (source.readConversations) {
+      if (options.enforceArchiveThrottle && source.archiveThrottle) {
+        const nowMs = options.nowMs ?? Date.now();
+        const lastRefreshMs = cursor.updatedAt ? Date.parse(cursor.updatedAt) : Number.NaN;
+        const sourceIsSettled = nowMs - file.mtimeMs >= source.archiveThrottle.minStableMs;
+        const refreshIsDue = !Number.isFinite(lastRefreshMs)
+          || nowMs - lastRefreshMs >= source.archiveThrottle.minRefreshMs;
+        if (!sourceIsSettled || (cursor.sourceSha256 !== undefined && !refreshIsDue)) {
+          summary.deferredFiles += 1;
+          return;
+        }
+      }
       const sourceSha256 = source.fingerprint
         ? await source.fingerprint(file)
         : await fingerprintFile(file.path);
@@ -353,7 +375,7 @@ export async function runSyncOnce(options: SyncRunOptions): Promise<SyncRunSumma
       );
       if (cursor.sourceSha256 === sourceSha256) {
         summary.duplicateItems += 1;
-        if (!metadataUnchanged) {
+        if (!metadataUnchanged || options.enforceArchiveThrottle) {
           await cursorStore.set(source.id, file.path, {
             ...cursor,
             fileSize: file.size,
@@ -368,6 +390,8 @@ export async function runSyncOnce(options: SyncRunOptions): Promise<SyncRunSumma
       const readResult = await source.readConversations(file);
       summary.turnsFound += readResult.conversations.length;
       summary.parseErrors += readResult.errors.length;
+      summary.archiveBytesWritten += readResult.archiveBytesWritten ?? 0;
+      summary.archiveBytesReused += readResult.archiveBytesReused ?? 0;
 
       let importedCount = 0;
       let failedCount = 0;
@@ -517,6 +541,7 @@ export async function runSyncSourcesLoop(options: SyncSourcesLoopOptions): Promi
           batchSize: options.batchSize,
           concurrency: options.concurrency,
           client: options.client,
+          enforceArchiveThrottle: true,
         });
         options.onRun?.(summary);
       }

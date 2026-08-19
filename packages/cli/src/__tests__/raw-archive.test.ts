@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   RawArchiveCapacityError,
@@ -9,6 +9,8 @@ import {
   applyRawArchiveRetention,
   inspectRawArchive,
   planRawArchiveRetention,
+  readRawArchiveFile,
+  writeChunkedRawArchive,
   writeRawArchive,
 } from '../sync/raw-archive.js';
 
@@ -30,6 +32,48 @@ afterEach(() => {
 });
 
 describe('writeRawArchive', () => {
+  it('deduplicates unchanged chunks when an append-only transcript grows', async () => {
+    const root = makeTempDir();
+    process.env.AE_HOME = join(root, 'ae-home');
+    const sourcePath = join(root, 'large.jsonl');
+    const testChunkBytes = 64 * 1024;
+    const initial = Buffer.alloc(testChunkBytes + 1024, 97);
+    writeFileSync(sourcePath, initial);
+
+    const first = await writeChunkedRawArchive(sourcePath, {
+      adapterName: 'append-only-test', adapterVersion: '1.0.0',
+      chunkBytes: testChunkBytes,
+    });
+    appendFileSync(sourcePath, Buffer.alloc(128, 98));
+    const second = await writeChunkedRawArchive(sourcePath, {
+      adapterName: 'append-only-test', adapterVersion: '1.0.0',
+      chunkBytes: testChunkBytes,
+    });
+
+    expect(first.manifest.version).toBe(2);
+    expect(first.newlyArchivedBytes).toBe(initial.length);
+    expect(second.newlyArchivedBytes).toBeLessThanOrEqual(testChunkBytes + 128);
+    expect(second.reusedBytes).toBeGreaterThanOrEqual(testChunkBytes);
+    expect(await readRawArchiveFile(second, sourcePath)).toEqual(readFileSync(sourcePath));
+    expect(readdirSync(second.archiveDir)).toEqual(['manifest.json']);
+  });
+
+  it('rejects a tampered shared chunk before returning archived bytes', async () => {
+    const root = makeTempDir();
+    process.env.AE_HOME = join(root, 'ae-home');
+    const sourcePath = join(root, 'source.jsonl');
+    writeFileSync(sourcePath, '{"message":"integrity"}\n');
+    const archive = await writeChunkedRawArchive(sourcePath, {
+      adapterName: 'append-only-test', adapterVersion: '1.0.0',
+    });
+    const entry = archive.manifest.files[0];
+    const chunk = entry?.chunks[0];
+    expect(chunk).toBeDefined();
+    writeFileSync(join(dirname(archive.archiveDir), chunk!.archive_path), 'tampered');
+
+    await expect(readRawArchiveFile(archive, sourcePath)).rejects.toThrow(/integrity/i);
+  });
+
   it('requires adapter versioning in the manifest contract', () => {
     expect(RawArchiveManifestSchema.safeParse({
       version: 1,
