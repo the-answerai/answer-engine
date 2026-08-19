@@ -99,6 +99,10 @@ export interface WriteRawArchiveOptions {
   limits?: Partial<RawArchiveLimits>;
 }
 
+export interface WriteChunkedRawArchiveOptions extends WriteRawArchiveOptions {
+  chunkBytes?: number;
+}
+
 export interface WriteRawArchiveResult {
   archiveDir: string;
   manifestPath: string;
@@ -705,7 +709,7 @@ export async function readRawArchiveFile(
 
 export async function writeChunkedRawArchive(
   sourcePath: string,
-  options: WriteRawArchiveOptions,
+  options: WriteChunkedRawArchiveOptions,
 ): Promise<WriteChunkedRawArchiveResult> {
   return serializeArchiveWrite(async () => {
     const createdAt = options.createdAt ?? new Date().toISOString();
@@ -719,6 +723,12 @@ export async function writeChunkedRawArchive(
       created_at: createdAt,
     });
     const limits = archiveLimits(options.limits);
+    const chunkBytes = options.chunkBytes ?? RAW_ARCHIVE_CHUNK_BYTES;
+    if (!Number.isSafeInteger(chunkBytes) || chunkBytes <= 0 || chunkBytes > RAW_ARCHIVE_CHUNK_BYTES) {
+      throw new RawArchiveCapacityError(
+        `Raw archive chunks must be between 1 and ${RAW_ARCHIVE_CHUNK_BYTES} bytes`,
+      );
+    }
     const archiveRoot = options.archiveDir ? dirname(resolve(options.archiveDir)) : rawArchiveDir();
     if (isWithin(rawArchiveDir(), sourcePath)) {
       throw new Error(`Raw archive cannot archive its own contents: ${sourcePath}`);
@@ -762,8 +772,8 @@ export async function writeChunkedRawArchive(
       let reusedBytes = 0;
       const chunkRoot = join(archiveRoot, '.chunks');
       await mkdir(chunkRoot, { recursive: true, mode: 0o700 });
-      for (let offset = 0; offset < sourceBytes.length; offset += RAW_ARCHIVE_CHUNK_BYTES) {
-        const bytes = sourceBytes.subarray(offset, Math.min(offset + RAW_ARCHIVE_CHUNK_BYTES, sourceBytes.length));
+      for (let offset = 0; offset < sourceBytes.length; offset += chunkBytes) {
+        const bytes = sourceBytes.subarray(offset, Math.min(offset + chunkBytes, sourceBytes.length));
         const sha256 = sha256Bytes(bytes);
         const archivePath = `.chunks/sha256-${sha256}`;
         const chunkPath = join(archiveRoot, archivePath);

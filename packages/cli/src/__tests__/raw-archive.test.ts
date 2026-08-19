@@ -6,7 +6,6 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   RawArchiveCapacityError,
   RawArchiveManifestSchema,
-  RAW_ARCHIVE_CHUNK_BYTES,
   applyRawArchiveRetention,
   inspectRawArchive,
   planRawArchiveRetention,
@@ -37,21 +36,24 @@ describe('writeRawArchive', () => {
     const root = makeTempDir();
     process.env.AE_HOME = join(root, 'ae-home');
     const sourcePath = join(root, 'large.jsonl');
-    const initial = Buffer.alloc(RAW_ARCHIVE_CHUNK_BYTES + 1024, 97);
+    const testChunkBytes = 64 * 1024;
+    const initial = Buffer.alloc(testChunkBytes + 1024, 97);
     writeFileSync(sourcePath, initial);
 
     const first = await writeChunkedRawArchive(sourcePath, {
       adapterName: 'append-only-test', adapterVersion: '1.0.0',
+      chunkBytes: testChunkBytes,
     });
     appendFileSync(sourcePath, Buffer.alloc(128, 98));
     const second = await writeChunkedRawArchive(sourcePath, {
       adapterName: 'append-only-test', adapterVersion: '1.0.0',
+      chunkBytes: testChunkBytes,
     });
 
     expect(first.manifest.version).toBe(2);
     expect(first.newlyArchivedBytes).toBe(initial.length);
-    expect(second.newlyArchivedBytes).toBeLessThanOrEqual(RAW_ARCHIVE_CHUNK_BYTES + 128);
-    expect(second.reusedBytes).toBeGreaterThanOrEqual(RAW_ARCHIVE_CHUNK_BYTES);
+    expect(second.newlyArchivedBytes).toBeLessThanOrEqual(testChunkBytes + 128);
+    expect(second.reusedBytes).toBeGreaterThanOrEqual(testChunkBytes);
     expect(await readRawArchiveFile(second, sourcePath)).toEqual(readFileSync(sourcePath));
     expect(readdirSync(second.archiveDir)).toEqual(['manifest.json']);
   });
