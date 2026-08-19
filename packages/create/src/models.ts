@@ -119,6 +119,12 @@ export async function prepareLmStudioModels(
     const response = await fetch(`${apiRoot}/api/v1/models`, {
       signal: AbortSignal.timeout(5_000),
     });
+    if (response.status === 404) {
+      // The server speaks /v1 but not LM Studio's native management API.
+      // Generic OpenAI-compatible servers such as Ollama load models on
+      // demand, so there is nothing to pre-load.
+      return;
+    }
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json() as { models?: NativeLmStudioModel[] };
     available = Array.isArray(payload.models) ? payload.models : [];

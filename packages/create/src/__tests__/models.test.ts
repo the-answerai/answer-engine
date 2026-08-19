@@ -104,4 +104,18 @@ describe('prepareLmStudioModels', () => {
       context_length: 2048,
     });
   });
+
+  it('skips pre-loading when the server has no native LM Studio management API', async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(new Response('404 page not found', { status: 404 }));
+    vi.stubGlobal('fetch', fetch);
+
+    await prepareLmStudioModels(
+      { chat: 'qwen3:30b-a3b-instruct-2507-q4_K_M', embedding: 'nomic-embed-text:latest' },
+      'http://localhost:11434/v1',
+    );
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch.mock.calls[0]?.[0]).toBe('http://localhost:11434/api/v1/models');
+  });
 });
