@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -eu
 
-VERSION=1.1.0
+VERSION=1.1.1
 TAG="v${VERSION}"
 RELEASE_BASE="https://github.com/the-answerai/answer-engine/releases/download/${TAG}"
 INSTALLER_ASSET="answer-engine-installer-v${VERSION}.tgz"
 CLI_ASSET="answer-engine-cli-v${VERSION}.tgz"
 BASH_ASSET="answer-engine-bootstrap-v${VERSION}.sh"
 POWERSHELL_ASSET="answer-engine-bootstrap-v${VERSION}.ps1"
-NODE_VERSION=22.16.0
+NODE_VERSION=22.23.2
 NODE_DESTINATION="${HOME}/.local/share/answer-engine/node-v${NODE_VERSION}"
 MODE=install
 APPROVE_NODE=false
@@ -62,7 +62,7 @@ verify_from_sums() {
 
 node_supported() {
   command -v node >/dev/null 2>&1 || return 1
-  node -e 'const [a,b,c]=process.versions.node.split(".").map(Number); process.exit(a>22||(a===22&&(b>16||(b===16&&c>=0)))?0:1)'
+  node -e 'const [a,b,c]=process.versions.node.split(".").map(Number); process.exit(a>22||(a===22&&(b>23||(b===23&&c>=2)))?0:1)'
 }
 
 if [ -x "$NODE_DESTINATION/bin/node" ]; then
@@ -76,12 +76,12 @@ if [ "$OS" = Darwin ] && [ "$ARCH" = arm64 ]; then
   RELEASE_PLATFORM=macos
   RELEASE_ARCHITECTURE=arm64
   NODE_ARCHIVE="node-v${NODE_VERSION}-darwin-arm64.tar.xz"
-  NODE_SHA256=aaf7fc3c936f1b359bc312b63638e41f258689ac2303966ad932cda18c54ea00
+  NODE_SHA256=5eff7a9011895aae3f29d06f167b84a62b028a591370c7cafb59103559fd26e1
 elif [ "$OS" = Linux ] && [ "$ARCH" = x86_64 ] && grep -qiE 'microsoft-standard|wsl2' /proc/sys/kernel/osrelease; then
   RELEASE_PLATFORM=windows-wsl2
   RELEASE_ARCHITECTURE=x64
   NODE_ARCHIVE="node-v${NODE_VERSION}-linux-x64.tar.xz"
-  NODE_SHA256=f4cb75bb036f0d0eddf6b79d9596df1aaab9ddccd6a20bf489be5abe9467e84e
+  NODE_SHA256=d60acfe00a2932254bb0ad20e01b0d74397a0875595de719654b214f4b03f307
 else
   printf '%s\n' 'Supported bootstrap systems are Apple Silicon macOS and x64 Windows 11 WSL2.' >&2
   exit 1
@@ -110,7 +110,7 @@ if ! node_supported; then
   printf 'Source: %s\nVersion: %s\nDestination: %s\n' "$NODE_URL" "$NODE_VERSION" "$NODE_DESTINATION"
   printf 'Command: download, verify SHA-256 %s, and extract the official archive.\n' "$NODE_SHA256"
   if [ "$MODE" = preflight ]; then
-    printf '%s\n' '[MISSING|required|user-consent] Node.js 22.16.0 can be installed from the displayed verified user-scoped archive.'
+    printf '%s\n' '[MISSING|required|user-consent] Node.js 22.23.2 can be installed from the displayed verified user-scoped archive.'
     NODE_READY=false
   elif [ "$APPROVE_NODE" != true ]; then
     printf 'Install this user-scoped dependency? [y/N] '

@@ -102,7 +102,7 @@ export async function isPortFree(port: number): Promise<boolean> {
   });
 }
 
-const MINIMUM_NODE_VERSION = [22, 16, 0] as const;
+const MINIMUM_NODE_VERSION = [22, 23, 2] as const;
 const GB = 1024 ** 3;
 
 function supportsNode(version: string): boolean {
@@ -183,20 +183,20 @@ function nodeProposal(
   architecture: string,
 ): PreflightCheck['proposal'] | undefined {
   const archive = systemPlatform === 'macos' && architecture === 'arm64'
-    ? 'node-v22.16.0-darwin-arm64.tar.xz'
+    ? 'node-v22.23.2-darwin-arm64.tar.xz'
     : systemPlatform === 'windows-wsl2' && architecture === 'x64'
-      ? 'node-v22.16.0-linux-x64.tar.xz' : undefined;
+      ? 'node-v22.23.2-linux-x64.tar.xz' : undefined;
   const checksum = systemPlatform === 'macos'
-    ? 'aaf7fc3c936f1b359bc312b63638e41f258689ac2303966ad932cda18c54ea00'
-    : 'f4cb75bb036f0d0eddf6b79d9596df1aaab9ddccd6a20bf489be5abe9467e84e';
+    ? '5eff7a9011895aae3f29d06f167b84a62b028a591370c7cafb59103559fd26e1'
+    : 'd60acfe00a2932254bb0ad20e01b0d74397a0875595de719654b214f4b03f307';
   if (!archive) return undefined;
-  const source = `https://nodejs.org/dist/v22.16.0/${archive}`;
+  const source = `https://nodejs.org/dist/v22.23.2/${archive}`;
   return {
     source,
-    version: '22.16.0',
-    destination: '~/.local/share/answer-engine/node-v22.16.0',
-    command: `download ${source}; verify SHA-256 ${checksum}; extract into ~/.local/share/answer-engine/node-v22.16.0`,
-    verification: `SHA-256 ${checksum} from the official Node.js v22.16.0 SHASUMS256.txt`,
+    version: '22.23.2',
+    destination: '~/.local/share/answer-engine/node-v22.23.2',
+    command: `download ${source}; verify SHA-256 ${checksum}; extract into ~/.local/share/answer-engine/node-v22.23.2`,
+    verification: `SHA-256 ${checksum} from the official Node.js v22.23.2 SHASUMS256.txt`,
   };
 }
 
@@ -258,10 +258,10 @@ export async function runPreflight(
   const nodeSupported = supportsNode(version);
   const proposal = nodeSupported ? undefined : nodeProposal(systemPlatform, architecture);
   checks.push(check('NODE_VERSION', 'Node.js', nodeSupported ? 'pass' : 'warning',
-    nodeSupported ? `Node.js ${version} is supported.` : `Node.js ${version} is unsupported; Answer Engine requires Node.js 22.16 or newer.`,
+    nodeSupported ? `Node.js ${version} is supported.` : `Node.js ${version} is unsupported; Answer Engine requires Node.js 22.23.2 or newer.`,
     nodeSupported ? undefined : proposal
-      ? 'Approve the displayed official user-scoped Node.js 22.16.0 archive, or install Node.js 22.16+ manually, then rerun readiness.'
-      : 'Install Node.js 22.16 or newer, then run this command again.', !nodeSupported,
+      ? 'Approve the displayed official user-scoped Node.js 22.23.2 archive, or install Node.js 22.23.2+ manually, then rerun readiness.'
+      : 'Install Node.js 22.23.2 or newer, then run this command again.', !nodeSupported,
     {
       detectedVersion: version,
       ...(!nodeSupported ? { dependencyState: 'incompatible' as const } : {}),

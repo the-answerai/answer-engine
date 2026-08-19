@@ -24,7 +24,7 @@ const program = new Command();
 program
   .name('ae')
   .description('Answer Engine CLI — local memory, search, import, sync, and evaluation')
-  .version('1.1.0')
+  .version('1.1.1')
   .option('--json', 'Force JSON output')
   .option('--channel <channel>', 'Runtime channel: stable or staging')
   .hook('preAction', (thisCommand) => {

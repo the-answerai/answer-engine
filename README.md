@@ -81,19 +81,19 @@ docker compose down
 
 <!-- INSTALL_PROMPT:START -->
 ```text
-Install Answer Engine stable 1.1.0 on this computer. Follow only the immutable
-v1.1.0 instructions at:
-https://raw.githubusercontent.com/the-answerai/answer-engine/v1.1.0/INSTALL_AGENT.md
+Install Answer Engine stable 1.1.1 on this computer. Follow only the immutable
+v1.1.1 instructions at:
+https://raw.githubusercontent.com/the-answerai/answer-engine/v1.1.1/INSTALL_AGENT.md
 
 First explain that bootstrap preflight is read-only and ask permission to run
 the matching Apple Silicon Bash or Windows 11 PowerShell command in the
-"Verified bootstrap commands" section. Download only the exact v1.1.0 asset,
+"Verified bootstrap commands" section. Download only the exact v1.1.1 asset,
 verify its SHA-256 entry before execution, and run it first with --preflight.
 
 Translate every pass, warning, or unsupported result into plain language. Never
 silently install Docker Desktop, WSL2, LM Studio, drivers, a model runtime, or
 another privileged prerequisite. The only supported automatic dependency is
-the displayed official Node.js 22.16.0 user-scoped archive, and it still
+the displayed official Node.js 22.23.2 user-scoped archive, and it still
 requires my explicit approval. Recommend full-local only for supported hardware,
 reduced-local for constrained Apple Silicon, or cloud-backed only after explicit
 opt-in. Ask me in one short interview for the install folder, model route, every

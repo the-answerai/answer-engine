@@ -32,7 +32,7 @@ describe('runPreflight', () => {
     });
     const result = await runPreflight({
       platform: 'darwin', architecture: 'arm64', totalMemoryBytes: 16 * 1024 ** 3,
-      freeDiskBytes: 80 * 1024 ** 3, nodeVersion: '22.16.0', runCommand,
+      freeDiskBytes: 80 * 1024 ** 3, nodeVersion: '22.23.2', runCommand,
       probePort: vi.fn(async () => true), installation: 'absent',
     });
 
@@ -52,7 +52,7 @@ describe('runPreflight', () => {
     const result = await runPreflight({
       platform: 'linux', architecture: 'x64', osRelease: '5.15-microsoft-standard-WSL2',
       totalMemoryBytes: 24 * 1024 ** 3, freeDiskBytes: 100 * 1024 ** 3,
-      nodeVersion: '22.16.0', runCommand, probePort: vi.fn(async () => true),
+      nodeVersion: '22.23.2', runCommand, probePort: vi.fn(async () => true),
       installation: 'managed', modelRuntimeAvailable: true,
     });
 
@@ -66,7 +66,7 @@ describe('runPreflight', () => {
     const result = await runPreflight({
       platform: 'linux', architecture: 'x64', osRelease: '4.4.0-19041-Microsoft',
       totalMemoryBytes: 24 * 1024 ** 3, freeDiskBytes: 100 * 1024 ** 3,
-      nodeVersion: '22.16.0', runCommand: successRunner,
+      nodeVersion: '22.23.2', runCommand: successRunner,
       probePort: vi.fn(async () => true), installation: 'absent', modelRuntimeAvailable: true,
     });
 
@@ -81,7 +81,7 @@ describe('runPreflight', () => {
   it('returns exact actionable human and JSON output for remediable states', async () => {
     const result = await runPreflight({
       platform: 'darwin', architecture: 'arm64', totalMemoryBytes: 12 * 1024 ** 3,
-      freeDiskBytes: 20 * 1024 ** 3, nodeVersion: '22.16.0', runCommand: successRunner,
+      freeDiskBytes: 20 * 1024 ** 3, nodeVersion: '22.23.2', runCommand: successRunner,
       probePort: vi.fn(async () => true), installation: 'partial', modelRuntimeAvailable: false,
     });
 
@@ -99,7 +99,7 @@ describe('runPreflight', () => {
 
     const result = await runPreflight({
       home, platform: 'darwin', architecture: 'arm64', totalMemoryBytes: 16 * 1024 ** 3,
-      freeDiskBytes: 60 * 1024 ** 3, nodeVersion: '22.16.0', runCommand: successRunner,
+      freeDiskBytes: 60 * 1024 ** 3, nodeVersion: '22.23.2', runCommand: successRunner,
       probePort: vi.fn(async () => true), modelRuntimeAvailable: true,
     });
 
@@ -110,7 +110,7 @@ describe('runPreflight', () => {
   it('marks unsupported native Windows with a concrete WSL2 remediation', async () => {
     const result = await runPreflight({
       platform: 'win32', architecture: 'x64', totalMemoryBytes: 32 * 1024 ** 3,
-      freeDiskBytes: 100 * 1024 ** 3, nodeVersion: '22.16.0', runCommand: successRunner,
+      freeDiskBytes: 100 * 1024 ** 3, nodeVersion: '22.23.2', runCommand: successRunner,
       probePort: vi.fn(async () => true), modelRuntimeAvailable: true,
     });
 
@@ -132,7 +132,7 @@ describe('runPreflight', () => {
     expect(result.failures).toEqual(expect.arrayContaining([
       expect.objectContaining({
         code: 'NODE_VERSION',
-        fix: expect.stringContaining('official user-scoped Node.js 22.16.0 archive'),
+        fix: expect.stringContaining('official user-scoped Node.js 22.23.2 archive'),
       }),
       expect.objectContaining({
         code: 'DOCKER_DAEMON',
@@ -164,7 +164,7 @@ describe('runPreflight', () => {
 
     expect(result.checks.find((item) => item.code === 'NODE_VERSION')).toMatchObject({
       requirement: 'required', dependencyState: 'incompatible', installPolicy: 'user-consent',
-      detectedVersion: '20.19.0', proposal: { source: expect.stringContaining('node-v22.16.0-darwin-arm64') },
+      detectedVersion: '20.19.0', proposal: { source: expect.stringContaining('node-v22.23.2-darwin-arm64') },
     });
     expect(result.checks.find((item) => item.code === 'DOCKER_DAEMON')).toMatchObject({
       requirement: 'required', installPolicy: 'privileged', blocking: true,
@@ -177,7 +177,7 @@ describe('runPreflight', () => {
   it.each(['', 'available', 'v1.29.2'])('rejects non-v2 Compose version output %j', async (composeVersion) => {
     const result = await runPreflight({
       ...supportedHost,
-      nodeVersion: '22.16.0',
+      nodeVersion: '22.23.2',
       runCommand: vi.fn(async (_command: string, args: string[]) => ({
         stdout: args[0] === 'info' ? '27.0.0' : composeVersion,
       })),
@@ -204,6 +204,7 @@ describe('runPreflight', () => {
   it.each([
     '20.19.0',
     '22.15.1',
+    '22.23.1',
     'not-a-version',
   ])('rejects unsupported Node version %s', async (nodeVersion) => {
     const result = await runPreflight({
@@ -218,8 +219,8 @@ describe('runPreflight', () => {
   });
 
   it.each([
-    '22.16.0',
-    'v22.16.1',
+    '22.23.2',
+    'v22.23.3',
     '23.0.0',
   ])('accepts supported Node version %s', async (nodeVersion) => {
     const result = await runPreflight({
@@ -235,7 +236,7 @@ describe('runPreflight', () => {
   it('allows ports already owned by this installation on an idempotent re-run', async () => {
     const result = await runPreflight({
       ...supportedHost,
-      nodeVersion: '22.16.0',
+      nodeVersion: '22.23.2',
       runCommand: successRunner,
       probePort: vi.fn(() => Promise.resolve(false)),
       ownedPorts: new Set([5050]),
@@ -247,7 +248,7 @@ describe('runPreflight', () => {
   it('checks every selected channel port and reports all collisions', async () => {
     const requiredPorts = [5150, 5533, 6480, 3300, 5151];
     const result = await runPreflight({
-      nodeVersion: '22.16.0',
+      nodeVersion: '22.23.2',
       runCommand: successRunner,
       requiredPorts,
       probePort: vi.fn(() => Promise.resolve(false)),

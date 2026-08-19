@@ -66,10 +66,10 @@ describe('Answer Engine plugin skills', () => {
     const claude = JSON.parse(readFileSync(join(templateRoot, '.claude-plugin', 'plugin.json'), 'utf8')) as Record<string, unknown>;
     const mcp = readFileSync(join(templateRoot, '.mcp.json'), 'utf8');
     expect(codex).toMatchObject({
-      name: 'answer-engine', version: '1.1.0',
+      name: 'answer-engine', version: '1.1.1',
       mcpServers: { 'answer-engine': { command: '__ANSWER_ENGINE_MCP_COMMAND__' } },
     });
-    expect(claude).toMatchObject({ name: 'answer-engine', version: '1.1.0' });
+    expect(claude).toMatchObject({ name: 'answer-engine', version: '1.1.1' });
     expect(mcp).toContain('__ANSWER_ENGINE_MCP_COMMAND__');
     expect(mcp).not.toContain('@answer-engine/mcp-server');
     expect(mcp).not.toMatch(/ae_live_[A-Za-z0-9]/);

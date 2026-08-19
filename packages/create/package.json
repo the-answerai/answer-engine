@@ -1,10 +1,10 @@
 {
   "name": "@answer-engine/create",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "One-command local installer for Answer Engine",
   "type": "module",
   "engines": {
-    "node": ">=22.16.0"
+    "node": ">=22.23.2"
   },
   "bin": {
     "create-answer-engine": "dist/index.js"

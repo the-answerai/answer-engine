@@ -1,6 +1,6 @@
 # Install Answer Engine with a coding agent
 
-> Runbook version 1.1.0 for `@answer-engine/create` and
+> Runbook version 1.1.1 for `@answer-engine/create` and
 > `@answer-engine/cli` 1.1.x.
 
 Coding agent: follow this runbook from the prerequisite checks through a recall
@@ -8,25 +8,25 @@ of the user's own data. Do not stop after scaffolding or after the synthetic
 installer check.
 
 Stable source:
-<https://raw.githubusercontent.com/the-answerai/answer-engine/v1.1.0/INSTALL_AGENT.md>
+<https://raw.githubusercontent.com/the-answerai/answer-engine/v1.1.1/INSTALL_AGENT.md>
 
 ## Copy and paste this one prompt
 
 <!-- INSTALL_PROMPT:START -->
 ```text
-Install Answer Engine stable 1.1.0 on this computer. Follow only the immutable
-v1.1.0 instructions at:
-https://raw.githubusercontent.com/the-answerai/answer-engine/v1.1.0/INSTALL_AGENT.md
+Install Answer Engine stable 1.1.1 on this computer. Follow only the immutable
+v1.1.1 instructions at:
+https://raw.githubusercontent.com/the-answerai/answer-engine/v1.1.1/INSTALL_AGENT.md
 
 First explain that bootstrap preflight is read-only and ask permission to run
 the matching Apple Silicon Bash or Windows 11 PowerShell command in the
-"Verified bootstrap commands" section. Download only the exact v1.1.0 asset,
+"Verified bootstrap commands" section. Download only the exact v1.1.1 asset,
 verify its SHA-256 entry before execution, and run it first with --preflight.
 
 Translate every pass, warning, or unsupported result into plain language. Never
 silently install Docker Desktop, WSL2, LM Studio, drivers, a model runtime, or
 another privileged prerequisite. The only supported automatic dependency is
-the displayed official Node.js 22.16.0 user-scoped archive, and it still
+the displayed official Node.js 22.23.2 user-scoped archive, and it still
 requires my explicit approval. Recommend full-local only for supported hardware,
 reduced-local for constrained Apple Silicon, or cloud-backed only after explicit
 opt-in. Ask me in one short interview for the install folder, model route, every
@@ -88,9 +88,9 @@ Ask before downloading into a temporary folder and running the read-only
 preflight. On Apple Silicon macOS, use:
 
 ```bash
-AE_RELEASE_URL=https://github.com/the-answerai/answer-engine/releases/download/v1.1.0
-AE_BOOTSTRAP=answer-engine-bootstrap-v1.1.0.sh
-AE_EXPECTED=c1e65b8943709ede0109b2af566f72fd3b97d311261f44df6e64cf136db304bb
+AE_RELEASE_URL=https://github.com/the-answerai/answer-engine/releases/download/v1.1.1
+AE_BOOTSTRAP=answer-engine-bootstrap-v1.1.1.sh
+AE_EXPECTED=ea7e46320e5aa6207dfd0da8847d67ec9fe48bebf18715c39af81907f3a7b00b
 AE_STAGE="$(mktemp -d)"
 trap 'rm -rf "$AE_STAGE"' EXIT HUP INT TERM
 curl --fail --location --proto '=https' --tlsv1.2 "$AE_RELEASE_URL/SHA256SUMS" -o "$AE_STAGE/SHA256SUMS"
@@ -104,9 +104,9 @@ bash "$AE_STAGE/$AE_BOOTSTRAP" --preflight
 On Windows 11 x64 in PowerShell, use:
 
 ```powershell
-$ReleaseUrl = 'https://github.com/the-answerai/answer-engine/releases/download/v1.1.0'
-$Bootstrap = 'answer-engine-bootstrap-v1.1.0.ps1'
-$Expected = '8adf1b0720b40354ef660c669824c79d197d49671fb61d161f3d40b7b6ada519'
+$ReleaseUrl = 'https://github.com/the-answerai/answer-engine/releases/download/v1.1.1'
+$Bootstrap = 'answer-engine-bootstrap-v1.1.1.ps1'
+$Expected = '184989dc7032fba4dd6975c933455da787ff5f97fede6dbecfa8d396f55d25be'
 $Stage = Join-Path ([IO.Path]::GetTempPath()) ('answer-engine-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory $Stage | Out-Null
 try {
@@ -122,7 +122,7 @@ try {
 }
 ```
 
-Both commands use the exact `v1.1.0` GitHub Release path and verify the
+Both commands use the exact `v1.1.1` GitHub Release path and verify the
 bootstrap before execution. After readiness and dependency consent, rerun the
 same checksum-first command without `--preflight`; add `--approve-node` only after
 the user approves the displayed official Node source, version, checksum,
@@ -256,7 +256,7 @@ The verified bootstrap installs the matching CLI asset. If `ae` is missing,
 rerun that same exact-version bootstrap; do not fetch an npm package:
 
 ```bash
-command -v ae >/dev/null 2>&1 || { echo 'Rerun the verified v1.1.0 bootstrap.' >&2; exit 1; }
+command -v ae >/dev/null 2>&1 || { echo 'Rerun the verified v1.1.1 bootstrap.' >&2; exit 1; }
 cp "$AE_HOME/config.yaml" "$AE_HOME/config.yaml.before-sources"
 chmod 600 "$AE_HOME/config.yaml.before-sources"
 ```

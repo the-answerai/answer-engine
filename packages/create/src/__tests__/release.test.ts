@@ -26,9 +26,9 @@ describe('release manifest verification', () => {
   it('keeps the source manifest non-runnable until the release builder injects verified inputs', () => {
     const template = loadReleaseManifestTemplate();
 
-    expect(template.version).toBe('1.1.0');
-    expect(template.tag).toBe('v1.1.0');
-    expect(template.promptUrl).toContain('/v1.1.0/INSTALL_AGENT.md');
+    expect(template.version).toBe('1.1.1');
+    expect(template.tag).toBe('v1.1.1');
+    expect(template.promptUrl).toContain('/v1.1.1/INSTALL_AGENT.md');
     expect(template.sourceCommit).toBe(RELEASE_SOURCE_COMMIT_PLACEHOLDER);
     expect(template.images.answerEngine).toBe(RELEASE_RUNTIME_IMAGE_PLACEHOLDER);
     expect(template.images.postgres).toMatch(/@sha256:[a-f0-9]{64}$/);
@@ -41,7 +41,7 @@ describe('release manifest verification', () => {
     const manifest = releaseFixture();
 
     expect(() => verifyReleaseManifest({ ...manifest, tag: 'v1.2.0' })).toThrow(/version.*tag/i);
-    expect(() => verifyReleaseManifest({ ...manifest, promptUrl: manifest.promptUrl.replace('/v1.1.0/', '/master/') }))
+    expect(() => verifyReleaseManifest({ ...manifest, promptUrl: manifest.promptUrl.replace('/v1.1.1/', '/master/') }))
       .toThrow(/immutable release tag/i);
     expect(() => verifyReleaseManifest({
       ...manifest,
@@ -49,7 +49,7 @@ describe('release manifest verification', () => {
     })).toThrow(/digest-pinned/i);
     expect(() => verifyReleaseManifest({
       ...manifest,
-      images: { ...manifest.images, answerEngine: 'ghcr.io/the-answerai/answer-engine:1.1.0' },
+      images: { ...manifest.images, answerEngine: 'ghcr.io/the-answerai/answer-engine:1.1.1' },
     })).toThrow(/versioned or digest-pinned/i);
   });
 
@@ -70,7 +70,7 @@ describe('release manifest verification', () => {
     const manifest = releaseFixture();
 
     expect(assertImmutableImageReference(manifest.images.answerEngine)).toBe(manifest.images.answerEngine);
-    expect(() => assertImmutableImageReference('ghcr.io/the-answerai/answer-engine:1.1.0'))
+    expect(() => assertImmutableImageReference('ghcr.io/the-answerai/answer-engine:1.1.1'))
       .toThrow(/exact @sha256 digest/i);
     expect(() => assertImmutableImageReference('ghcr.io/the-answerai/answer-engine:latest'))
       .toThrow(/exact @sha256 digest/i);
