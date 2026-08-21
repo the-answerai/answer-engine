@@ -88,7 +88,7 @@ export function createApp<TConfig = Record<string, never>>(options: CreateAppOpt
     app.get('/local-ui/session', createLocalUiSessionCookie(localUiApiKey), (_req, res) => res.status(204).end());
   }
   if (!env.WEB_UI_DIR) {
-    app.get('/', (_req, res) => res.json({ name: 'Answer Engine API', version: '1.1.1', status: 'running' }));
+    app.get('/', (_req, res) => res.json({ name: 'Answer Engine API', version: '1.1.2', status: 'running' }));
   }
   extensions?.registerPublicRoutes?.(app, context);
 

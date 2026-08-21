@@ -1,6 +1,6 @@
 {
   "name": "@answer-engine/create",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "One-command local installer for Answer Engine",
   "type": "module",
   "engines": {

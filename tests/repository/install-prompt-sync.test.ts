@@ -23,7 +23,7 @@ describe('canonical one-prompt installer copy', () => {
     expect(canonical).toContain('verify its SHA-256 entry before execution');
     expect(canonical).toContain('versioned installer\nand CLI assets without npm');
     expect(canonical).not.toContain('npx @answer-engine/create');
-    expect(canonical).toContain('/v1.1.1/');
+    expect(canonical).toContain('/v1.1.2/');
     expect(canonical).not.toContain('/master/');
   });
 });

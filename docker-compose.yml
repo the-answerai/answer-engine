@@ -1,5 +1,5 @@
 x-answer-engine-image: &answer-engine-image
-  image: "${ANSWER_ENGINE_IMAGE:-ghcr.io/the-answerai/answer-engine:1.1.1}"
+  image: "${ANSWER_ENGINE_IMAGE:-ghcr.io/the-answerai/answer-engine:1.1.2}"
   pull_policy: "${ANSWER_ENGINE_PULL_POLICY:-missing}"
 
 services:

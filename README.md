@@ -28,7 +28,7 @@ never copy or replace core pages.
 
 ## Requirements
 
-- Node.js 22.16 or newer
+- Node.js 22.23.2 or newer
 - pnpm 10 through Corepack
 - Docker Engine or Docker Desktop with Compose v2
 - LM Studio with a chat and embedding model, or another configured provider
@@ -81,13 +81,13 @@ docker compose down
 
 <!-- INSTALL_PROMPT:START -->
 ```text
-Install Answer Engine stable 1.1.1 on this computer. Follow only the immutable
-v1.1.1 instructions at:
-https://raw.githubusercontent.com/the-answerai/answer-engine/v1.1.1/INSTALL_AGENT.md
+Install Answer Engine stable 1.1.2 on this computer. Follow only the immutable
+v1.1.2 instructions at:
+https://raw.githubusercontent.com/the-answerai/answer-engine/v1.1.2/INSTALL_AGENT.md
 
 First explain that bootstrap preflight is read-only and ask permission to run
 the matching Apple Silicon Bash or Windows 11 PowerShell command in the
-"Verified bootstrap commands" section. Download only the exact v1.1.1 asset,
+"Verified bootstrap commands" section. Download only the exact v1.1.2 asset,
 verify its SHA-256 entry before execution, and run it first with --preflight.
 
 Translate every pass, warning, or unsupported result into plain language. Never

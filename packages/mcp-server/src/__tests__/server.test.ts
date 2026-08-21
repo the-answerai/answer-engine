@@ -69,7 +69,7 @@ describe('capability-based MCP tool registration', () => {
   });
 
   it('derives the advertised server version from the package manifest', () => {
-    expect(MCP_SERVER_VERSION).toBe('1.1.1');
+    expect(MCP_SERVER_VERSION).toBe('1.1.2');
   });
 
   it('lists the complete local-memory tool family for the OSS schema', async () => {

@@ -27,15 +27,15 @@ const LEGACY_COMPOSE = `services:
     command: redis-server --appendonly yes
     volumes: [redis_data:/data]
   migrate:
-    image: \${ANSWER_ENGINE_IMAGE:-ghcr.io/the-answerai/answer-engine:1.1.1}
+    image: \${ANSWER_ENGINE_IMAGE:-ghcr.io/the-answerai/answer-engine:1.1.2}
     command: [node, dist/scripts/migrate.js]
     env_file: [.env.compose]
   init:
-    image: \${ANSWER_ENGINE_IMAGE:-ghcr.io/the-answerai/answer-engine:1.1.1}
+    image: \${ANSWER_ENGINE_IMAGE:-ghcr.io/the-answerai/answer-engine:1.1.2}
     command: [node, dist/scripts/init.js]
     env_file: [.env.compose]
   api:
-    image: \${ANSWER_ENGINE_IMAGE:-ghcr.io/the-answerai/answer-engine:1.1.1}
+    image: \${ANSWER_ENGINE_IMAGE:-ghcr.io/the-answerai/answer-engine:1.1.2}
     command: [node, dist/server.js]
     env_file: [.env.compose]
     ports: [127.0.0.1:5050:5000]
