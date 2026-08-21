@@ -39,7 +39,7 @@ const ComposeSchema = z.object({
 const ConfigSchema = z.record(z.unknown());
 const REQUIRED_FILES = ['docker-compose.yml', '.env.compose', 'config.yaml'] as const;
 const LEGACY_APP_IMAGES = new Set([
-  '${ANSWER_ENGINE_IMAGE:-ghcr.io/the-answerai/answer-engine:1.1.1}',
+  '${ANSWER_ENGINE_IMAGE:-ghcr.io/the-answerai/answer-engine:1.1.2}',
   '${ANSWER_ENGINE_IMAGE:?Set ANSWER_ENGINE_IMAGE to the verified release digest}',
 ]);
 

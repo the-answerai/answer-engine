@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -eu
 
-VERSION=1.1.1
+VERSION=1.1.2
 TAG="v${VERSION}"
 RELEASE_BASE="https://github.com/the-answerai/answer-engine/releases/download/${TAG}"
 INSTALLER_ASSET="answer-engine-installer-v${VERSION}.tgz"

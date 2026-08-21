@@ -3,7 +3,7 @@
 Answer Engine onboarding uses versioned GitHub Release assets and does not
 publish or fetch `@answer-engine/create` or `@answer-engine/cli` from npm. The
 canonical copy-paste commands live in [INSTALL_AGENT.md](../INSTALL_AGENT.md).
-They pin `v1.1.1` plus the published bootstrap SHA-256, download `SHA256SUMS`
+They pin `v1.1.2` plus the published bootstrap SHA-256, download `SHA256SUMS`
 and the platform bootstrap, require the release checksum to match the pinned
 value, verify the bootstrap before execution, and reject branch or `/latest`
 inputs. The bootstrap then verifies the manifest, provenance, installer archive,
@@ -97,7 +97,7 @@ To reproduce a candidate after package builds:
 
 ```bash
 node scripts/build-release-assets.mjs \
-  --tag v1.1.1 \
+  --tag v1.1.2 \
   --commit <full-40-character-commit> \
   --image ghcr.io/the-answerai/answer-engine@sha256:<64-hex-digest> \
   --output tmp/release-candidate

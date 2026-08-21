@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Exact semantic release tag (for example v1.1.1)
+        description: Exact semantic release tag (for example v1.1.2)
         required: true
         type: string
       source_commit:

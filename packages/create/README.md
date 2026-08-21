@@ -1,18 +1,18 @@
 # @answer-engine/create
 
-One-command local installer for Answer Engine 1.1.1.
+One-command local installer for Answer Engine 1.1.2.
 
 ## One-prompt guided install
 
 <!-- INSTALL_PROMPT:START -->
 ```text
-Install Answer Engine stable 1.1.1 on this computer. Follow only the immutable
-v1.1.1 instructions at:
-https://raw.githubusercontent.com/the-answerai/answer-engine/v1.1.1/INSTALL_AGENT.md
+Install Answer Engine stable 1.1.2 on this computer. Follow only the immutable
+v1.1.2 instructions at:
+https://raw.githubusercontent.com/the-answerai/answer-engine/v1.1.2/INSTALL_AGENT.md
 
 First explain that bootstrap preflight is read-only and ask permission to run
 the matching Apple Silicon Bash or Windows 11 PowerShell command in the
-"Verified bootstrap commands" section. Download only the exact v1.1.1 asset,
+"Verified bootstrap commands" section. Download only the exact v1.1.2 asset,
 verify its SHA-256 entry before execution, and run it first with --preflight.
 
 Translate every pass, warning, or unsupported result into plain language. Never
@@ -45,9 +45,9 @@ cross-chat tutorial remain separate consented handoffs.
 
 ## Requirements
 
-- Node.js 22.16 or newer
+- Node.js 22.23.2 or newer
 - Docker with Compose
-- Either LM Studio models or configured cloud model credentials
+- Either LM Studio/OpenAI-compatible local models or configured cloud model credentials
 
 ## Verified release install
 
@@ -67,6 +67,21 @@ create-answer-engine --yes \
   --models "chat=<chat-model-id>,embedding=<embedding-model-id>" \
   --clients codex,claude-code
 ```
+
+For an OpenAI-compatible local server such as Ollama, provide its `/v1` URL and
+the exact chat and embedding IDs returned by `/v1/models`:
+
+```bash
+create-answer-engine --yes \
+  --lm-studio-url http://127.0.0.1:11434/v1 \
+  --models "chat=<exact-chat-id-with-tag>,embedding=<exact-embedding-id-with-tag>" \
+  --embedding-dimension <actual-width> \
+  --clients codex,claude-code
+```
+
+Answer Engine does not install the model server or pull models. Servers without
+LM Studio's native management API are treated as load-on-demand after their
+standard `/v1/models` response validates both selections.
 
 The installer writes configuration beneath `~/.answer-engine`, starts the
 local Compose stack, waits for health, captures the local API key, connects selected
