@@ -26,7 +26,7 @@
   },
   "dependencies": {
     "@answer-engine/create": "workspace:*",
-    "zod": "^3.22.4"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@types/node": "^20.10.5",
